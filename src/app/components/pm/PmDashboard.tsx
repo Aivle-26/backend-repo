@@ -27,12 +27,8 @@ import {
   TableRow,
 } from "@/app/components/ui/table";
 import {
-  KPI_PM,
-  AI_SUMMARY,
-  REQUIREMENTS,
-  TEAM,
-  RISKS,
-} from "@/app/data/mock";
+  projectRepository,
+} from "@/app/api/projectRepository";
 import { WorkflowFooter } from "@/app/components/common/WorkflowFooter";
 
 function priorityVariant(p: string) {
@@ -42,6 +38,9 @@ function priorityVariant(p: string) {
 }
 
 export function PmDashboard() {
+  const { kpis, aiSummary, requirements, team, risks } =
+    projectRepository.getPmDashboard();
+
   return (
     <div className="space-y-6">
       {/* KPI */}
@@ -49,23 +48,23 @@ export function PmDashboard() {
         <KpiCard
           icon={<TrendingUp className="size-4" />}
           label="전체 진행률"
-          value={`${KPI_PM.progress}%`}
-          extra={<Progress value={KPI_PM.progress} className="mt-3" />}
+          value={`${kpis.progress}%`}
+          extra={<Progress value={kpis.progress} className="mt-3" />}
         />
         <KpiCard
           icon={<CalendarClock className="size-4" />}
           label="남은 일수"
-          value={`${KPI_PM.daysLeft}일`}
+          value={`${kpis.daysLeft}일`}
         />
         <KpiCard
           icon={<ListChecks className="size-4" />}
           label="진행 중 업무"
-          value={`${KPI_PM.inProgress}건`}
+          value={`${kpis.inProgress}건`}
         />
         <KpiCard
           icon={<AlertTriangle className="size-4 text-destructive" />}
           label="고위험 항목"
-          value={`${KPI_PM.highRisk}건`}
+          value={`${kpis.highRisk}건`}
         />
       </div>
 
@@ -78,7 +77,10 @@ export function PmDashboard() {
           </CardHeader>
           <CardContent>
             <div
-              onClick={() => toast.success("공고문이 업로드되었습니다. (mock)")}
+              onClick={async () => {
+                await projectRepository.uploadRfp();
+                toast.success("공고문 업로드 흐름을 확인했습니다.");
+              }}
               className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/40 py-12 text-center transition-colors hover:bg-muted"
             >
               <UploadCloud className="size-7 text-muted-foreground" />
@@ -97,7 +99,7 @@ export function PmDashboard() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-3">
-              {AI_SUMMARY.map((line) => (
+              {aiSummary.map((line) => (
                 <li key={line} className="flex items-start gap-2">
                   <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
                   <span className="text-foreground text-sm">{line}</span>
@@ -128,7 +130,7 @@ export function PmDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {REQUIREMENTS.slice(0, 5).map((r) => (
+              {requirements.slice(0, 5).map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="text-muted-foreground">{r.id}</TableCell>
                   <TableCell>{r.text}</TableCell>
@@ -153,7 +155,7 @@ export function PmDashboard() {
             <CardTitle>팀원 업무 현황</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {TEAM.map((m) => {
+            {team.map((m) => {
               const pct = Math.round((m.done / m.total) * 100);
               return (
                 <div key={m.id} className="space-y-1.5">
@@ -180,7 +182,7 @@ export function PmDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {RISKS.map((risk) => (
+            {risks.map((risk) => (
               <div
                 key={risk.id}
                 className="rounded-lg border border-border p-3"

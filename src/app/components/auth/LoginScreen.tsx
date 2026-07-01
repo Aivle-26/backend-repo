@@ -11,7 +11,7 @@ import {
   CardDescription,
 } from "@/app/components/ui/card";
 import { cn } from "@/app/components/ui/utils";
-import type { Role } from "@/app/data/mock";
+import type { Role } from "@/app/api/projectRepository";
 
 interface LoginScreenProps {
   onLogin: (role: Role) => void;

@@ -25,17 +25,17 @@ import { Textarea } from "@/app/components/ui/textarea";
 import { Separator } from "@/app/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
-  TASK_CHECKLIST,
-  AI_TASK_SUMMARY,
-  STAFF_FEEDBACK,
-} from "@/app/data/mock";
+  projectRepository,
+} from "@/app/api/projectRepository";
 
 interface StaffTaskDetailProps {
   onBack: () => void;
 }
 
 export function StaffTaskDetail({ onBack }: StaffTaskDetailProps) {
-  const [checklist, setChecklist] = useState(TASK_CHECKLIST);
+  const { checklist: initialChecklist, aiSummary, feedback } =
+    projectRepository.getTaskDetail();
+  const [checklist, setChecklist] = useState(initialChecklist);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([
     { id: "cm1", author: "나", text: "대기질 완화 단락 초안 작성 중입니다.", date: "2026-06-30" },
@@ -46,14 +46,15 @@ export function StaffTaskDetail({ onBack }: StaffTaskDetailProps) {
       prev.map((c) => (c.id === id ? { ...c, done: !c.done } : c)),
     );
 
-  const addComment = () => {
+  const addComment = async () => {
     if (!comment.trim()) return;
+    await projectRepository.addComment({ text: comment });
     setComments((prev) => [
       ...prev,
       { id: `cm${prev.length + 1}`, author: "나", text: comment, date: "2026-06-30" },
     ]);
     setComment("");
-    toast.success("댓글을 등록했습니다. (mock)");
+    toast.success("댓글을 등록했습니다.");
   };
 
   return (
@@ -131,7 +132,10 @@ export function StaffTaskDetail({ onBack }: StaffTaskDetailProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div
-                onClick={() => toast.success("파일이 첨부되었습니다. (mock)")}
+                onClick={async () => {
+                  await projectRepository.attachFile();
+                  toast.success("파일 첨부 흐름을 확인했습니다.");
+                }}
                 className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/40 py-8 text-center hover:bg-muted"
               >
                 <Paperclip className="size-6 text-muted-foreground" />
@@ -143,7 +147,10 @@ export function StaffTaskDetail({ onBack }: StaffTaskDetailProps) {
               </div>
               <Button
                 className="w-full"
-                onClick={() => toast.success("검토 요청을 제출했습니다. (mock)")}
+                onClick={async () => {
+                  await projectRepository.requestReview();
+                  toast.success("검토 요청을 제출했습니다.");
+                }}
               >
                 검토 요청 제출
               </Button>
@@ -160,7 +167,7 @@ export function StaffTaskDetail({ onBack }: StaffTaskDetailProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {STAFF_FEEDBACK.map((f) => (
+              {feedback.map((f) => (
                 <div key={f.id} className="rounded-md border border-border p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-foreground text-sm">{f.author}</span>
@@ -212,7 +219,7 @@ export function StaffTaskDetail({ onBack }: StaffTaskDetailProps) {
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
-                {AI_TASK_SUMMARY.map((line) => (
+                {aiSummary.map((line) => (
                   <li key={line} className="flex items-start gap-2">
                     <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
                     <span className="text-foreground text-sm">{line}</span>

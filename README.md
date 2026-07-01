@@ -1,11 +1,20 @@
 
-  # BidWorks AI 프로토타입 제작
+# BidWorks AI Frontend
 
-  This is a code bundle for BidWorks AI 프로토타입 제작. The original project is available at https://www.figma.com/design/ELzKvvLPiCscOgjg4jSeZG/BidWorks-AI-%ED%94%84%EB%A1%9C%ED%86%A0%ED%83%80%EC%9E%85-%EC%A0%9C%EC%9E%91.
+BidWorks AI의 프론트엔드 뼈대입니다. 현재는 화면 검증용 데모 데이터를 사용하며, 실제 백엔드는 `src/app/api/projectRepository.ts`의 메서드 구현을 API 호출로 교체하는 방식으로 연결합니다.
 
-  ## Running the code
+## 실행
 
-  Run `npm i` to install the dependencies.
+```bash
+npm install
+npm run dev
+```
 
-  Run `npm run dev` to start the development server.
+기본 개발 서버 주소는 `http://127.0.0.1:5173/`입니다.
+
+## 빌드
+
+```bash
+npm run build
+```
   

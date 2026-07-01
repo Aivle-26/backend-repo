@@ -15,14 +15,10 @@ import {
 } from "@/app/components/ui/card";
 import { Badge } from "@/app/components/ui/badge";
 import {
-  KPI_STAFF,
-  TASKS,
-  AI_TASK_HELPER,
-  STAFF_FEEDBACK,
-  REQUIREMENTS,
+  projectRepository,
   type Task,
   type TaskColumn,
-} from "@/app/data/mock";
+} from "@/app/api/projectRepository";
 
 const COLUMNS: { key: TaskColumn; label: string }[] = [
   { key: "todo", label: "할 일" },
@@ -42,14 +38,17 @@ interface StaffDashboardProps {
 }
 
 export function StaffDashboard({ onOpenTask }: StaffDashboardProps) {
+  const { kpis, tasks, aiHelper, feedback, requirements } =
+    projectRepository.getStaffDashboard();
+
   return (
     <div className="space-y-6">
       {/* KPI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard icon={<ListTodo className="size-4" />} label="내 업무" value={`${KPI_STAFF.myTasks}건`} />
-        <KpiCard icon={<AlarmClock className="size-4 text-destructive" />} label="마감 임박" value={`${KPI_STAFF.dueSoon}건`} />
-        <KpiCard icon={<Eye className="size-4" />} label="검토 중" value={`${KPI_STAFF.inReview}건`} />
-        <KpiCard icon={<CheckCircle2 className="size-4" />} label="완료" value={`${KPI_STAFF.completed}건`} />
+        <KpiCard icon={<ListTodo className="size-4" />} label="내 업무" value={`${kpis.myTasks}건`} />
+        <KpiCard icon={<AlarmClock className="size-4 text-destructive" />} label="마감 임박" value={`${kpis.dueSoon}건`} />
+        <KpiCard icon={<Eye className="size-4" />} label="검토 중" value={`${kpis.inReview}건`} />
+        <KpiCard icon={<CheckCircle2 className="size-4" />} label="완료" value={`${kpis.completed}건`} />
       </div>
 
       {/* Kanban */}
@@ -61,7 +60,7 @@ export function StaffDashboard({ onOpenTask }: StaffDashboardProps) {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {COLUMNS.map((col) => {
-              const items = TASKS.filter((t) => t.column === col.key);
+              const items = tasks.filter((t) => t.column === col.key);
               return (
                 <div key={col.key} className="rounded-lg bg-muted/50 p-3">
                   <div className="flex items-center justify-between mb-3 px-1">
@@ -94,7 +93,7 @@ export function StaffDashboard({ onOpenTask }: StaffDashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {REQUIREMENTS.slice(0, 3).map((r) => (
+            {requirements.slice(0, 3).map((r) => (
               <div key={r.id} className="rounded-md border border-border p-3">
                 <Badge variant="outline" className="mb-1">{r.category}</Badge>
                 <p className="text-foreground text-sm">{r.text}</p>
@@ -112,7 +111,7 @@ export function StaffDashboard({ onOpenTask }: StaffDashboardProps) {
           </CardHeader>
           <CardContent>
             <ul className="space-y-3">
-              {AI_TASK_HELPER.map((line) => (
+              {aiHelper.map((line) => (
                 <li key={line} className="flex items-start gap-2">
                   <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
                   <span className="text-foreground text-sm">{line}</span>
@@ -128,7 +127,7 @@ export function StaffDashboard({ onOpenTask }: StaffDashboardProps) {
             <CardTitle>최근 PM 피드백</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {STAFF_FEEDBACK.map((f) => (
+            {feedback.map((f) => (
               <div key={f.id} className="rounded-md border border-border p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-foreground text-sm">{f.author}</span>

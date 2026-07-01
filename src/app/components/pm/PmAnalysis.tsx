@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/app/components/ui/table";
-import { REQUIREMENTS, RISKS, ASSIGNEES } from "@/app/data/mock";
+import { projectRepository } from "@/app/api/projectRepository";
 
 function priorityVariant(p: string) {
   if (p === "높음") return "destructive" as const;
@@ -38,16 +38,23 @@ function priorityVariant(p: string) {
 }
 
 export function PmAnalysis() {
-  const [selectedId, setSelectedId] = useState<number | null>(REQUIREMENTS[0].id);
+  const { requirements, risks, assignees } = projectRepository.getPmAnalysis();
+  const [selectedId, setSelectedId] = useState<number | null>(requirements[0].id);
   const [assignee, setAssignee] = useState<string>("");
   const [due, setDue] = useState<string>("");
   const [memo, setMemo] = useState<string>("");
 
-  const selected = REQUIREMENTS.find((r) => r.id === selectedId) ?? null;
+  const selected = requirements.find((r) => r.id === selectedId) ?? null;
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (!selected) return toast.error("요구사항을 선택하세요.");
     if (!assignee) return toast.error("담당자를 지정하세요.");
+    await projectRepository.assignRequirement({
+      requirementId: selected.id,
+      assignee,
+      dueDate: due,
+      memo,
+    });
     toast.success(`"${selected.text.slice(0, 16)}…" 업무를 ${assignee}에게 배정했습니다.`);
   };
 
@@ -72,13 +79,19 @@ export function PmAnalysis() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => toast("다시 업로드 (mock)")}
+                onClick={async () => {
+                  await projectRepository.uploadRfp();
+                  toast("공고문 업로드 흐름을 다시 시작했습니다.");
+                }}
               >
                 다시 업로드
               </Button>
               <Button
                 size="sm"
-                onClick={() => toast.success("AI 재분석을 시작했습니다. (mock)")}
+                onClick={async () => {
+                  await projectRepository.reanalyzeRfp();
+                  toast.success("AI 재분석을 시작했습니다.");
+                }}
               >
                 <RefreshCw className="size-4" /> 다시 분석
               </Button>
@@ -106,7 +119,7 @@ export function PmAnalysis() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {REQUIREMENTS.map((r) => (
+                {requirements.map((r) => (
                   <TableRow
                     key={r.id}
                     data-state={selectedId === r.id ? "selected" : undefined}
@@ -151,7 +164,7 @@ export function PmAnalysis() {
             <span className="text-foreground">AI 리스크 분석</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {RISKS.map((risk) => (
+            {risks.map((risk) => (
               <Card key={risk.id}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -194,7 +207,7 @@ export function PmAnalysis() {
                   <SelectValue placeholder="담당자를 선택하세요" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ASSIGNEES.map((a) => (
+                  {assignees.map((a) => (
                     <SelectItem key={a} value={a}>
                       {a}
                     </SelectItem>
@@ -230,7 +243,10 @@ export function PmAnalysis() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => toast.success("검토 요청을 보냈습니다. (mock)")}
+                onClick={async () => {
+                  await projectRepository.requestReview();
+                  toast.success("검토 요청을 보냈습니다.");
+                }}
               >
                 검토 요청
               </Button>

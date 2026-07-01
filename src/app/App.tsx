@@ -21,7 +21,7 @@ import { PmDashboard } from "@/app/components/pm/PmDashboard";
 import { PmAnalysis } from "@/app/components/pm/PmAnalysis";
 import { StaffDashboard } from "@/app/components/staff/StaffDashboard";
 import { StaffTaskDetail } from "@/app/components/staff/StaffTaskDetail";
-import { PROJECT_NAME, type Role } from "@/app/data/mock";
+import { projectRepository, type Role } from "@/app/api/projectRepository";
 
 const PM_MENU: SidebarItem[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard },
@@ -78,7 +78,7 @@ export default function App() {
     }
   };
 
-  const title = PROJECT_NAME;
+  const title = projectRepository.getProjectName();
   let subtitle = "";
   let body: React.ReactNode = null;
 
