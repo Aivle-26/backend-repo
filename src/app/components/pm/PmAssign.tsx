@@ -38,6 +38,7 @@ import {
 import { cn } from "@/app/components/ui/utils";
 import { projectRepository } from "@/app/api/projectRepository";
 import type { Requirement } from "@/app/data/demoData";
+import { CountUp } from "@/app/components/common/CountUp";
 
 type AssignFilter = "미배정" | "배정됨" | "전체";
 
@@ -402,7 +403,9 @@ function StatCard({
           </span>
           <div className="leading-tight">
             <div className="text-muted-foreground text-sm">{label}</div>
-            <div className="text-foreground text-xl">{value}</div>
+            <div className="text-foreground text-xl">
+              <CountUp value={value} />
+            </div>
           </div>
         </div>
       </CardContent>

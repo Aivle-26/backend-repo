@@ -44,7 +44,7 @@ function severityBadge(s: RiskSeverity) {
 
 function stateBadge(s: OpenRiskState) {
   const map: Record<OpenRiskState, string> = {
-    "심각": "bg-red-50 text-red-700 border-red-200",
+    "미해결": "bg-red-50 text-red-700 border-red-200",
     "처리 중": "bg-blue-50 text-blue-700 border-blue-200",
     "대기 중": "bg-amber-50 text-amber-700 border-amber-200",
     "주의": "bg-amber-50 text-amber-700 border-amber-200",
@@ -112,9 +112,7 @@ export function StaffRisk() {
                   <TableCell className="text-muted-foreground text-xs">{d.source}</TableCell>
                   <TableCell className="text-muted-foreground text-xs">{d.detectedAt}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn("font-normal", severityBadge(d.severity))}>
-                      {d.severity}
-                    </Badge>
+                    <RiskPill label={d.severity} critical={d.severity === "심각"} tone={severityBadge(d.severity)} />
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">{d.description}</TableCell>
                 </TableRow>
@@ -230,9 +228,7 @@ export function StaffRisk() {
                     </TableCell>
                     <TableCell>
                       {r.severity && (
-                        <Badge variant="outline" className={cn("font-normal", severityBadge(r.severity))}>
-                          {r.severity}
-                        </Badge>
+                        <RiskPill label={r.severity} critical={r.severity === "심각"} tone={severityBadge(r.severity)} />
                       )}
                     </TableCell>
                   </TableRow>
@@ -284,6 +280,30 @@ export function StaffRisk() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* 리스크 상태/심각도 배지 — 심각은 솔리드 빨강 + 라이브 핑 점 */
+function RiskPill({
+  label,
+  critical,
+  tone,
+}: {
+  label: string;
+  critical: boolean;
+  tone: string;
+}) {
+  if (critical) {
+    return (
+      <Badge className="border-transparent bg-red-700 text-white font-normal dark:bg-red-800">
+        {label}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className={cn("font-normal", tone)}>
+      {label}
+    </Badge>
   );
 }
 

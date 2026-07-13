@@ -30,6 +30,7 @@ import {
   projectRepository,
 } from "@/app/api/projectRepository";
 import { WorkflowFooter } from "@/app/components/common/WorkflowFooter";
+import { CountUp } from "@/app/components/common/CountUp";
 
 function priorityVariant(p: string) {
   if (p === "높음") return "destructive" as const;
@@ -224,7 +225,9 @@ function KpiCard({ icon, label, value, extra }: KpiCardProps) {
           <span className="text-muted-foreground text-sm">{label}</span>
           <span className="text-muted-foreground">{icon}</span>
         </div>
-        <div className="mt-2 text-foreground text-2xl">{value}</div>
+        <div className="mt-2 text-foreground text-2xl">
+          <CountUp value={value} />
+        </div>
         {extra}
       </CardContent>
     </Card>

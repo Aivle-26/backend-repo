@@ -44,6 +44,7 @@ import {
 } from "@/app/components/ui/table";
 import { cn } from "@/app/components/ui/utils";
 import { projectRepository } from "@/app/api/projectRepository";
+import { CountUp } from "@/app/components/common/CountUp";
 import type {
   RiskKpi,
   PmRiskState,
@@ -127,7 +128,9 @@ export function PmRisk() {
                   </span>
                   <div className="leading-tight">
                     <div className="text-muted-foreground text-sm">{k.label}</div>
-                    <div className="text-foreground text-2xl">{k.value}</div>
+                    <div className="text-foreground text-2xl">
+                      <CountUp value={k.value} />
+                    </div>
                     <div className="text-muted-foreground text-xs">{k.sub}</div>
                   </div>
                 </div>

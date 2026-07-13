@@ -525,7 +525,7 @@ export interface TeamCommItem {
   unread: boolean;
 }
 
-export type OpenRiskState = "심각" | "처리 중" | "대기 중" | "주의";
+export type OpenRiskState = "미해결" | "처리 중" | "대기 중" | "주의";
 
 export interface OpenRisk {
   id: string;
@@ -610,7 +610,7 @@ export const TEAM_COMMS: TeamCommItem[] = [
 ];
 
 export const OPEN_RISKS: OpenRisk[] = [
-  { id: "or1", title: "리스크 ID-001 '회원가입 SQL 주입'", service: "GitHub", serviceIcon: "github", occurredAt: "1시간 전", state: "심각", severity: "심각" },
+  { id: "or1", title: "리스크 ID-001 '회원가입 SQL 주입'", service: "GitHub", serviceIcon: "github", occurredAt: "1시간 전", state: "미해결", severity: "심각" },
   { id: "or2", title: "리스크 ID-001 '결제 API 성능 저하'", service: "Jira (티켓)", serviceIcon: "jira", occurredAt: "2시간 전", state: "처리 중", severity: null },
   { id: "or3", title: "리스크 ID-002 '결제 API 성능 저하'", service: "Jira (티켓)", serviceIcon: "jira", occurredAt: "주의", state: "대기 중", severity: null },
   { id: "or4", title: "리스크 ID-003 'AWS S3 권한 노출'", service: "CloudWatch", serviceIcon: "cloudwatch", occurredAt: "어제", state: "처리 중", severity: null },

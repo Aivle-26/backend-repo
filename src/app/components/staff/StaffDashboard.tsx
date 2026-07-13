@@ -19,6 +19,7 @@ import {
   type Task,
   type TaskColumn,
 } from "@/app/api/projectRepository";
+import { CountUp } from "@/app/components/common/CountUp";
 
 const COLUMNS: { key: TaskColumn; label: string }[] = [
   { key: "todo", label: "할 일" },
@@ -175,7 +176,9 @@ function KpiCard({ icon, label, value }: KpiCardProps) {
           <span className="text-muted-foreground text-sm">{label}</span>
           <span className="text-muted-foreground">{icon}</span>
         </div>
-        <div className="mt-2 text-foreground text-2xl">{value}</div>
+        <div className="mt-2 text-foreground text-2xl">
+          <CountUp value={value} />
+        </div>
       </CardContent>
     </Card>
   );

@@ -16,16 +16,17 @@ interface SidebarProps {
 export function Sidebar({ items, active, onSelect }: SidebarProps) {
   return (
     <aside className="w-60 shrink-0 border-r border-border bg-sidebar flex flex-col">
-      <div className="h-16 flex items-center gap-2 px-5 border-b border-border">
-        <div className="size-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
-          <Sparkles className="size-4" />
+      <div className="h-16 flex items-center gap-2.5 px-5">
+        <div className="size-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
+          <Sparkles className="size-5" />
         </div>
         <div className="leading-tight">
           <div className="text-sidebar-foreground">BidWorks AI</div>
           <div className="text-muted-foreground text-xs">RFP 프로젝트 관리</div>
         </div>
       </div>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+
+      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = item.key === active;
@@ -33,14 +34,29 @@ export function Sidebar({ items, active, onSelect }: SidebarProps) {
             <button
               key={item.key}
               onClick={() => onSelect(item.key)}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors",
+                "group relative w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all",
                 isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                  : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
               )}
             >
-              <Icon className="size-4 shrink-0" />
+              <span
+                className={cn(
+                  "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary transition-opacity",
+                  isActive ? "opacity-100" : "opacity-0",
+                )}
+                aria-hidden="true"
+              />
+              <Icon
+                className={cn(
+                  "size-4 shrink-0 transition-colors",
+                  isActive
+                    ? "text-primary"
+                    : "text-muted-foreground group-hover:text-sidebar-foreground",
+                )}
+              />
               <span>{item.label}</span>
             </button>
           );
