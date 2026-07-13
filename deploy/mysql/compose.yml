@@ -1,0 +1,15 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: aipm-mysql
+    restart: unless-stopped
+    env_file:
+      - /etc/aipm/mysql.env
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - aipm-mysql-data:/var/lib/mysql
+
+volumes:
+  aipm-mysql-data:
+    external: true
