@@ -11,6 +11,7 @@ import {
   CardDescription,
 } from "@/app/components/ui/card";
 import { cn } from "@/app/components/ui/utils";
+import { ThemeToggle } from "@/app/components/common/ThemeToggle";
 import type { Role } from "@/app/api/projectRepository";
 
 interface LoginScreenProps {
@@ -23,7 +24,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [role, setRole] = useState<Role>("pm");
 
   return (
-    <div className="min-h-screen w-full bg-muted flex flex-col items-center justify-center p-6">
+    <div className="relative min-h-screen w-full bg-muted flex flex-col items-center justify-center p-6">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle variant="outline" />
+      </div>
       <div className="flex items-center gap-2 mb-6">
         <div className="size-9 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
           <Sparkles className="size-5" />

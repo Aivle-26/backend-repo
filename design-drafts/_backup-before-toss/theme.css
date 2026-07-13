@@ -1,68 +1,66 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Toss Light — 토스뱅크 무드 (Draft A) */
   --font-size: 16px;
   --background: #ffffff;
-  --foreground: #191f28;
+  --foreground: oklch(0.145 0 0);
   --card: #ffffff;
-  --card-foreground: #191f28;
-  --popover: #ffffff;
-  --popover-foreground: #191f28;
-  --primary: #3182f6;
-  --primary-foreground: #ffffff;
-  --secondary: #eaf2fe;
-  --secondary-foreground: #1b64da;
-  --muted: #f2f4f6;
-  --muted-foreground: #8b95a1;
-  --accent: #eaf2fe;
-  --accent-foreground: #1b64da;
-  --destructive: #f04452;
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: #030213;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.0058 264.53);
+  --secondary-foreground: #030213;
+  --muted: #ececf0;
+  --muted-foreground: #717182;
+  --accent: #e9ebef;
+  --accent-foreground: #030213;
+  --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-  --border: rgba(23, 31, 40, 0.08);
+  --border: rgba(0, 0, 0, 0.1);
   --input: transparent;
-  --input-background: #f2f4f6;
+  --input-background: #f3f3f5;
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #3182f6;
+  --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 1rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #191f28;
-  --sidebar-primary: #3182f6;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eaf2fe;
-  --sidebar-accent-foreground: #1b64da;
-  --sidebar-border: rgba(23, 31, 40, 0.06);
-  --sidebar-ring: #3182f6;
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: #030213;
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
-  /* Toss Dark — 딥네이비 + 비비드 블루 (Draft B) */
-  --background: #0f1115;
-  --foreground: #f4f6fa;
-  --card: #181a20;
-  --card-foreground: #f4f6fa;
-  --popover: #181a20;
-  --popover-foreground: #f4f6fa;
-  --primary: #4e92ff;
-  --primary-foreground: #0b1018;
-  --secondary: #1b2942;
-  --secondary-foreground: #82b4ff;
-  --muted: #20242c;
-  --muted-foreground: #8b95a1;
-  --accent: #1b2942;
-  --accent-foreground: #82b4ff;
-  --destructive: #ff6b75;
-  --destructive-foreground: #0b1018;
-  --border: #262a33;
-  --input: #262a33;
-  --ring: #4e92ff;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);
@@ -70,14 +68,14 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #181a20;
-  --sidebar-foreground: #f4f6fa;
-  --sidebar-primary: #4e92ff;
-  --sidebar-primary-foreground: #0b1018;
-  --sidebar-accent: #1b2942;
-  --sidebar-accent-foreground: #82b4ff;
-  --sidebar-border: #262a33;
-  --sidebar-ring: #4e92ff;
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
 }
 
 @theme inline {
@@ -128,10 +126,6 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Pretendard", "Pretendard Variable", -apple-system,
-      BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", Roboto,
-      "Helvetica Neue", "Malgun Gothic", sans-serif;
-    letter-spacing: -0.01em;
   }
 
   /**

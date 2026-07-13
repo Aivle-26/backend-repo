@@ -37,6 +37,9 @@ import {
   PM_HANDOVER_CHECKS,
   PM_RISK_ACTIONS,
   PM_QUICK_TOOLS,
+  UPLOADED_RFPS,
+  REVIEW_SUBMISSIONS,
+  STAFF_SUBMITTABLE,
   type Role,
   type Task,
   type TaskColumn,
@@ -84,6 +87,20 @@ export const projectRepository = {
     return {
       requirements: REQUIREMENTS,
       risks: RISKS,
+      assignees: ASSIGNEES,
+    };
+  },
+
+  getPmRequirements() {
+    return {
+      requirements: REQUIREMENTS,
+    };
+  },
+
+  getPmAssign() {
+    return {
+      requirements: REQUIREMENTS,
+      team: TEAM,
       assignees: ASSIGNEES,
     };
   },
@@ -148,6 +165,26 @@ export const projectRepository = {
       actions: PM_RISK_ACTIONS,
       quickTools: PM_QUICK_TOOLS,
     };
+  },
+
+  getPmUpload() {
+    return { uploaded: UPLOADED_RFPS };
+  },
+
+  getPmReview() {
+    return { submissions: REVIEW_SUBMISSIONS, feedback: STAFF_FEEDBACK };
+  },
+
+  getStaffContext() {
+    return { requirements: REQUIREMENTS };
+  },
+
+  getStaffSubmit() {
+    return { tasks: STAFF_SUBMITTABLE, checklist: TASK_CHECKLIST };
+  },
+
+  getStaffFeedback() {
+    return { feedback: STAFF_FEEDBACK };
   },
 
   async uploadRfp() {

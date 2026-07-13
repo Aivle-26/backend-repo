@@ -13,23 +13,4 @@
         // 초기 테마 적용 (화면 깜빡임 방지)
         (function () {
           try {
-            var t = localStorage.getItem("bidworks-theme");
-            if (t !== "light" && t !== "dark") {
-              t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-            }
-            if (t === "dark") document.documentElement.classList.add("dark");
-            document.documentElement.style.colorScheme = t;
-          } catch (e) {}
-        })();
-      </script>
-
-    </head>
-
-    <body>
-      
-      <div id="root"></div>
-      <script type="module" src="/src/main.tsx"></script>
-      
-    </body>
-  </html>
-  
+            var t = localStorage.getItem("bidwork

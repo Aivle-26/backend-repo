@@ -271,6 +271,58 @@ export const WORKFLOW_STEPS = [
 ];
 
 /* =====================================================================
+ * 공고문 업로드 / 검토 / 산출물 제출 (미연결 기능 복원용)
+ * ===================================================================*/
+
+export interface UploadedRfp {
+  id: string;
+  name: string;
+  size: string;
+  uploadedAt: string;
+  status: "분석 완료" | "분석 중" | "대기";
+  requirementCount: number;
+}
+
+export const UPLOADED_RFPS: UploadedRfp[] = [
+  { id: "rfp1", name: "도시인프라-rfp-2024.pdf", size: "4.2MB", uploadedAt: "오늘 09:10", status: "분석 완료", requirementCount: 24 },
+  { id: "rfp2", name: "상수도-정비-공고문.pdf", size: "2.8MB", uploadedAt: "어제 16:40", status: "분석 완료", requirementCount: 17 },
+  { id: "rfp3", name: "교통관제-시스템-RFP.pdf", size: "5.1MB", uploadedAt: "2026-07-10 11:05", status: "대기", requirementCount: 0 },
+];
+
+export type ReviewState = "검토 대기" | "승인" | "반려";
+
+export interface ReviewSubmission {
+  id: string;
+  title: string;
+  author: string;
+  submittedAt: string;
+  relatedReq: string;
+  attachment: string;
+  state: ReviewState;
+}
+
+export const REVIEW_SUBMISSIONS: ReviewSubmission[] = [
+  { id: "sub1", title: "3.2 환경 규정 준수 초안", author: "이서연", submittedAt: "2026-07-01 14:20", relatedReq: "RFP 3.2 환경 규정", attachment: "환경규정_초안_v2.docx", state: "검토 대기" },
+  { id: "sub2", title: "전력 공급 이중화 설계 기준", author: "김지훈", submittedAt: "2026-06-30 18:05", relatedReq: "RFP 4.1 인프라", attachment: "이중화설계_기준.pdf", state: "검토 대기" },
+  { id: "sub3", title: "보안 펜스 설치 계획", author: "박민수", submittedAt: "2026-06-29 10:11", relatedReq: "RFP 5.2 보안", attachment: "보안펜스_계획.docx", state: "승인" },
+  { id: "sub4", title: "승강 설비 유지보수 일정", author: "최예나", submittedAt: "2026-06-28 09:40", relatedReq: "RFP 6.1 일정", attachment: "유지보수_일정.xlsx", state: "반려" },
+];
+
+export interface SubmittableTask {
+  id: string;
+  title: string;
+  relatedReq: string;
+  due: string;
+  status: "작성 중" | "제출 완료";
+}
+
+export const STAFF_SUBMITTABLE: SubmittableTask[] = [
+  { id: "st1", title: "3.2 환경 규정 준수 초안 작성", relatedReq: "RFP 3.2 환경 규정 준수", due: "2026-07-04", status: "작성 중" },
+  { id: "st2", title: "폐수 관리 영향 보고서", relatedReq: "RFP 3.1 폐수 관리", due: "2026-07-08", status: "작성 중" },
+  { id: "st3", title: "컴플라이언스 매트릭스 초안", relatedReq: "RFP 3.2 환경 규정", due: "2026-06-28", status: "제출 완료" },
+];
+
+/* =====================================================================
  * 문서 통합 관리 (Document Integration Management)
  * ===================================================================*/
 

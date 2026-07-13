@@ -22,10 +22,18 @@ import { PmDashboard } from "@/app/components/pm/PmDashboard";
 import { PmAnalysis } from "@/app/components/pm/PmAnalysis";
 import { PmDocuments } from "@/app/components/pm/PmDocuments";
 import { PmRisk } from "@/app/components/pm/PmRisk";
+import { PmUpload } from "@/app/components/pm/PmUpload";
+import { PmReview } from "@/app/components/pm/PmReview";
+import { PmRequirements } from "@/app/components/pm/PmRequirements";
+import { PmAssign } from "@/app/components/pm/PmAssign";
 import { StaffDashboard } from "@/app/components/staff/StaffDashboard";
 import { StaffTaskDetail } from "@/app/components/staff/StaffTaskDetail";
 import { StaffDocuments } from "@/app/components/staff/StaffDocuments";
 import { StaffRisk, StaffRiskActions } from "@/app/components/staff/StaffRisk";
+import { StaffContext } from "@/app/components/staff/StaffContext";
+import { StaffSubmit } from "@/app/components/staff/StaffSubmit";
+import { StaffFeedback } from "@/app/components/staff/StaffFeedback";
+import { StaffComments } from "@/app/components/staff/StaffComments";
 import { projectRepository, type Role } from "@/app/api/projectRepository";
 
 const PM_MENU: SidebarItem[] = [
@@ -92,18 +100,26 @@ export default function App() {
   let actions: React.ReactNode = null;
 
   if (isPm) {
-    if (pmMenu === "documents") {
+    if (pmMenu === "upload") {
+      subtitle = "공고문 업로드";
+      body = <PmUpload />;
+    } else if (pmMenu === "documents") {
       subtitle = "문서 통합 관리";
       body = <PmDocuments />;
     } else if (pmMenu === "risk") {
       subtitle = "리스크 관리";
       body = <PmRisk />;
-    } else if (
-      pmMenu === "analysis" ||
-      pmMenu === "assign" ||
-      pmMenu === "requirements"
-    ) {
-      subtitle = "RFP 분석 및 업무 배정";
+    } else if (pmMenu === "review") {
+      subtitle = "산출물 검토";
+      body = <PmReview />;
+    } else if (pmMenu === "requirements") {
+      subtitle = "요구사항";
+      body = <PmRequirements />;
+    } else if (pmMenu === "assign") {
+      subtitle = "업무 배정";
+      body = <PmAssign />;
+    } else if (pmMenu === "analysis") {
+      subtitle = "AI 분석";
       body = <PmAnalysis />;
     } else {
       subtitle = "PM 대시보드";
@@ -117,6 +133,18 @@ export default function App() {
       subtitle = "리스크";
       body = <StaffRisk />;
       actions = <StaffRiskActions />;
+    } else if (staffMenu === "context") {
+      subtitle = "RFP 맥락";
+      body = <StaffContext />;
+    } else if (staffMenu === "submit") {
+      subtitle = "산출물 제출";
+      body = <StaffSubmit />;
+    } else if (staffMenu === "feedback") {
+      subtitle = "피드백";
+      body = <StaffFeedback />;
+    } else if (staffMenu === "comments") {
+      subtitle = "댓글";
+      body = <StaffComments />;
     } else if (taskOpen) {
       subtitle = "업무 상세";
       body = <StaffTaskDetail onBack={() => setTaskOpen(false)} />;

@@ -2,6 +2,7 @@ import { Bell, LogOut } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Badge } from "@/app/components/ui/badge";
+import { ThemeToggle } from "@/app/components/common/ThemeToggle";
 
 interface TopBarProps {
   title: string;
@@ -22,6 +23,7 @@ export function TopBar({ title, subtitle, userName, roleLabel, onLogout, actions
       <div className="flex items-center gap-3">
         {actions}
         <Badge variant="secondary">{roleLabel}</Badge>
+        <ThemeToggle />
         <Button variant="ghost" size="icon" aria-label="알림">
           <Bell className="size-4" />
         </Button>
