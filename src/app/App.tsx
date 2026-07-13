@@ -12,6 +12,7 @@ import {
   Send,
   MessageSquareReply,
   MessagesSquare,
+  FolderKanban,
 } from "lucide-react";
 import { Toaster } from "@/app/components/ui/sonner";
 import { Sidebar, type SidebarItem } from "@/app/components/layout/Sidebar";
@@ -19,8 +20,12 @@ import { TopBar } from "@/app/components/layout/TopBar";
 import { LoginScreen } from "@/app/components/auth/LoginScreen";
 import { PmDashboard } from "@/app/components/pm/PmDashboard";
 import { PmAnalysis } from "@/app/components/pm/PmAnalysis";
+import { PmDocuments } from "@/app/components/pm/PmDocuments";
+import { PmRisk } from "@/app/components/pm/PmRisk";
 import { StaffDashboard } from "@/app/components/staff/StaffDashboard";
 import { StaffTaskDetail } from "@/app/components/staff/StaffTaskDetail";
+import { StaffDocuments } from "@/app/components/staff/StaffDocuments";
+import { StaffRisk, StaffRiskActions } from "@/app/components/staff/StaffRisk";
 import { projectRepository, type Role } from "@/app/api/projectRepository";
 
 const PM_MENU: SidebarItem[] = [
@@ -29,6 +34,7 @@ const PM_MENU: SidebarItem[] = [
   { key: "analysis", label: "AI 분석", icon: Sparkles },
   { key: "requirements", label: "요구사항", icon: FileText },
   { key: "assign", label: "업무 배정", icon: Users },
+  { key: "documents", label: "문서 통합 관리", icon: FolderKanban },
   { key: "risk", label: "리스크", icon: AlertTriangle },
   { key: "review", label: "검토", icon: ClipboardCheck },
 ];
@@ -36,6 +42,8 @@ const PM_MENU: SidebarItem[] = [
 const STAFF_MENU: SidebarItem[] = [
   { key: "tasks", label: "내 업무", icon: ListTodo },
   { key: "context", label: "RFP 맥락", icon: BookOpen },
+  { key: "documents", label: "문서 통합 관리", icon: FolderKanban },
+  { key: "risk", label: "리스크", icon: AlertTriangle },
   { key: "submit", label: "산출물 제출", icon: Send },
   { key: "feedback", label: "피드백", icon: MessageSquareReply },
   { key: "comments", label: "댓글", icon: MessagesSquare },
@@ -81,11 +89,20 @@ export default function App() {
   const title = projectRepository.getProjectName();
   let subtitle = "";
   let body: React.ReactNode = null;
+  let actions: React.ReactNode = null;
 
   if (isPm) {
-    const showAnalysis =
-      pmMenu === "analysis" || pmMenu === "assign" || pmMenu === "requirements";
-    if (showAnalysis) {
+    if (pmMenu === "documents") {
+      subtitle = "문서 통합 관리";
+      body = <PmDocuments />;
+    } else if (pmMenu === "risk") {
+      subtitle = "리스크 관리";
+      body = <PmRisk />;
+    } else if (
+      pmMenu === "analysis" ||
+      pmMenu === "assign" ||
+      pmMenu === "requirements"
+    ) {
       subtitle = "RFP 분석 및 업무 배정";
       body = <PmAnalysis />;
     } else {
@@ -93,7 +110,14 @@ export default function App() {
       body = <PmDashboard />;
     }
   } else {
-    if (taskOpen) {
+    if (staffMenu === "documents") {
+      subtitle = "문서 통합 관리";
+      body = <StaffDocuments />;
+    } else if (staffMenu === "risk") {
+      subtitle = "리스크";
+      body = <StaffRisk />;
+      actions = <StaffRiskActions />;
+    } else if (taskOpen) {
       subtitle = "업무 상세";
       body = <StaffTaskDetail onBack={() => setTaskOpen(false)} />;
     } else {
@@ -112,6 +136,7 @@ export default function App() {
           userName={isPm ? "정하늘" : "나"}
           roleLabel={isPm ? "PM" : "직원"}
           onLogout={handleLogout}
+          actions={actions}
         />
         <main className="flex-1 overflow-y-auto p-6">{body}</main>
       </div>

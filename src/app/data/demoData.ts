@@ -269,3 +269,390 @@ export const WORKFLOW_STEPS = [
   "PM 검토 및 피드백",
   "직원 수정 후 완료",
 ];
+
+/* =====================================================================
+ * 문서 통합 관리 (Document Integration Management)
+ * ===================================================================*/
+
+export type FileKind = "pdf" | "word" | "excel" | "ppt" | "image" | "figma";
+export type GenStatus = "생성 완료" | "오늘 업데이트" | "생성 중";
+
+export interface AiGeneratedFile {
+  id: string;
+  name: string;
+  kind: FileKind;
+  createdAt: string;
+  status: GenStatus;
+}
+
+export interface LibraryFile {
+  id: string;
+  name: string;
+  kind: FileKind;
+  category: string;
+  updatedAt: string;
+}
+
+export interface GeneratedArtifact {
+  id: string;
+  title: string;
+  meta: string;
+  kind: FileKind;
+}
+
+export interface AnalysisStat {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: "user" | "ai";
+  text: string;
+  bullets?: string[];
+  time: string;
+}
+
+// PM 문서 통합 관리 (이미지 1)
+export const PM_AI_FILES: AiGeneratedFile[] = [
+  { id: "af1", name: "요구사항_분석_요약.pdf", kind: "pdf", createdAt: "오늘 10:32", status: "생성 완료" },
+  { id: "af2", name: "프로젝트_목표_마일스톤.docx", kind: "word", createdAt: "오늘 10:31", status: "생성 완료" },
+  { id: "af3", name: "MC일정계획_WBS.xlsx", kind: "excel", createdAt: "오늘 10:31", status: "생성 완료" },
+  { id: "af4", name: "기능명세서_초안.docx", kind: "word", createdAt: "오늘 10:30", status: "생성 완료" },
+  { id: "af5", name: "ERD_초안.png", kind: "image", createdAt: "오늘 10:30", status: "오늘 업데이트" },
+  { id: "af6", name: "UI프로토타입_초안.fig", kind: "figma", createdAt: "오늘 10:30", status: "오늘 업데이트" },
+];
+
+export const PM_LIBRARY_FILES: LibraryFile[] = [
+  { id: "lf1", name: "RFP_신제품출시_v2.pdf", kind: "pdf", category: "RFP", updatedAt: "2025.07.01 16:24" },
+  { id: "lf2", name: "요구사항정의서_v1.3.docx", kind: "word", category: "요구사항", updatedAt: "2025.07.01 14:10" },
+  { id: "lf3", name: "주간회의록_0701.docx", kind: "word", category: "회의록", updatedAt: "2025.07.01 11:05" },
+  { id: "lf4", name: "프로젝트_제안서.pdf", kind: "pdf", category: "제안서", updatedAt: "2025.06.30 18:42" },
+  { id: "lf5", name: "7월_스크럼보고서.docx", kind: "word", category: "보고서", updatedAt: "2025.07.01 09:18" },
+  { id: "lf6", name: "결정사항_로그.xlsx", kind: "excel", category: "로그", updatedAt: "2025.07.01 08:50" },
+];
+
+export const PM_PLANNING_AGENTS = [
+  "초기 문서 분석",
+  "요구사항 추출",
+  "프로젝트 목표/마일스톤",
+  "MC 일정 계획",
+  "WBS 생성",
+  "기능 명세서 초안",
+  "ERD 초안",
+  "UI 프로토타입 추천",
+];
+
+export const PM_REPORT_AGENTS = [
+  "회의록 요약",
+  "주간 스크럼 보고서",
+  "결정사항 로그 생성",
+  "산출물 요약",
+  "RAG 챗봇 질의",
+];
+
+export const PM_GENERATED_ARTIFACTS: GeneratedArtifact[] = [
+  { id: "ga1", title: "요구사항 목록", meta: "12건", kind: "word" },
+  { id: "ga2", title: "프로젝트 목표/마일스톤", meta: "8건/4건", kind: "word" },
+  { id: "ga3", title: "MC 일정 계획", meta: "간트 차트", kind: "excel" },
+  { id: "ga4", title: "WBS 초안", meta: "작업 분해 구조", kind: "excel" },
+  { id: "ga5", title: "기능 명세서 초안", meta: "내용 요약", kind: "word" },
+  { id: "ga6", title: "ERD 초안", meta: "이미지", kind: "image" },
+  { id: "ga7", title: "UI 프로토타입 초안", meta: "스크린 흐름", kind: "figma" },
+  { id: "ga8", title: "결정사항 로그", meta: "5건", kind: "excel" },
+];
+
+export const PM_ANALYSIS_STATS: AnalysisStat[] = [
+  { id: "s1", label: "추출 요구사항", value: "12건" },
+  { id: "s2", label: "생성 파일", value: "8건" },
+  { id: "s3", label: "회의록 반영", value: "1건" },
+  { id: "s4", label: "추천 후속 작업", value: "3건" },
+];
+
+export const PM_CHAT_HISTORY: ChatMessage[] = [
+  {
+    id: "cm1",
+    sender: "user",
+    text: "RFP와 요구사항 정의서를 분석해서 요구사항, 목표, 마일스톤, 일정 계획, WBS를 정리해줘. 기능명세서와 ERD, UI 프로토타입 초안도 생성해줘.",
+    time: "오전 10:33",
+  },
+  {
+    id: "cm2",
+    sender: "ai",
+    text: "초기 문서 분석이 완료되었습니다.",
+    bullets: [
+      "핵심 요구사항 12건 추출",
+      "프로젝트 목표 3건 및 마일스톤 4건 정리",
+      "MC 방법론 기반 일정 계획 및 WBS 초안 생성",
+      "기능 명세서, ERD, UI 프로토타입 초안 생성 완료",
+    ],
+    time: "오전 10:35",
+  },
+];
+
+// 직원 문서 통합 관리 (이미지 3)
+export interface SharedDoc {
+  id: string;
+  name: string;
+  kind: FileKind;
+  owner: string;
+  sharedAt: string;
+}
+
+export interface MyDoc {
+  id: string;
+  name: string;
+  kind: FileKind;
+  category: string;
+  updatedAt: string;
+}
+
+export type ReviewStatus = "수정 중" | "검토 요청" | "승인 대기" | "승인 완료";
+
+export interface ReviewActivity {
+  id: string;
+  text: string;
+  sub: string;
+  author: string;
+  status: ReviewStatus;
+}
+
+export const STAFF_SHARED_DOCS: SharedDoc[] = [
+  { id: "sd1", name: "디자인_시스템_가이드_v2.pdf", kind: "pdf", owner: "김정수", sharedAt: "2025.07.02" },
+  { id: "sd2", name: "브랜딩_시안_24_07_01.docx", kind: "word", owner: "이영희", sharedAt: "2025.07.01" },
+  { id: "sd3", name: "모바일_UI_개선안_최종.xlsx", kind: "excel", owner: "강철수", sharedAt: "2025.07.01" },
+  { id: "sd4", name: "기획서_최종_안.docx", kind: "word", owner: "이영희", sharedAt: "2025.07.02" },
+  { id: "sd5", name: "ERD_초안.png", kind: "image", owner: "이영희", sharedAt: "2025.07.01" },
+  { id: "sd6", name: "UI_마이크_스타일가이드.pdf", kind: "pdf", owner: "김정수", sharedAt: "2025.07.02" },
+];
+
+export const STAFF_MY_DOCS: MyDoc[] = [
+  { id: "md1", name: "모바일_배너UI_개선안.fig", kind: "figma", category: "기획서", updatedAt: "2025.07.01 16:24" },
+  { id: "md2", name: "UI_아이콘_스타일가이드.pdf", kind: "pdf", category: "디자인", updatedAt: "2025.07.01 14:10" },
+  { id: "md3", name: "Q3_타라인_업데이트_최종.docx", kind: "word", category: "기능개선", updatedAt: "2025.07.01 11:05" },
+  { id: "md4", name: "프로젝트_제안서.pptx", kind: "ppt", category: "제안서", updatedAt: "2025.07.01 16:42" },
+  { id: "md5", name: "7월_스타일보고서.docx", kind: "word", category: "보고서", updatedAt: "2025.07.01 08:16" },
+  { id: "md6", name: "결장사업_로그.xlsx", kind: "excel", category: "로그", updatedAt: "2025.07.01 08:50" },
+];
+
+export const STAFF_ASSET_ICONS = [
+  "heart", "map-pin", "message-square", "image", "grid", "layout",
+  "bell", "home", "message-circle", "file", "tag", "star",
+];
+
+export const STAFF_REVIEW_ACTIVITY: ReviewActivity[] = [
+  { id: "rv1", text: "최근 댓글: '디자인_시스템_가이드_v2.pdf' 보고 수정했습니다.", sub: "강철수 · 믿고보댐 성정", author: "강철수", status: "수정 중" },
+  { id: "rv2", text: "브랜딩_시스템_가이드_v1.docx 리뷰 요청합니다.", sub: "이영희 · 디자인 팀", author: "이영희", status: "검토 요청" },
+  { id: "rv3", text: "Q3_디자인_업데이트_최종.docx 리뷰 요청합니다.", sub: "최근 리뷰: 목대명님이 일부내 내용 수정 제안습니다.", author: "이영희", status: "승인 대기" },
+  { id: "rv4", text: "7월_스타일보고서.docx 승인 요청합니다.", sub: "최근 에셋 라이브러리 업데이트 확인 부탁드립니다.", author: "이영희", status: "승인 대기" },
+  { id: "rv5", text: "프로젝트_제안서.pdf 승인 요청합니다.", sub: "용다영 · 디자인 원형", author: "용다영", status: "승인 완료" },
+];
+
+/* =====================================================================
+ * 리스크 관리 (Risk Management)
+ * ===================================================================*/
+
+export type RiskSeverity = "심각" | "주의" | "정보";
+
+export interface RiskDetection {
+  id: string;
+  service: string;
+  source: string;
+  detectedAt: string;
+  severity: RiskSeverity;
+  description: string;
+}
+
+export interface TeamCommItem {
+  id: string;
+  kind: "message" | "system" | "notice";
+  title: string;
+  body: string;
+  time: string;
+  unread: boolean;
+}
+
+export type OpenRiskState = "심각" | "처리 중" | "대기 중" | "주의";
+
+export interface OpenRisk {
+  id: string;
+  title: string;
+  service: string;
+  serviceIcon: "github" | "jira" | "cloudwatch";
+  occurredAt: string;
+  state: OpenRiskState;
+  severity: RiskSeverity | null;
+}
+
+export interface RiskSolution {
+  id: string;
+  item: string;
+  sub: string;
+  owner: string;
+  eta: string;
+  automated: boolean;
+}
+
+// 직원/공통 리스크 탐지 현황 (이미지 2)
+export const RISK_DETECTIONS: RiskDetection[] = [
+  {
+    id: "ID-001",
+    service: "회원가입 페이지",
+    source: "FE (프론트엔드)",
+    detectedAt: "2026.07.10 09:15",
+    severity: "심각",
+    description: "최근 커밋에서 SQL 인젝션 취약점 탐지",
+  },
+  {
+    id: "ID-002",
+    service: "결제 API",
+    source: "BE (백엔드)",
+    detectedAt: "2026.07.10 08:30",
+    severity: "주의",
+    description: "서버 응답 시간 지연 및 리소스 사용량 증가",
+  },
+  {
+    id: "ID-003",
+    service: "AWS S3",
+    source: "CLOUD",
+    detectedAt: "2026.07.09 17:00",
+    severity: "정보",
+    description: "S3 버킷 권한이 공개로 변경됨",
+  },
+];
+
+export const TEAM_COMMS: TeamCommItem[] = [
+  {
+    id: "tc1",
+    kind: "message",
+    title: "리스크 ID-001 | 강철수 (보안 엔지니어)",
+    body: "S3 버킷 권한 수정 완료. 확인 부탁드립니다.",
+    time: "10:45 AM",
+    unread: true,
+  },
+  {
+    id: "tc2",
+    kind: "message",
+    title: "리스크 ID-002 | 이영회 (개발)",
+    body: "API 최적화 패치 적용 중. 성능 테스트 결과 양호.",
+    time: "10:15 AM",
+    unread: true,
+  },
+  {
+    id: "tc3",
+    kind: "system",
+    title: "새 리스크 탐지 | 'System'",
+    body: "회원가입 페이지에서 SQL 주입 패턴 탐지됨. (ID-001)",
+    time: "9:15 AM",
+    unread: false,
+  },
+  {
+    id: "tc4",
+    kind: "notice",
+    title: "권한 변경 알림 | 김영마 (DevOps)",
+    body: "AWS S3 권한 설정 변경 완료. (ID-003)",
+    time: "8:15 AM",
+    unread: false,
+  },
+];
+
+export const OPEN_RISKS: OpenRisk[] = [
+  { id: "or1", title: "리스크 ID-001 '회원가입 SQL 주입'", service: "GitHub", serviceIcon: "github", occurredAt: "1시간 전", state: "심각", severity: "심각" },
+  { id: "or2", title: "리스크 ID-001 '결제 API 성능 저하'", service: "Jira (티켓)", serviceIcon: "jira", occurredAt: "2시간 전", state: "처리 중", severity: null },
+  { id: "or3", title: "리스크 ID-002 '결제 API 성능 저하'", service: "Jira (티켓)", serviceIcon: "jira", occurredAt: "주의", state: "대기 중", severity: null },
+  { id: "or4", title: "리스크 ID-003 'AWS S3 권한 노출'", service: "CloudWatch", serviceIcon: "cloudwatch", occurredAt: "어제", state: "처리 중", severity: null },
+];
+
+export const RISK_SOLUTIONS: RiskSolution[] = [
+  { id: "rs1", item: "AI 추천 해결책: SQL 주입 방지 코드 패치 (GitHub 연동)", sub: "GitHub 연동", owner: "김민석", eta: "30분 전", automated: true },
+  { id: "rs2", item: "AI 분석 결과: API 서버 스케일링 권장 (Jira 티켓 생성)", sub: "Jira 티켓 생성", owner: "김민석", eta: "1시간 전", automated: true },
+  { id: "rs3", item: "자동화된 조치: S3 버킷 퍼블릭 액세스 차단 (CLOUD)", sub: "CLOUD", owner: "System 자동", eta: "어제", automated: true },
+];
+
+// PM 리스크 상세 (이미지 4)
+export interface RiskKpi {
+  id: string;
+  label: string;
+  value: string;
+  sub: string;
+  tone: "info" | "danger" | "warn" | "success";
+}
+
+export const PM_RISK_KPIS: RiskKpi[] = [
+  { id: "k1", label: "전체 리스크", value: "8건", sub: "AI 탐지 기준", tone: "info" },
+  { id: "k2", label: "긴급 대응", value: "2건", sub: "즉시 조치 필요", tone: "danger" },
+  { id: "k3", label: "법·가이드 검토", value: "3건 확인 필요", sub: "검토 대기 중", tone: "warn" },
+  { id: "k4", label: "예상 영향 일정", value: "+4일", sub: "전체 일정 영향 예상", tone: "success" },
+];
+
+export type PmRiskState = "미조치" | "검토중" | "분석 완료" | "체크리스트 생성" | "산출 완료";
+export type PmRiskPriority = "긴급" | "주의" | "보통";
+
+export interface PmRiskRow {
+  id: number;
+  type: string;
+  target: string;
+  targetIcon: "doc" | "calendar" | "edit" | "user" | "chart";
+  state: PmRiskState;
+  priority: PmRiskPriority;
+  impact: string;
+}
+
+export const PM_RISK_ROWS: PmRiskRow[] = [
+  { id: 1, type: "개인정보 포함 문서", target: "주간회의록_0701.docx", targetIcon: "doc", state: "미조치", priority: "긴급", impact: "보안" },
+  { id: 2, type: "노동법 검토 필요", target: "개발 일정 계획안", targetIcon: "calendar", state: "검토중", priority: "주의", impact: "인력/일정" },
+  { id: 3, type: "요구사항 변경 영향", target: "결제 기능 범위 확대", targetIcon: "edit", state: "분석 완료", priority: "긴급", impact: "일정/WBS" },
+  { id: 4, type: "담당자 변경 리스크", target: "Backend 담당자 교체", targetIcon: "user", state: "체크리스트 생성", priority: "주의", impact: "인수인계" },
+  { id: 5, type: "예상 견적 변동", target: "신규 기능 추가 요청", targetIcon: "chart", state: "산출 완료", priority: "보통", impact: "비용" },
+];
+
+export const PM_RISK_COMMENT =
+  "공유 문서에서 개인정보가 포함된 회의록 1건이 탐지되었으며, 요구사항 변경으로 인해 결제 기능 WBS와 태스크 일정에 연쇄 영향이 예상됩니다. 또한 인력 변경 예정으로 백엔드 영역 인수인계 누락 가능성이 있어 체크리스트 기반 대응이 필요합니다.";
+
+export const PM_RISK_COMMENT_TAGS = [
+  { id: "t1", label: "개인정보 1건" },
+  { id: "t2", label: "기밀 문서 1건" },
+  { id: "t3", label: "요구사항 변경 영향 3건" },
+  { id: "t4", label: "인수인계 필요 1건" },
+];
+
+export const PM_LABOR_CHECKS = [
+  { id: "lc1", label: "주52시간 기준 초과 가능성: 주의", ok: false },
+  { id: "lc2", label: "야간 작업 수당 반영 필요", ok: true },
+  { id: "lc3", label: "사내 보안 가이드 준수 확인", ok: true },
+];
+
+export const PM_PRIVACY_ITEMS = [
+  { id: "p1", label: "전화번호", count: "2건" },
+  { id: "p2", label: "이메일", count: "1건" },
+  { id: "p3", label: "기밀 키워드", count: "1건" },
+];
+
+export interface HandoverCheck {
+  id: string;
+  label: string;
+  done: boolean;
+}
+
+export const PM_HANDOVER_CHECKS: HandoverCheck[] = [
+  { id: "h1", label: "코드 저장소 권한 이전", done: true },
+  { id: "h2", label: "API 앤셀 공유", done: true },
+  { id: "h3", label: "미완료 업무 인계", done: false },
+  { id: "h4", label: "태스트 이슈 정리", done: false },
+  { id: "h5", label: "회의록/결정사항 전달", done: false },
+];
+
+export const PM_RISK_ACTIONS = [
+  { id: "ra1", title: "문서 마스킹 적용", sub: "개인정보 즉시 보호 조치" },
+  { id: "ra2", title: "일정 재계산", sub: "영향 일정 자동 재계산" },
+  { id: "ra3", title: "견적 재산출", sub: "변동사항 반영한 견적 산출" },
+  { id: "ra4", title: "인수인계 미니 회의 생성", sub: "체크리스트 기반 회의 개설" },
+];
+
+export const PM_QUICK_TOOLS = [
+  { id: "qt1", label: "담당자 알림" },
+  { id: "qt2", label: "리스크 코멘트" },
+  { id: "qt3", label: "보류" },
+  { id: "qt4", label: "완료 처리" },
+];
