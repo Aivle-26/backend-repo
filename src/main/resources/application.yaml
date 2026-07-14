@@ -5,30 +5,58 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/aipm}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:password}
+    password: ${DB_PASSWORD:aivle}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
-          auth: true
+          auth: ${MAIL_SMTP_AUTH:false}
           starttls:
-            enable: true
+            enable: ${MAIL_STARTTLS_ENABLE:false}
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_TIMEOUT:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:5000}
 
   jpa:
     hibernate:
-      ddl-auto: update
-
+      ddl-auto: create
     show-sql: true
-
     properties:
       hibernate:
         format_sql: true
 
 server:
   port: ${SERVER_PORT:8080}
+
+app:
+  mail:
+    from-address: ${MAIL_FROM_ADDRESS:}
+    from-name: ${MAIL_FROM_NAME:AIPM}
+  document:
+    storage-path: ${DOCUMENT_STORAGE_PATH:uploads/documents}
+    max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10485760}
+    allowed-extensions:
+      - pdf
+      - doc
+      - docx
+      - xls
+      - xlsx
+      - hwp
+      - hwpx
+      - txt
+    allowed-mime-types:
+      - application/pdf
+      - application/msword
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - application/vnd.ms-excel
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - application/x-hwp
+      - application/haansofthwp
+      - application/octet-stream
+      - text/plain

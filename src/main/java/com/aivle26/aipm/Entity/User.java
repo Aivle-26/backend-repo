@@ -42,7 +42,15 @@ public class User {
     @Column(length = 6)
     private String verificationCode;
 
+    @Column(length = 255)
+    private String verificationEmail;
+
+    private LocalDateTime verificationCodeSentAt;
+
     private LocalDateTime verificationCodeExpiresAt;
+
+    @Column(nullable = false)
+    private int verificationCodeFailedAttempts;
 
     @Column(nullable = false)
     private boolean emailVerified;

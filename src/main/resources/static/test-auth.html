@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            max-width: 720px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        section {
+            border: 1px solid #ccc;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        form {
+            display: grid;
+            gap: 10px;
+        }
+
+        label {
+            display: grid;
+            gap: 4px;
+            font-size: 14px;
+        }
+
+        input, button, textarea {
+            font: inherit;
+            padding: 8px;
+        }
+
+        button {
+            width: fit-content;
+            cursor: pointer;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .status {
+            font-size: 13px;
+            color: #444;
+            min-height: 18px;
+        }
+
+        .hint {
+            font-size: 13px;
+            color: #666;
+            margin: 0 0 8px;
+        }
+
+        textarea {
+            min-height: 140px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+<h1>인증 테스트</h1>
+
+<section>
+    <h2>1. 관리자</h2>
+    <p class="hint">초기 비밀번호: <strong>PMagent123!</strong></p>
+    <form id="admin-form">
+        <label>
+            사원번호
+            <input id="admin-employee-number" type="text" required>
+        </label>
+        <label>
+            이름
+            <input id="admin-name" type="text" required>
+        </label>
+        <label>
+            역할
+            <input id="admin-role" type="text" value="PM" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="admin-button">사용자 생성</button>
+        </div>
+        <div class="status" id="admin-status"></div>
+        <label>
+            응답
+            <textarea id="admin-response" readonly></textarea>
+        </label>
+    </form>
+</section>
+
+<section>
+    <h2>2. 로그인, 로그아웃</h2>
+    <form id="login-form">
+        <label>
+            사원번호
+            <input id="login-employee-number" type="text" required>
+        </label>
+        <label>
+            비밀번호
+            <input id="login-password" type="password" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="login-button">로그인</button>
+            <button type="button" id="logout-button">로그아웃</button>
+        </div>
+        <div class="status" id="login-status"></div>
+        <label>
+            응답
+            <textarea id="login-response" readonly></textarea>
+        </label>
+    </form>
+</section>
+
+<section>
+    <h2>3. 이메일 인증 테스트</h2>
+    <form id="email-form">
+        <label>
+            사원번호
+            <input id="email-employee-number" type="text" required>
+        </label>
+        <label>
+            실제 이메일
+            <input id="email-address" type="email" required>
+        </label>
+        <div class="row">
+            <button type="button" id="send-code-button">인증번호 발송</button>
+        </div>
+        <label>
+            인증번호
+            <input id="verification-code" type="text" inputmode="numeric" pattern="\d{6}" maxlength="6" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="check-code-button">인증번호 확인</button>
+        </div>
+        <div class="status" id="email-status"></div>
+        <label>
+            응답
+            <textarea id="email-response" readonly></textarea>
+        </label>
+    </form>
+</section>
+
+<section>
+    <h2>4. 비밀번호 변경</h2>
+    <form id="password-form">
+        <label>
+            사원번호
+            <input id="password-employee-number" type="text" required>
+        </label>
+        <label>
+            Reset Token
+            <input id="reset-token" type="text" required>
+        </label>
+        <label>
+            새 비밀번호
+            <input id="new-password" type="password" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="password-button">비밀번호 변경</button>
+        </div>
+        <div class="status" id="password-status"></div>
+        <label>
+            응답
+            <textarea id="password-response" readonly></textarea>
+        </label>
+    </form>
+</section>
+
+<script>
+    const API_BASE = "http://localhost:8080";
+
+    const adminForm = document.getElementById("admin-form");
+    const adminEmployeeNumber = document.getElementById("admin-employee-number");
+    const adminName = document.getElementById("admin-name");
+    const adminRole = document.getElementById("admin-role");
+    const adminButton = document.getElementById("admin-button");
+    const adminStatus = document.getElementById("admin-status");
+    const adminResponse = document.getElementById("admin-response");
+
+    const loginForm = document.getElementById("login-form");
+    const loginEmployeeNumber = document.getElementById("login-employee-number");
+    const loginPassword = document.getElementById("login-password");
+    const loginButton = document.getElementById("login-button");
+    const logoutButton = document.getElementById("logout-button");
+    const loginStatus = document.getElementById("login-status");
+    const loginResponse = document.getElementById("login-response");
+
+    const emailForm = document.getElementById("email-form");
+    const emailEmployeeNumber = document.getElementById("email-employee-number");
+    const emailAddress = document.getElementById("email-address");
+    const verificationCode = document.getElementById("verification-code");
+    const sendCodeButton = document.getElementById("send-code-button");
+    const checkCodeButton = document.getElementById("check-code-button");
+    const emailStatus = document.getElementById("email-status");
+    const emailResponse = document.getElementById("email-response");
+
+    const passwordForm = document.getElementById("password-form");
+    const passwordEmployeeNumber = document.getElementById("password-employee-number");
+    const resetToken = document.getElementById("reset-token");
+    const newPassword = document.getElementById("new-password");
+    const passwordButton = document.getElementById("password-button");
+    const passwordStatus = document.getElementById("password-status");
+    const passwordResponse = document.getElementById("password-response");
+
+    adminForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(adminButton, adminStatus, "사용자 생성 요청 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/admin/users`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: adminEmployeeNumber.value,
+                    name: adminName.value,
+                    role: adminRole.value
+                })
+            });
+
+            const data = await readJson(response);
+            adminResponse.value = JSON.stringify(data, null, 2);
+            adminStatus.textContent = response.ok ? "성공" : "실패";
+
+            if (response.ok) {
+                loginEmployeeNumber.value = adminEmployeeNumber.value;
+                emailEmployeeNumber.value = adminEmployeeNumber.value;
+                passwordEmployeeNumber.value = adminEmployeeNumber.value;
+                loginPassword.value = "PMagent123!";
+            }
+        } catch {
+            adminResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            adminStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(adminButton);
+        }
+    });
+
+    loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(loginButton, loginStatus, "로그인 요청 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: loginEmployeeNumber.value,
+                    password: loginPassword.value
+                })
+            });
+
+            const data = await readJson(response);
+            loginResponse.value = JSON.stringify(data, null, 2);
+            loginStatus.textContent = response.ok ? "성공" : "실패";
+        } catch {
+            loginResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            loginStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(loginButton);
+        }
+    });
+
+    logoutButton.addEventListener("click", () => {
+        loginPassword.value = "";
+        verificationCode.value = "";
+        resetToken.value = "";
+        newPassword.value = "";
+        loginResponse.value = "";
+        emailResponse.value = "";
+        passwordResponse.value = "";
+        loginStatus.textContent = "로그아웃됨";
+        emailStatus.textContent = "";
+        passwordStatus.textContent = "";
+    });
+
+    sendCodeButton.addEventListener("click", async () => {
+        setLoading(sendCodeButton, emailStatus, "인증번호 발송 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/password/email-send`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: emailEmployeeNumber.value,
+                    email: emailAddress.value
+                })
+            });
+
+            const data = await readJson(response);
+            emailResponse.value = JSON.stringify(data, null, 2);
+            emailStatus.textContent = response.ok ? "발송 성공" : "발송 실패";
+        } catch {
+            emailResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            emailStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(sendCodeButton);
+        }
+    });
+
+    emailForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(checkCodeButton, emailStatus, "인증번호 확인 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/password/email-check`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: emailEmployeeNumber.value,
+                    email: emailAddress.value,
+                    code: verificationCode.value
+                })
+            });
+
+            const data = await readJson(response);
+            emailResponse.value = JSON.stringify(data, null, 2);
+            emailStatus.textContent = response.ok ? "확인 성공" : "확인 실패";
+
+            if (response.ok && data.resetToken) {
+                resetToken.value = data.resetToken;
+                passwordEmployeeNumber.value = emailEmployeeNumber.value;
+            }
+        } catch {
+            emailResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            emailStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(checkCodeButton);
+        }
+    });
+
+    passwordForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(passwordButton, passwordStatus, "비밀번호 변경 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/password`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: passwordEmployeeNumber.value,
+                    resetToken: resetToken.value,
+                    newPassword: newPassword.value
+                })
+            });
+
+            const data = await readJson(response);
+            passwordResponse.value = JSON.stringify(data, null, 2);
+            passwordStatus.textContent = response.ok ? "성공" : "실패";
+        } catch {
+            passwordResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            passwordStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(passwordButton);
+        }
+    });
+
+    function setLoading(button, statusElement, message) {
+        button.disabled = true;
+        statusElement.textContent = message;
+    }
+
+    function clearLoading(button) {
+        button.disabled = false;
+    }
+
+    async function readJson(response) {
+        const text = await response.text();
+        if (!text) {
+            return {};
+        }
+        try {
+            return JSON.parse(text);
+        } catch {
+            return { raw: text };
+        }
+    }
+</script>
+</body>
+</html>

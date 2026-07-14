@@ -1,0 +1,11 @@
+package com.aivle26.aipm.Entity;
+
+public enum WbsSkill {
+    DOCUMENT_ANALYSIS,
+    REQUIREMENTS_ANALYSIS,
+    ARCHITECTURE_DESIGN,
+    BACKEND_DEVELOPMENT,
+    FRONTEND_DEVELOPMENT,
+    TESTING,
+    DEVOPS
+}

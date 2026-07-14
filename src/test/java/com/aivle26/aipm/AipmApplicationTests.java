@@ -8,6 +8,7 @@ class AipmApplicationTests {
 
 	@Test
 	void contextLoads() {
+		// 애플리케이션 컨텍스트가 정상적으로 올라오는지만 확인한다.
 	}
 
 }
