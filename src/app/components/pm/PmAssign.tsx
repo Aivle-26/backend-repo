@@ -37,7 +37,11 @@ import {
 } from "@/app/components/ui/table";
 import { cn } from "@/app/components/ui/utils";
 import { projectRepository } from "@/app/api/projectRepository";
-import type { Requirement } from "@/app/data/demoData";
+import {
+  projectRequirements,
+  type ProjectSummary,
+  type Requirement,
+} from "@/app/data/demoData";
 import { CountUp } from "@/app/components/common/CountUp";
 
 type AssignFilter = "미배정" | "배정됨" | "전체";
@@ -55,8 +59,9 @@ function priorityVariant(p: string) {
 
 const ASSIGNED_STATES = ["배정됨", "검토중", "완료"];
 
-export function PmAssign() {
-  const { requirements, team, assignees } = projectRepository.getPmAssign();
+export function PmAssign({ project }: { project: ProjectSummary }) {
+  const { team, assignees } = projectRepository.getPmAssign();
+  const requirements = projectRequirements(project);
 
   const [rows, setRows] = useState<AssignRow[]>(
     requirements.map((r) => ({

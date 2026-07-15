@@ -29,7 +29,11 @@ import {
 } from "@/app/components/ui/table";
 import { cn } from "@/app/components/ui/utils";
 import { projectRepository } from "@/app/api/projectRepository";
-import type { ReviewState, ReviewSubmission } from "@/app/data/demoData";
+import type {
+  ProjectSummary,
+  ReviewState,
+  ReviewSubmission,
+} from "@/app/data/demoData";
 
 type Filter = "전체" | ReviewState;
 
@@ -39,8 +43,11 @@ function stateClass(s: ReviewState) {
   return "bg-amber-50 text-amber-700 border-amber-200";
 }
 
-export function PmReview() {
-  const { submissions, feedback } = projectRepository.getPmReview();
+export function PmReview({ project }: { project: ProjectSummary }) {
+  const base = projectRepository.getPmReview();
+  const feedback = base.feedback;
+  const submissions =
+    project.status === "진행중" ? base.submissions : base.submissions.slice(0, 1);
   const [items, setItems] = useState<ReviewSubmission[]>(submissions);
   const [filter, setFilter] = useState<Filter>("전체");
   const [query, setQuery] = useState("");

@@ -50,6 +50,7 @@ import type {
   PmRiskState,
   PmRiskPriority,
   PmRiskRow,
+  ProjectSummary,
 } from "@/app/data/demoData";
 
 const KPI_TONE: Record<
@@ -90,9 +91,9 @@ function priorityBadge(p: PmRiskPriority) {
   return map[p];
 }
 
-export function PmRisk() {
+export function PmRisk({ project }: { project: ProjectSummary }) {
   const {
-    kpis,
+    kpis: baseKpis,
     rows,
     comment,
     commentTags,
@@ -102,6 +103,15 @@ export function PmRisk() {
     actions,
     quickTools,
   } = projectRepository.getPmRisk();
+
+  // 전체/긴급 리스크 수치는 선택한 프로젝트 기준으로
+  const kpis = baseKpis.map((k) =>
+    k.id === "k1"
+      ? { ...k, value: `${project.riskCount}건` }
+      : k.id === "k2"
+        ? { ...k, value: `${Math.min(project.riskCount, 2)}건` }
+        : k,
+  );
 
   const [handover, setHandover] = useState(initialHandover);
   const toggleHandover = (id: string) =>

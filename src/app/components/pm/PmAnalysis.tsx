@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/app/components/ui/table";
 import { projectRepository } from "@/app/api/projectRepository";
+import { projectRequirements, type ProjectSummary } from "@/app/data/demoData";
 
 function priorityVariant(p: string) {
   if (p === "높음") return "destructive" as const;
@@ -37,8 +38,9 @@ function priorityVariant(p: string) {
   return "outline" as const;
 }
 
-export function PmAnalysis() {
-  const { requirements, risks, assignees } = projectRepository.getPmAnalysis();
+export function PmAnalysis({ project }: { project: ProjectSummary }) {
+  const { risks, assignees } = projectRepository.getPmAnalysis();
+  const requirements = projectRequirements(project);
   const [selectedId, setSelectedId] = useState<number | null>(requirements[0].id);
   const [assignee, setAssignee] = useState<string>("");
   const [due, setDue] = useState<string>("");

@@ -18,8 +18,11 @@ import {
   TableRow,
 } from "@/app/components/ui/table";
 import { cn } from "@/app/components/ui/utils";
-import { projectRepository } from "@/app/api/projectRepository";
-import type { ReqStatus } from "@/app/data/demoData";
+import {
+  projectRequirements,
+  type ProjectSummary,
+  type ReqStatus,
+} from "@/app/data/demoData";
 
 function priorityVariant(p: string) {
   if (p === "높음") return "destructive" as const;
@@ -37,8 +40,8 @@ function statusClass(s: ReqStatus) {
   return map[s];
 }
 
-export function PmRequirements() {
-  const { requirements } = projectRepository.getPmRequirements();
+export function PmRequirements({ project }: { project: ProjectSummary }) {
+  const requirements = useMemo(() => projectRequirements(project), [project]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("전체");
   const [status, setStatus] = useState<"전체" | ReqStatus>("전체");
@@ -71,7 +74,7 @@ export function PmRequirements() {
                 <FileText className="size-4" /> 요구사항 목록
               </CardTitle>
               <CardDescription>
-                AI가 추출한 요구사항 {total}건 중 {done}건 완료
+                {project.name} · 요구사항 {total}건 중 {done}건 완료
               </CardDescription>
             </div>
             <div className="relative">

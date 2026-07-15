@@ -32,7 +32,12 @@ import {
 import { cn } from "@/app/components/ui/utils";
 import { FileTypeIcon } from "@/app/components/common/FileTypeIcon";
 import { projectRepository } from "@/app/api/projectRepository";
-import type { ChatMessage, GenStatus } from "@/app/data/demoData";
+import type {
+  ChatMessage,
+  GenStatus,
+  LibraryFile,
+  ProjectSummary,
+} from "@/app/data/demoData";
 
 function statusBadge(status: GenStatus) {
   if (status === "생성 완료")
@@ -42,16 +47,18 @@ function statusBadge(status: GenStatus) {
   return "bg-amber-50 text-amber-700 border-amber-200";
 }
 
-export function PmDocuments() {
-  const {
-    aiFiles,
-    libraryFiles,
-    planningAgents,
-    reportAgents,
-    artifacts,
-    stats,
-    chatHistory,
-  } = projectRepository.getPmDocuments();
+export function PmDocuments({ project }: { project: ProjectSummary }) {
+  const { aiFiles, planningAgents, reportAgents, artifacts, stats, chatHistory } =
+    projectRepository.getPmDocuments();
+
+  // 자료실 연동 파일 = 이 프로젝트의 초기 문서
+  const libraryFiles: LibraryFile[] = project.docs.map((d, i) => ({
+    id: `pdoc-${i}`,
+    name: d.name,
+    kind: d.type === "요구사항정의서" ? "word" : "pdf",
+    category: d.type,
+    updatedAt: project.updatedAt,
+  }));
 
   // AI 생성 파일 선택
   const [aiSelected, setAiSelected] = useState<Set<string>>(new Set());

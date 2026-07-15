@@ -20,7 +20,7 @@ import {
 } from "@/app/components/ui/table";
 import { cn } from "@/app/components/ui/utils";
 import { projectRepository } from "@/app/api/projectRepository";
-import type { UploadedRfp } from "@/app/data/demoData";
+import type { ProjectSummary, UploadedRfp } from "@/app/data/demoData";
 
 function statusClass(s: UploadedRfp["status"]) {
   if (s === "분석 완료") return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -28,9 +28,17 @@ function statusClass(s: UploadedRfp["status"]) {
   return "bg-amber-50 text-amber-700 border-amber-200";
 }
 
-export function PmUpload() {
-  const { uploaded } = projectRepository.getPmUpload();
-  const [files, setFiles] = useState<UploadedRfp[]>(uploaded);
+export function PmUpload({ project }: { project: ProjectSummary }) {
+  const [files, setFiles] = useState<UploadedRfp[]>(() =>
+    project.docs.map((d, i) => ({
+      id: `doc-${i}`,
+      name: d.name,
+      size: "—",
+      uploadedAt: `${d.type} · 업로드됨`,
+      status: "분석 완료",
+      requirementCount: project.reqCount,
+    })),
+  );
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
