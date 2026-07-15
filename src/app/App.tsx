@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   UploadCloud,
@@ -34,7 +34,9 @@ import { StaffContext } from "@/app/components/staff/StaffContext";
 import { StaffSubmit } from "@/app/components/staff/StaffSubmit";
 import { StaffFeedback } from "@/app/components/staff/StaffFeedback";
 import { StaffComments } from "@/app/components/staff/StaffComments";
+import { SlackIntegration } from "@/app/components/integrations/SlackIntegration";
 import { projectRepository, type Role } from "@/app/api/projectRepository";
+import { slackApi } from "@/app/api/slackApi";
 
 const PM_MENU: SidebarItem[] = [
   { key: "dashboard", label: "대시보드", icon: LayoutDashboard },
@@ -58,19 +60,43 @@ const STAFF_MENU: SidebarItem[] = [
 ];
 
 export default function App() {
-  const [role, setRole] = useState<Role | null>(null);
+  const [role, setRole] = useState<Role | null>(() => {
+    const saved =
+      typeof window !== "undefined" ? localStorage.getItem("app-role") : null;
+    return saved === "pm" || saved === "staff" ? saved : null;
+  });
   const [pmMenu, setPmMenu] = useState("dashboard");
   const [staffMenu, setStaffMenu] = useState("tasks");
   const [taskOpen, setTaskOpen] = useState(false);
 
+  // Slack OAuth 콜백(?session=)으로 돌아오면 세션 저장 후 연동 화면으로 이동
+  useEffect(() => {
+    if (slackApi.captureSessionFromUrl()) {
+      setPmMenu("slack");
+      setStaffMenu("slack");
+    }
+  }, []);
+
   const handleLogin = (r: Role) => {
     setRole(r);
+    try {
+      localStorage.setItem("app-role", r);
+    } catch {
+      /* ignore */
+    }
     setPmMenu("dashboard");
     setStaffMenu("tasks");
     setTaskOpen(false);
   };
 
-  const handleLogout = () => setRole(null);
+  const handleLogout = () => {
+    setRole(null);
+    try {
+      localStorage.removeItem("app-role");
+    } catch {
+      /* ignore */
+    }
+  };
 
   if (!role) {
     return (
@@ -100,7 +126,10 @@ export default function App() {
   let actions: React.ReactNode = null;
 
   if (isPm) {
-    if (pmMenu === "upload") {
+    if (pmMenu === "slack") {
+      subtitle = "Slack 연동";
+      body = <SlackIntegration />;
+    } else if (pmMenu === "upload") {
       subtitle = "공고문 업로드";
       body = <PmUpload />;
     } else if (pmMenu === "documents") {
@@ -126,7 +155,10 @@ export default function App() {
       body = <PmDashboard />;
     }
   } else {
-    if (staffMenu === "documents") {
+    if (staffMenu === "slack") {
+      subtitle = "Slack 연동";
+      body = <SlackIntegration />;
+    } else if (staffMenu === "documents") {
       subtitle = "문서 통합 관리";
       body = <StaffDocuments />;
     } else if (staffMenu === "risk") {
