@@ -55,7 +55,8 @@ sudo docker ps
 sudo docker inspect aipm-mysql --format '{{.State.Status}} {{.HostConfig.RestartPolicy.Name}}'
 ```
 
-If moving to Compose, keep the same volume name and confirm a DB dump exists before replacing the container.
+If moving to Compose, keep the same volume name and confirm a DB dump exists
+before replacing the container.
 
 ## Backend Build
 
@@ -75,6 +76,8 @@ GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx512m" ./gradlew clean bootJar -x test --no
 Skipping tests should be treated as temporary and recorded with the reason.
 
 ## Deploy
+
+Manual deployment should use the integration branch:
 
 ```bash
 cd ~/app/backend
@@ -102,6 +105,12 @@ as `app.jar.new`, replaces `app.jar`, restarts `aipm-backend`, and verifies
 service again. Successful deployments write the deployed commit SHA to
 `/opt/aipm/backend/REVISION`.
 
+Runtime ownership policy:
+
+- `/opt/aipm/backend`: `root:root`, mode `755`
+- `/opt/aipm/backend/app.jar`, `REVISION`, and jar backups: `root:root`, mode `644`
+- `/opt/aipm/backend/logs`: `ec2-user:ec2-user`
+
 ## GitHub Actions
 
 Two workflows are expected:
@@ -125,7 +134,8 @@ Required GitHub Secrets:
 - `EC2_SSH_KEY`
 - `EC2_KNOWN_HOSTS`
 
-`EC2_KNOWN_HOSTS` must contain the EC2 host key entry. Do not use
+`EC2_KNOWN_HOSTS` must contain the EC2 host key entry after verifying the host
+key fingerprint from a trusted environment. Do not use
 `StrictHostKeyChecking=no`.
 
 After a successful deploy, verify:
@@ -156,8 +166,9 @@ journalctl -u aipm-backend -n 100 --no-pager
 
 ## Nginx
 
-Amazon Linux 2023 installs a default port 80 server block in `/etc/nginx/nginx.conf`.
-Use the `default.d` location include unless that stock server block is intentionally replaced.
+Amazon Linux 2023 installs a default port 80 server block in
+`/etc/nginx/nginx.conf`. Use the `default.d` location include unless that stock
+server block is intentionally replaced.
 
 ```bash
 sudo dnf install -y nginx
@@ -168,7 +179,8 @@ sudo systemctl enable nginx
 sudo systemctl restart nginx
 ```
 
-`deploy/nginx/aipm.conf` is a full server-block alternative for hosts where the stock default server block has been removed.
+`deploy/nginx/aipm.conf` is a full server-block alternative for hosts where the
+stock default server block has been removed.
 
 Health check through Nginx:
 
@@ -190,6 +202,6 @@ Recommended inbound rules:
 
 - Add a real JWT or session authentication design.
 - Register the backend API URL in Vercel environment variables.
-- Add GitHub Actions secrets and automated deployment.
+- Register GitHub Actions secrets for the dev deployment workflow.
 - Move MySQL to RDS after schema and migration policy are stable.
 - Connect FastAPI AI server endpoints.
