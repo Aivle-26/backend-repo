@@ -40,6 +40,7 @@ import {
   UPLOADED_RFPS,
   REVIEW_SUBMISSIONS,
   STAFF_SUBMITTABLE,
+  PROJECTS,
   type Role,
   type Task,
   type TaskColumn,
@@ -71,6 +72,10 @@ export const projectRepository = {
 
   getWorkflowSteps() {
     return WORKFLOW_STEPS;
+  },
+
+  getProjects() {
+    return { projects: PROJECTS };
   },
 
   getPmDashboard() {

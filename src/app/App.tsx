@@ -18,7 +18,6 @@ import { Toaster } from "@/app/components/ui/sonner";
 import { Sidebar, type SidebarItem } from "@/app/components/layout/Sidebar";
 import { TopBar } from "@/app/components/layout/TopBar";
 import { LoginScreen } from "@/app/components/auth/LoginScreen";
-import { PmDashboard } from "@/app/components/pm/PmDashboard";
 import { PmAnalysis } from "@/app/components/pm/PmAnalysis";
 import { PmDocuments } from "@/app/components/pm/PmDocuments";
 import { PmRisk } from "@/app/components/pm/PmRisk";
@@ -26,6 +25,10 @@ import { PmUpload } from "@/app/components/pm/PmUpload";
 import { PmReview } from "@/app/components/pm/PmReview";
 import { PmRequirements } from "@/app/components/pm/PmRequirements";
 import { PmAssign } from "@/app/components/pm/PmAssign";
+import { ProjectBoard } from "@/app/components/pm/ProjectBoard";
+import { ProjectDetail } from "@/app/components/pm/ProjectDetail";
+import { ProjectWizard } from "@/app/components/pm/ProjectWizard";
+import { ProjectExtraction } from "@/app/components/pm/ProjectExtraction";
 import { StaffDashboard } from "@/app/components/staff/StaffDashboard";
 import { StaffTaskDetail } from "@/app/components/staff/StaffTaskDetail";
 import { StaffDocuments } from "@/app/components/staff/StaffDocuments";
@@ -35,11 +38,16 @@ import { StaffSubmit } from "@/app/components/staff/StaffSubmit";
 import { StaffFeedback } from "@/app/components/staff/StaffFeedback";
 import { StaffComments } from "@/app/components/staff/StaffComments";
 import { SlackIntegration } from "@/app/components/integrations/SlackIntegration";
-import { projectRepository, type Role } from "@/app/api/projectRepository";
+import type { Role } from "@/app/api/projectRepository";
 import { slackApi } from "@/app/api/slackApi";
+import {
+  PROJECTS,
+  type ProjectRequirement,
+  type ProjectSummary,
+} from "@/app/data/demoData";
 
 const PM_MENU: SidebarItem[] = [
-  { key: "dashboard", label: "대시보드", icon: LayoutDashboard },
+  { key: "dashboard", label: "프로젝트", icon: LayoutDashboard },
   { key: "upload", label: "공고문 업로드", icon: UploadCloud },
   { key: "analysis", label: "AI 분석", icon: Sparkles },
   { key: "requirements", label: "요구사항", icon: FileText },
@@ -68,6 +76,19 @@ export default function App() {
   const [pmMenu, setPmMenu] = useState("dashboard");
   const [staffMenu, setStaffMenu] = useState("tasks");
   const [taskOpen, setTaskOpen] = useState(false);
+  const [projects, setProjects] = useState<ProjectSummary[]>(PROJECTS);
+  const [pmDetail, setPmDetail] = useState<ProjectSummary | null>(null);
+  const [pmWizard, setPmWizard] = useState<ProjectSummary | null>(null);
+  const [pmExtract, setPmExtract] = useState<ProjectSummary | null>(null);
+
+  const startProject = (id: string) =>
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, status: "진행중", progress: Math.max(p.progress, 5) }
+          : p,
+      ),
+    );
 
   // Slack OAuth 콜백(?session=)으로 돌아오면 세션 저장 후 연동 화면으로 이동
   useEffect(() => {
@@ -114,13 +135,15 @@ export default function App() {
   const handleSelect = (key: string) => {
     if (isPm) {
       setPmMenu(key);
+      setPmDetail(null);
+      setPmWizard(null);
+      setPmExtract(null);
     } else {
       setStaffMenu(key);
       setTaskOpen(false);
     }
   };
 
-  const title = projectRepository.getProjectName();
   let subtitle = "";
   let body: React.ReactNode = null;
   let actions: React.ReactNode = null;
@@ -150,9 +173,77 @@ export default function App() {
     } else if (pmMenu === "analysis") {
       subtitle = "AI 분석";
       body = <PmAnalysis />;
+    } else if (pmExtract) {
+      subtitle = `${pmExtract.name} · AI 추출`;
+      body = (
+        <ProjectExtraction
+          project={pmExtract}
+          onBack={() => setPmExtract(null)}
+          onConfirm={(requirements: ProjectRequirement[]) => {
+            const updated: ProjectSummary = {
+              ...pmExtract,
+              status: "준비",
+              requirements,
+              reqCount: requirements.length,
+              wizardStep: 1,
+              updatedAt: "방금",
+            };
+            setProjects((prev) =>
+              prev.map((p) => (p.id === updated.id ? updated : p)),
+            );
+            setPmExtract(null);
+            setPmWizard(updated);
+          }}
+        />
+      );
+    } else if (pmWizard) {
+      subtitle = `${pmWizard.name} · 준비`;
+      body = (
+        <ProjectWizard
+          project={pmWizard}
+          onBack={() => setPmWizard(null)}
+          onStart={(id) => {
+            startProject(id);
+            setPmWizard(null);
+          }}
+        />
+      );
+    } else if (pmDetail) {
+      subtitle = `${pmDetail.name} · 운영`;
+      body = (
+        <ProjectDetail
+          project={pmDetail}
+          onBack={() => setPmDetail(null)}
+          onUpdateDocs={(docs) => {
+            const updated: ProjectSummary = { ...pmDetail, docs, updatedAt: "방금" };
+            setProjects((prev) =>
+              prev.map((p) => (p.id === updated.id ? updated : p)),
+            );
+            setPmDetail(updated);
+          }}
+        />
+      );
     } else {
-      subtitle = "PM 대시보드";
-      body = <PmDashboard />;
+      subtitle = "프로젝트";
+      body = (
+        <ProjectBoard
+          projects={projects}
+          setProjects={setProjects}
+          onOpenOperational={(p) => {
+            setPmWizard(null);
+            setPmDetail(p);
+          }}
+          onOpenWizard={(p) => {
+            setPmDetail(null);
+            setPmWizard(p);
+          }}
+          onExtract={(p) => {
+            setPmDetail(null);
+            setPmWizard(null);
+            setPmExtract(p);
+          }}
+        />
+      );
     }
   } else {
     if (staffMenu === "slack") {
@@ -191,8 +282,7 @@ export default function App() {
       <Sidebar items={menu} active={activeMenu} onSelect={handleSelect} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <TopBar
-          title={title}
-          subtitle={subtitle}
+          title={subtitle}
           userName={isPm ? "정하늘" : "나"}
           roleLabel={isPm ? "PM" : "직원"}
           onLogout={handleLogout}

@@ -50,6 +50,157 @@ export interface Feedback {
 
 export const PROJECT_NAME = "도시 인프라 RFP 2024";
 
+/* =====================================================================
+ * 프로젝트 생애주기 (홈 · 프로젝트 보드)
+ * ===================================================================*/
+
+export type ProjectStatus = "분석중" | "준비" | "승인대기" | "진행중" | "완료";
+
+export type ProjectDocType = "RFP" | "요구사항정의서" | "제안서";
+
+export interface ProjectDoc {
+  name: string;
+  type: ProjectDocType;
+}
+
+export interface ProjectRequirement {
+  id: number;
+  text: string;
+  category: string;
+  priority: Priority;
+  source: string; // 추출 출처 문서명
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  client: string;
+  status: ProjectStatus;
+  progress: number; // 진행중/완료: 0~100
+  dueDate: string;
+  riskCount: number;
+  reqCount: number;
+  wizardStep: number; // 준비: 0~6 (6 완료 시 시작 가능)
+  estimate: string; // 견적
+  updatedAt: string;
+  docs: ProjectDoc[]; // 초기 문서 (없으면 나중에 업로드)
+  requirements?: ProjectRequirement[]; // AI 추출 요구사항 (있으면 마법사에서 사용)
+}
+
+/** AI 추출 시뮬레이션용 요구사항 풀 */
+export const EXTRACTED_REQ_POOL: {
+  text: string;
+  category: string;
+  priority: Priority;
+}[] = [
+  { text: "회원가입·로그인 시 소셜 인증(OAuth)을 지원해야 합니다.", category: "기능", priority: "높음" },
+  { text: "결제 모듈은 카드·간편결제·계좌이체를 모두 지원해야 합니다.", category: "기능", priority: "높음" },
+  { text: "개인정보는 저장 시 암호화하고 접근 로그를 남겨야 합니다.", category: "보안", priority: "높음" },
+  { text: "주요 API 응답 시간은 평균 300ms 이내여야 합니다.", category: "성능", priority: "중간" },
+  { text: "관리자 대시보드에서 실시간 통계를 확인할 수 있어야 합니다.", category: "기능", priority: "중간" },
+  { text: "모바일 반응형 UI를 지원해야 합니다.", category: "UI", priority: "중간" },
+  { text: "데이터는 일 1회 자동 백업되어야 합니다.", category: "데이터", priority: "중간" },
+  { text: "장애 발생 시 30분 이내 복구 가능한 이중화 구성을 갖춰야 합니다.", category: "인프라", priority: "높음" },
+  { text: "사용자 활동 감사(audit) 로그를 1년간 보관해야 합니다.", category: "보안", priority: "중간" },
+  { text: "다국어(한/영) 전환을 지원해야 합니다.", category: "기능", priority: "낮음" },
+  { text: "알림(이메일·푸시) 발송 기능을 제공해야 합니다.", category: "기능", priority: "중간" },
+  { text: "접근성 지침(WCAG 2.1 AA)을 준수해야 합니다.", category: "UI", priority: "낮음" },
+  { text: "외부 협업툴(Slack·Jira)과 연동할 수 있어야 합니다.", category: "운영", priority: "중간" },
+  { text: "배포는 무중단(blue-green) 방식을 지원해야 합니다.", category: "인프라", priority: "낮음" },
+];
+
+export const WIZARD_STEPS = [
+  "요구사항",
+  "WBS",
+  "담당자",
+  "일정",
+  "노동법·가이드",
+  "견적",
+];
+
+export const PROJECTS: ProjectSummary[] = [
+  {
+    id: "prj-launch",
+    name: "신제품 출시 프로젝트",
+    client: "㈜미래커머스",
+    status: "진행중",
+    progress: 62,
+    dueDate: "2026-07-22",
+    riskCount: 3,
+    reqCount: 24,
+    wizardStep: 6,
+    estimate: "3,400만원",
+    updatedAt: "오늘 10:32",
+    docs: [
+      { name: "RFP_신제품출시_v2.pdf", type: "RFP" },
+      { name: "요구사항정의서_v1.3.docx", type: "요구사항정의서" },
+    ],
+  },
+  {
+    id: "prj-renewal",
+    name: "브랜드 리뉴얼 프로젝트",
+    client: "블루밍 리테일",
+    status: "준비",
+    progress: 0,
+    dueDate: "2026-09-07",
+    riskCount: 0,
+    reqCount: 18,
+    wizardStep: 3,
+    estimate: "-",
+    updatedAt: "오늘 09:14",
+    docs: [
+      { name: "브랜드리뉴얼_RFP.pdf", type: "RFP" },
+      { name: "제안서_초안.pdf", type: "제안서" },
+    ],
+  },
+  {
+    id: "prj-traffic",
+    name: "교통관제 시스템 구축",
+    client: "성남시청",
+    status: "승인대기",
+    progress: 0,
+    dueDate: "2026-11-30",
+    riskCount: 0,
+    reqCount: 30,
+    wizardStep: 6,
+    estimate: "3,200만원 ~ 3,600만원",
+    updatedAt: "어제 18:40",
+    docs: [
+      { name: "교통관제_RFP_2026.pdf", type: "RFP" },
+      { name: "요구사항정의서_v2.docx", type: "요구사항정의서" },
+      { name: "제안서_최종.pdf", type: "제안서" },
+    ],
+  },
+  {
+    id: "prj-internal",
+    name: "내부 관리도구 고도화",
+    client: "사내 · 운영팀",
+    status: "진행중",
+    progress: 41,
+    dueDate: "2026-08-10",
+    riskCount: 1,
+    reqCount: 15,
+    wizardStep: 6,
+    estimate: "1,800만원",
+    updatedAt: "오늘 08:50",
+    docs: [{ name: "내부관리도구_요구사항정의서.docx", type: "요구사항정의서" }],
+  },
+  {
+    id: "prj-migration",
+    name: "구 사이트 마이그레이션",
+    client: "㈜한빛출판",
+    status: "완료",
+    progress: 100,
+    dueDate: "2026-06-20",
+    riskCount: 0,
+    reqCount: 12,
+    wizardStep: 6,
+    estimate: "2,100만원",
+    updatedAt: "2026-06-20",
+    docs: [{ name: "마이그레이션_RFP.pdf", type: "RFP" }],
+  },
+];
+
 export const KPI_PM = {
   progress: 62,
   daysLeft: 14,
