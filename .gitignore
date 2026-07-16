@@ -37,3 +37,12 @@ out/
 .vscode/
 
 /src/main/resources/application-local.yaml
+
+node_modules/
+dist/
+.pnpm-store/
+vite-dev.log
+*.local
+.env
+.env.*
+!.env.example

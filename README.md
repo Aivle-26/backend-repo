@@ -7,3 +7,20 @@
 - Gradle 8.x
 - MySQL 8.0
 - Docker
+
+# BidWorks AI Frontend
+
+## Run
+
+```bash
+npm install
+npm run dev
+```
+
+Default dev server: `http://127.0.0.1:5173/`
+
+## Build
+
+```bash
+npm run build
+```
