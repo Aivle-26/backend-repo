@@ -3,6 +3,7 @@ package com.aivle26.aipm.Controller;
 import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.ProjectDocumentUploadResponse;
+import com.aivle26.aipm.Dto.ProjectSummaryResponse;
 import com.aivle26.aipm.Dto.AgentRequestResult;
 import com.aivle26.aipm.Dto.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.SaveDocumentAnalysisResultResponse;
@@ -24,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,6 +47,11 @@ public class ProjectController {
     private final ProjectWbsRequestService projectWbsRequestService;
     private final ProjectScheduleService projectScheduleService;
     private final ProjectScheduleRequestService projectScheduleRequestService;
+
+    @GetMapping
+    public ResponseEntity<List<ProjectSummaryResponse>> listProjects() {
+        return ResponseEntity.ok(projectService.listProjects());
+    }
 
     @PostMapping("/drafts")
     public ResponseEntity<CreateProjectDraftResponse> createProjectDraft(@Valid @RequestBody CreateProjectDraftRequest request) {
