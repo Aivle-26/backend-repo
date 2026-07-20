@@ -4,6 +4,7 @@ import com.aivle26.aipm.Dto.LoginRequest;
 import com.aivle26.aipm.Dto.LoginVerifyRequest;
 import com.aivle26.aipm.Dto.PasswordEmailCheckRequest;
 import com.aivle26.aipm.Dto.PasswordEmailSendRequest;
+import com.aivle26.aipm.Dto.SignupRequest;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
@@ -58,6 +59,122 @@ class UserServiceTest {
         userRepository.deleteAll();
         userRepository.save(createUser("PM001", "pm001@example.com", "PM", "CorrectPassword1!"));
         given(javaMailSender.createMimeMessage()).willAnswer(invocation -> new MimeMessage(Session.getInstance(new Properties())));
+    }
+
+    @Test
+    void signupCreatesPmUser() {
+        var response = userService.signup(new SignupRequest(
+                "PM002",
+                "New PM",
+                "newpm@example.com",
+                "Signup123",
+                "PM"
+        ));
+
+        User savedUser = userRepository.findById("PM002").orElseThrow();
+        assertThat(response.employeeNumber()).isEqualTo("PM002");
+        assertThat(response.role()).isEqualTo("PM");
+        assertThat(response.status()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(savedUser.getEmail()).isEqualTo("newpm@example.com");
+        assertThat(savedUser.getPassword()).isNotEqualTo("Signup123");
+        assertThat(passwordEncoder.matches("Signup123", savedUser.getPassword())).isTrue();
+        assertThat(savedUser.isEmailVerified()).isTrue();
+    }
+
+    @Test
+    void signupCreatesStaffUser() {
+        var response = userService.signup(new SignupRequest(
+                "ST002",
+                "New Staff",
+                "newstaff@example.com",
+                "Signup123",
+                "staff"
+        ));
+
+        User savedUser = userRepository.findById("ST002").orElseThrow();
+        assertThat(response.role()).isEqualTo("STAFF");
+        assertThat(savedUser.getRole()).isEqualTo("STAFF");
+    }
+
+    @Test
+    void signupFailsForDuplicateEmail() {
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "PM999",
+                "Duplicate Email",
+                "PM001@example.com",
+                "Signup123",
+                "PM"
+        )))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getMessage()).isEqualTo("email already exists");
+                });
+    }
+
+    @Test
+    void signupFailsForInvalidEmail() {
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "PM003",
+                "Invalid Email",
+                "not-an-email",
+                "Signup123",
+                "PM"
+        )))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("invalid email");
+                });
+    }
+
+    @Test
+    void signupFailsForWeakPassword() {
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "PM003",
+                "Weak Password",
+                "weak@example.com",
+                "password",
+                "PM"
+        )))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("password must be 8-72 chars and include letters and numbers");
+                });
+    }
+
+    @Test
+    void signupUserCanLoginAndVerify() throws Exception {
+        userService.signup(new SignupRequest(
+                "PM003",
+                "Login PM",
+                "loginpm@example.com",
+                "Signup123",
+                "PM"
+        ));
+
+        var loginResponse = userService.login(new LoginRequest("loginpm@example.com", "Signup123", "PM"));
+        String verificationCode = extractLatestVerificationCode();
+        var verifyResponse = userService.verifyLogin(new LoginVerifyRequest("loginpm@example.com", verificationCode));
+
+        assertThat(loginResponse.success()).isTrue();
+        assertThat(verifyResponse.employeeNumber()).isEqualTo("PM003");
+        assertThat(verifyResponse.accessToken()).isNotBlank();
+    }
+
+    @Test
+    void signupUserLoginFailsForWrongRole() {
+        userService.signup(new SignupRequest(
+                "ST003",
+                "Login Staff",
+                "loginstaff@example.com",
+                "Signup123",
+                "STAFF"
+        ));
+
+        assertThatThrownBy(() -> userService.login(new LoginRequest("loginstaff@example.com", "Signup123", "PM")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                });
+        verify(javaMailSender, never()).send(any(MimeMessage.class));
     }
 
     @Test
