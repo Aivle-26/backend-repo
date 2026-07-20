@@ -48,7 +48,7 @@ public class UserService {
     @Transactional
     public LoginResponse login(LoginRequest request) {
         String email = request.email().trim();
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(this::invalidLoginException);
 
         validateLoginCredentials(user, request.password(), request.role());
@@ -65,8 +65,8 @@ public class UserService {
     @Transactional
     public LoginResponse resendLoginVerification(LoginResendRequest request) {
         String email = request.email().trim();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "user not found"));
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(this::invalidLoginException);
 
         EmailVerification latestVerification = getLatestLoginVerification(email);
         validateLoginResendCooldown(latestVerification);
@@ -226,8 +226,6 @@ public class UserService {
     }
 
     private void issueLoginVerification(User user, String email) {
-        expireActiveLoginVerifications(email);
-
         String verificationCode = generateVerificationCode();
         LocalDateTime now = LocalDateTime.now();
 
@@ -240,9 +238,9 @@ public class UserService {
         verification.setUsed(false);
         verification.setCreatedAt(now);
         verification.setUsedAt(null);
-        emailVerificationRepository.save(verification);
-
         mailService.sendLoginVerificationCode(email, verificationCode);
+        expireActiveLoginVerifications(email);
+        emailVerificationRepository.save(verification);
     }
 
     private void expireActiveLoginVerifications(String email) {

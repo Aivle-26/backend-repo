@@ -65,6 +65,9 @@ public class MailService {
             helper.setText(text);
             javaMailSender.send(message);
         } catch (MessagingException | UnsupportedEncodingException exception) {
+            log.warn("Mail message creation failed. type={}, causeType={}",
+                    exception.getClass().getSimpleName(),
+                    exception.getCause() == null ? "none" : exception.getCause().getClass().getSimpleName());
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "mail message creation failed", exception);
         } catch (MailAuthenticationException exception) {
             log.warn("Mail authentication failed. type={}, causeType={}",
