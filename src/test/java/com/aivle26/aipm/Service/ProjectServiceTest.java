@@ -104,6 +104,26 @@ class ProjectServiceTest {
         assertThat(projectRepository.count()).isZero();
     }
 
+    @Test
+    void listProjectsReturnsProjectSummaries() {
+        userRepository.save(createPmUser("PM001"));
+        projectService.createProjectDraft(new CreateProjectDraftRequest(
+                "New PM Project",
+                "draft description",
+                "PM001",
+                LocalDate.of(2026, 7, 13),
+                LocalDate.of(2026, 7, 31)
+        ));
+
+        var projects = projectService.listProjects();
+
+        assertThat(projects).hasSize(1);
+        assertThat(projects.get(0).name()).isEqualTo("New PM Project");
+        assertThat(projects.get(0).description()).isEqualTo("draft description");
+        assertThat(projects.get(0).pmEmployeeNumber()).isEqualTo("PM001");
+        assertThat(projects.get(0).status()).isEqualTo(ProjectStatus.DRAFT);
+    }
+
     private User createPmUser(String employeeNumber) {
         User user = new User();
         user.setEmployeeNumber(employeeNumber);

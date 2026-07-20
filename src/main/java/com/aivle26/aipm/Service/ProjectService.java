@@ -2,6 +2,7 @@ package com.aivle26.aipm.Service;
 
 import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.CreateProjectDraftResponse;
+import com.aivle26.aipm.Dto.ProjectSummaryResponse;
 import com.aivle26.aipm.Entity.Project;
 import com.aivle26.aipm.Entity.ProjectStatus;
 import com.aivle26.aipm.Entity.User;
@@ -11,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +46,23 @@ public class ProjectService {
                 savedProject.getPlannedStartDate(),
                 savedProject.getPlannedEndDate()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectSummaryResponse> listProjects() {
+        return projectRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(project -> new ProjectSummaryResponse(
+                        project.getId(),
+                        project.getName(),
+                        project.getDescription(),
+                        project.getPm().getEmployeeNumber(),
+                        project.getStatus(),
+                        project.getPlannedStartDate(),
+                        project.getPlannedEndDate(),
+                        project.getCreatedAt(),
+                        project.getUpdatedAt()
+                ))
+                .toList();
     }
 
 }
