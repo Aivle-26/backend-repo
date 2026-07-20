@@ -9,6 +9,8 @@ import com.aivle26.aipm.Dto.PasswordChangeRequest;
 import com.aivle26.aipm.Dto.PasswordEmailCheckRequest;
 import com.aivle26.aipm.Dto.PasswordEmailCheckResponse;
 import com.aivle26.aipm.Dto.PasswordEmailSendRequest;
+import com.aivle26.aipm.Dto.SignupRequest;
+import com.aivle26.aipm.Dto.SignupResponse;
 import com.aivle26.aipm.Entity.EmailVerification;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
@@ -27,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +38,8 @@ public class UserService {
     private static final int LOGIN_VERIFICATION_TTL_SECONDS = 180;
     private static final int LOGIN_RESEND_WAIT_SECONDS = 60;
     private static final String INVALID_LOGIN_MESSAGE = "이메일, 비밀번호 또는 역할이 올바르지 않습니다.";
+    private static final Pattern SIMPLE_EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final Pattern PASSWORD_POLICY_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,72}$");
     private static final int VERIFICATION_CODE_TTL_MINUTES = 5;
     private static final int VERIFICATION_RESEND_WAIT_SECONDS = 60;
     private static final int VERIFICATION_MAX_FAILED_ATTEMPTS = 5;
@@ -44,6 +49,42 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
     private final AuthService authService;
+
+    @Transactional
+    public SignupResponse signup(SignupRequest request) {
+        String employeeNumber = request.employeeNumber().trim();
+        String name = request.name().trim();
+        String email = request.email().trim();
+        String role = normalizeRole(request.role());
+
+        validateSignupInput(email, request.password(), role);
+
+        if (userRepository.existsById(employeeNumber)) {
+            throw new ApiException(HttpStatus.CONFLICT, "employeeNumber already exists");
+        }
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ApiException(HttpStatus.CONFLICT, "email already exists");
+        }
+
+        User user = new User();
+        user.setEmployeeNumber(employeeNumber);
+        user.setName(name);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(request.password()));
+        user.setRole(role);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setEmailVerified(true);
+        user.setVerificationCodeFailedAttempts(0);
+
+        User savedUser = userRepository.save(user);
+        return new SignupResponse(
+                savedUser.getEmployeeNumber(),
+                savedUser.getName(),
+                savedUser.getEmail(),
+                savedUser.getRole(),
+                savedUser.getStatus()
+        );
+    }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -222,6 +263,18 @@ public class UserService {
 
         if (!normalizeRole(user.getRole()).equals(normalizeRole(requestedRole))) {
             throw invalidLoginException();
+        }
+    }
+
+    private void validateSignupInput(String email, String rawPassword, String role) {
+        if (!SIMPLE_EMAIL_PATTERN.matcher(email).matches()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid email");
+        }
+        if (!PASSWORD_POLICY_PATTERN.matcher(rawPassword).matches()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "password must be 8-72 chars and include letters and numbers");
+        }
+        if (!role.equals("PM") && !role.equals("STAFF")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "role must be PM or STAFF");
         }
     }
 
