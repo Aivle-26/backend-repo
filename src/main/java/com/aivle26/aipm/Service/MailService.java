@@ -36,6 +36,24 @@ public class MailService {
     private String fromName;
 
     public void sendVerificationCode(String email, String code) {
+        sendMail(email, "AIPM email verification code", "Your verification code is " + code + ". It expires in 5 minutes.");
+    }
+
+    public void sendLoginVerificationCode(String email, String code) {
+        sendMail(
+                email,
+                "[BidWorks AI] 로그인 인증번호 안내",
+                """
+                        BidWorks AI 로그인 인증번호는 발급된 6자리 번호입니다.
+                        인증번호는 3분 동안 유효합니다.
+                        본인이 요청하지 않은 경우 이 메일을 무시해 주세요.
+
+                        인증번호: %s
+                        """.formatted(code)
+        );
+    }
+
+    private void sendMail(String email, String subject, String text) {
         validateMailConfiguration();
 
         try {
@@ -43,8 +61,8 @@ public class MailService {
             var helper = new MimeMessageHelper(message, false, "UTF-8");
             helper.setTo(email);
             helper.setFrom(resolveFromInternetAddress());
-            helper.setSubject("AIPM email verification code");
-            helper.setText("Your verification code is " + code + ". It expires in 5 minutes.");
+            helper.setSubject(subject);
+            helper.setText(text);
             javaMailSender.send(message);
         } catch (MessagingException | UnsupportedEncodingException exception) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "mail message creation failed", exception);

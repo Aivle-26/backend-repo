@@ -59,4 +59,13 @@ public class User {
     private String resetToken;
 
     private LocalDateTime resetTokenExpiresAt;
+
+    @Column(length = 255)
+    private String refreshTokenHash;
+
+    private LocalDateTime loginAt;
+
+    private LocalDateTime absoluteExpiresAt;
+
+    private LocalDateTime lastActivityAt;
 }

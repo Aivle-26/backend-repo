@@ -23,6 +23,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(new ErrorResponse(
                 LocalDateTime.now(),
                 status.value(),
+                exception.getCode(),
                 status.getReasonPhrase(),
                 exception.getMessage()
         ));
@@ -52,6 +53,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(new ErrorResponse(
                 LocalDateTime.now(),
                 status.value(),
+                null,
                 status.getReasonPhrase(),
                 "internal server error"
         ));
@@ -62,6 +64,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(new ErrorResponse(
                 LocalDateTime.now(),
                 status.value(),
+                null,
                 status.getReasonPhrase(),
                 message
         ));
