@@ -142,19 +142,27 @@ public class UserService {
     }
 
     @Transactional
-    public LoginResponse login(LoginRequest request) {
+    public LoginVerifyResponse login(LoginRequest request) {
         String email = request.email().trim();
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(this::invalidLoginException);
 
         validateLoginCredentials(user, request.password(), request.role());
-        issueLoginVerification(user, email);
+        var session = authService.issueSession(user);
 
-        return new LoginResponse(
+        return new LoginVerifyResponse(
                 true,
-                true,
-                "이메일로 인증번호가 발송되었습니다.",
-                LOGIN_VERIFICATION_TTL_SECONDS
+                "login success",
+                user.getEmployeeNumber(),
+                user.getName(),
+                user.getRole(),
+                session.accessToken(),
+                session.refreshToken(),
+                session.accessTokenExpiresAt(),
+                session.absoluteExpiresAt(),
+                session.lastActivityAt(),
+                session.serverTime(),
+                session.inactivityTimeoutMinutes()
         );
     }
 

@@ -6,8 +6,10 @@ import com.aivle26.aipm.Dto.PasswordEmailCheckRequest;
 import com.aivle26.aipm.Dto.PasswordEmailSendRequest;
 import com.aivle26.aipm.Dto.SignupRequest;
 import com.aivle26.aipm.Dto.SignupVerifyRequest;
+import com.aivle26.aipm.Entity.EmailVerification;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
+import com.aivle26.aipm.Entity.VerificationPurpose;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.EmailVerificationRepository;
 import com.aivle26.aipm.Repository.UserRepository;
@@ -236,7 +238,7 @@ class UserServiceTest {
     }
 
     @Test
-    void signupUserCanLoginAndVerify() throws Exception {
+    void signupUserCanLoginDirectly() throws Exception {
         userService.signup(new SignupRequest(
                 "PM003",
                 "Login PM",
@@ -248,12 +250,10 @@ class UserServiceTest {
         userService.verifySignup(new SignupVerifyRequest("loginpm@example.com", signupCode));
 
         var loginResponse = userService.login(new LoginRequest("loginpm@example.com", "Signup123", "PM"));
-        String verificationCode = extractLatestVerificationCode();
-        var verifyResponse = userService.verifyLogin(new LoginVerifyRequest("loginpm@example.com", verificationCode));
 
         assertThat(loginResponse.success()).isTrue();
-        assertThat(verifyResponse.employeeNumber()).isEqualTo("PM003");
-        assertThat(verifyResponse.accessToken()).isNotBlank();
+        assertThat(loginResponse.employeeNumber()).isEqualTo("PM003");
+        assertThat(loginResponse.accessToken()).isNotBlank();
     }
 
     @Test
@@ -313,31 +313,29 @@ class UserServiceTest {
     }
 
     @Test
-    void loginSendsMailAndReturnsSuccessForValidUser() {
+    void loginIssuesTokensWithoutSendingMailForValidUser() {
         var response = userService.login(new LoginRequest("pm001@example.com", "CorrectPassword1!", "PM"));
 
         assertThat(response.success()).isTrue();
-        assertThat(response.verificationRequired()).isTrue();
-        assertThat(response.expiresIn()).isEqualTo(180);
-        verify(javaMailSender).send(any(MimeMessage.class));
-        assertThat(emailVerificationRepository.count()).isOne();
+        assertThat(response.employeeNumber()).isEqualTo("PM001");
+        assertThat(response.accessToken()).isNotBlank();
+        assertThat(response.refreshToken()).isNotBlank();
+        verify(javaMailSender, never()).send(any(MimeMessage.class));
+        assertThat(emailVerificationRepository.count()).isZero();
 
         User savedUser = userRepository.findById("PM001").orElseThrow();
-        assertThat(savedUser.getLoginAt()).isNull();
-        assertThat(savedUser.getRefreshTokenHash()).isNull();
+        assertThat(savedUser.getLoginAt()).isNotNull();
+        assertThat(savedUser.getRefreshTokenHash()).isNotBlank();
     }
 
     @Test
-    void loginDoesNotReturnSuccessWhenMailDeliveryFails() {
+    void loginDoesNotDependOnMailDelivery() {
         doThrow(new MailSendException("smtp down")).when(javaMailSender).send(any(MimeMessage.class));
 
-        assertThatThrownBy(() -> userService.login(new LoginRequest("pm001@example.com", "CorrectPassword1!", "PM")))
-                .isInstanceOfSatisfying(ApiException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
-                    assertThat(exception.getMessage()).isEqualTo("mail delivery failed");
-                });
+        var response = userService.login(new LoginRequest("pm001@example.com", "CorrectPassword1!", "PM"));
 
-        verify(javaMailSender).send(any(MimeMessage.class));
+        assertThat(response.accessToken()).isNotBlank();
+        verify(javaMailSender, never()).send(any(MimeMessage.class));
         assertThat(emailVerificationRepository.count()).isZero();
     }
 
@@ -352,7 +350,7 @@ class UserServiceTest {
 
     @Test
     void verifyLoginFailsForWrongVerificationCode() {
-        userService.login(new LoginRequest("pm001@example.com", "CorrectPassword1!", "PM"));
+        saveLoginVerification("PM001", "pm001@example.com", "123456");
 
         assertThatThrownBy(() -> userService.verifyLogin(new LoginVerifyRequest("pm001@example.com", "000000")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
@@ -363,8 +361,8 @@ class UserServiceTest {
 
     @Test
     void verifyLoginIssuesTokensForCorrectVerificationCode() throws Exception {
-        userService.login(new LoginRequest("pm001@example.com", "CorrectPassword1!", "PM"));
-        String verificationCode = extractLatestVerificationCode();
+        String verificationCode = "123456";
+        saveLoginVerification("PM001", "pm001@example.com", verificationCode);
 
         var response = userService.verifyLogin(new LoginVerifyRequest("pm001@example.com", verificationCode));
 
@@ -377,8 +375,8 @@ class UserServiceTest {
     @Test
     void verifyLoginRejectsCodeIssuedForDifferentEmail() throws Exception {
         userRepository.save(createUser("ST001", "staff@example.com", "STAFF", "CorrectPassword1!"));
-        userService.login(new LoginRequest("pm001@example.com", "CorrectPassword1!", "PM"));
-        String verificationCode = extractLatestVerificationCode();
+        String verificationCode = "123456";
+        saveLoginVerification("PM001", "pm001@example.com", verificationCode);
 
         assertThatThrownBy(() -> userService.verifyLogin(new LoginVerifyRequest("staff@example.com", verificationCode)))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
@@ -442,6 +440,18 @@ class UserServiceTest {
         assertThat(savedUser.getVerificationCode()).isNull();
         assertThat(savedUser.getVerificationEmail()).isNull();
         assertThat(savedUser.getVerificationCodeExpiresAt()).isNull();
+    }
+
+    private void saveLoginVerification(String employeeNumber, String email, String rawCode) {
+        EmailVerification verification = new EmailVerification();
+        verification.setEmployeeNumber(employeeNumber);
+        verification.setEmail(email);
+        verification.setCodeHash(passwordEncoder.encode(rawCode));
+        verification.setPurpose(VerificationPurpose.LOGIN);
+        verification.setExpiresAt(LocalDateTime.now().plusMinutes(3));
+        verification.setUsed(false);
+        verification.setCreatedAt(LocalDateTime.now());
+        emailVerificationRepository.save(verification);
     }
 
     private User createUser(String employeeNumber, String email, String role, String rawPassword) {

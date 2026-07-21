@@ -50,7 +50,7 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<LoginVerifyResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(userService.login(request));
     }
 
