@@ -8,19 +8,11 @@
 - MySQL 8.0
 - Docker
 
-# BidWorks AI Frontend
+## EC2 Operations
 
-## Run
+Deployment and operations guidance lives in:
 
-```bash
-npm install
-npm run dev
-```
+- `docs/EC2_DEPLOYMENT.md`
+- `docs/OPERATIONS.md`
 
-Default dev server: `http://127.0.0.1:5173/`
-
-## Build
-
-```bash
-npm run build
-```
+Use `.env.example` as the shape for environment variables, but keep real secrets only on the server.

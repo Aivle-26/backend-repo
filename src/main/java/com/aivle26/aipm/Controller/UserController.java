@@ -12,6 +12,10 @@ import com.aivle26.aipm.Dto.PasswordChangeRequest;
 import com.aivle26.aipm.Dto.PasswordEmailCheckRequest;
 import com.aivle26.aipm.Dto.PasswordEmailCheckResponse;
 import com.aivle26.aipm.Dto.PasswordEmailSendRequest;
+import com.aivle26.aipm.Dto.SignupRequest;
+import com.aivle26.aipm.Dto.SignupResponse;
+import com.aivle26.aipm.Dto.SignupStartResponse;
+import com.aivle26.aipm.Dto.SignupVerifyRequest;
 import com.aivle26.aipm.Service.AuthService;
 import com.aivle26.aipm.Service.AuthenticatedUser;
 import com.aivle26.aipm.Service.UserService;
@@ -35,8 +39,18 @@ public class UserController {
     private final UserService userService;
     private final AuthService authService;
 
+    @PostMapping("/signup")
+    public ResponseEntity<SignupStartResponse> signup(@Valid @RequestBody SignupRequest request) {
+        return ResponseEntity.ok(userService.signup(request));
+    }
+
+    @PostMapping("/signup/verify")
+    public ResponseEntity<SignupResponse> verifySignup(@Valid @RequestBody SignupVerifyRequest request) {
+        return ResponseEntity.status(201).body(userService.verifySignup(request));
+    }
+
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<LoginVerifyResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(userService.login(request));
     }
 

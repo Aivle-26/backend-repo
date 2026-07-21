@@ -13,8 +13,18 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
             VerificationPurpose purpose
     );
 
+    Optional<EmailVerification> findTopByEmployeeNumberAndPurposeOrderByCreatedAtDesc(
+            String employeeNumber,
+            VerificationPurpose purpose
+    );
+
     List<EmailVerification> findByEmailIgnoreCaseAndPurposeAndUsedFalse(
             String email,
+            VerificationPurpose purpose
+    );
+
+    List<EmailVerification> findByEmployeeNumberAndPurposeAndUsedFalse(
+            String employeeNumber,
             VerificationPurpose purpose
     );
 }
