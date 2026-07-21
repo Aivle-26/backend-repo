@@ -34,6 +34,15 @@ public class EmailVerification {
     @Column(nullable = false, length = 255)
     private String codeHash;
 
+    @Column(length = 100)
+    private String signupName;
+
+    @Column(length = 255)
+    private String signupPasswordHash;
+
+    @Column(length = 50)
+    private String signupRole;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private VerificationPurpose purpose;

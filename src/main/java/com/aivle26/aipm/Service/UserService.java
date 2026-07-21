@@ -11,6 +11,8 @@ import com.aivle26.aipm.Dto.PasswordEmailCheckResponse;
 import com.aivle26.aipm.Dto.PasswordEmailSendRequest;
 import com.aivle26.aipm.Dto.SignupRequest;
 import com.aivle26.aipm.Dto.SignupResponse;
+import com.aivle26.aipm.Dto.SignupStartResponse;
+import com.aivle26.aipm.Dto.SignupVerifyRequest;
 import com.aivle26.aipm.Entity.EmailVerification;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
@@ -37,6 +39,8 @@ public class UserService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final int LOGIN_VERIFICATION_TTL_SECONDS = 180;
     private static final int LOGIN_RESEND_WAIT_SECONDS = 60;
+    private static final int SIGNUP_VERIFICATION_TTL_SECONDS = 300;
+    private static final int SIGNUP_RESEND_WAIT_SECONDS = 60;
     private static final String INVALID_LOGIN_MESSAGE = "이메일, 비밀번호 또는 역할이 올바르지 않습니다.";
     private static final Pattern SIMPLE_EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Pattern PASSWORD_POLICY_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,72}$");
@@ -51,7 +55,7 @@ public class UserService {
     private final AuthService authService;
 
     @Transactional
-    public SignupResponse signup(SignupRequest request) {
+    public SignupStartResponse signup(SignupRequest request) {
         String employeeNumber = request.employeeNumber().trim();
         String name = request.name().trim();
         String email = request.email().trim();
@@ -66,17 +70,68 @@ public class UserService {
             throw new ApiException(HttpStatus.CONFLICT, "email already exists");
         }
 
+        EmailVerification latestByEmail = emailVerificationRepository
+                .findTopByEmailIgnoreCaseAndPurposeOrderByCreatedAtDesc(email, VerificationPurpose.SIGNUP)
+                .orElse(null);
+        EmailVerification latestByEmployeeNumber = emailVerificationRepository
+                .findTopByEmployeeNumberAndPurposeOrderByCreatedAtDesc(employeeNumber, VerificationPurpose.SIGNUP)
+                .orElse(null);
+        validateSignupResendCooldown(latestByEmail, latestByEmployeeNumber);
+        issueSignupVerification(employeeNumber, name, email, request.password(), role);
+
+        return new SignupStartResponse(
+                true,
+                true,
+                "이메일로 회원가입 인증번호가 발송되었습니다.",
+                SIGNUP_VERIFICATION_TTL_SECONDS
+        );
+    }
+
+    @Transactional
+    public SignupResponse verifySignup(SignupVerifyRequest request) {
+        String email = request.email().trim();
+        EmailVerification verification = getLatestSignupVerification(email);
+
+        if (verification.isUsed()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "verification code already used");
+        }
+
+        if (verification.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "verification code expired");
+        }
+
+        if (!passwordEncoder.matches(request.verificationCode(), verification.getCodeHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "verification code mismatch");
+        }
+
+        if (verification.getSignupName() == null
+                || verification.getSignupPasswordHash() == null
+                || verification.getSignupRole() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "signup request not found");
+        }
+
+        if (userRepository.existsById(verification.getEmployeeNumber())) {
+            throw new ApiException(HttpStatus.CONFLICT, "employeeNumber already exists");
+        }
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ApiException(HttpStatus.CONFLICT, "email already exists");
+        }
+
         User user = new User();
-        user.setEmployeeNumber(employeeNumber);
-        user.setName(name);
+        user.setEmployeeNumber(verification.getEmployeeNumber());
+        user.setName(verification.getSignupName());
         user.setEmail(email);
-        user.setPassword(passwordEncoder.encode(request.password()));
-        user.setRole(role);
+        user.setPassword(verification.getSignupPasswordHash());
+        user.setRole(verification.getSignupRole());
         user.setStatus(UserStatus.ACTIVE);
         user.setEmailVerified(true);
         user.setVerificationCodeFailedAttempts(0);
 
         User savedUser = userRepository.save(user);
+        verification.setUsed(true);
+        verification.setUsedAt(LocalDateTime.now());
+        expireActiveSignupVerifications(verification.getEmployeeNumber(), email);
+
         return new SignupResponse(
                 savedUser.getEmployeeNumber(),
                 savedUser.getName(),
@@ -296,11 +351,48 @@ public class UserService {
         emailVerificationRepository.save(verification);
     }
 
+    private void issueSignupVerification(String employeeNumber, String name, String email, String rawPassword, String role) {
+        String verificationCode = generateVerificationCode();
+        LocalDateTime now = LocalDateTime.now();
+
+        EmailVerification verification = new EmailVerification();
+        verification.setEmployeeNumber(employeeNumber);
+        verification.setEmail(email);
+        verification.setCodeHash(passwordEncoder.encode(verificationCode));
+        verification.setSignupName(name);
+        verification.setSignupPasswordHash(passwordEncoder.encode(rawPassword));
+        verification.setSignupRole(role);
+        verification.setPurpose(VerificationPurpose.SIGNUP);
+        verification.setExpiresAt(now.plusSeconds(SIGNUP_VERIFICATION_TTL_SECONDS));
+        verification.setUsed(false);
+        verification.setCreatedAt(now);
+        verification.setUsedAt(null);
+        mailService.sendVerificationCode(email, verificationCode);
+        expireActiveSignupVerifications(employeeNumber, email);
+        emailVerificationRepository.save(verification);
+    }
+
     private void expireActiveLoginVerifications(String email) {
         List<EmailVerification> activeVerifications = emailVerificationRepository
                 .findByEmailIgnoreCaseAndPurposeAndUsedFalse(email, VerificationPurpose.LOGIN);
         LocalDateTime now = LocalDateTime.now();
         for (EmailVerification verification : activeVerifications) {
+            if (verification.getExpiresAt().isAfter(now)) {
+                verification.setExpiresAt(now);
+            }
+        }
+    }
+
+    private void expireActiveSignupVerifications(String employeeNumber, String email) {
+        LocalDateTime now = LocalDateTime.now();
+        for (EmailVerification verification : emailVerificationRepository
+                .findByEmailIgnoreCaseAndPurposeAndUsedFalse(email, VerificationPurpose.SIGNUP)) {
+            if (verification.getExpiresAt().isAfter(now)) {
+                verification.setExpiresAt(now);
+            }
+        }
+        for (EmailVerification verification : emailVerificationRepository
+                .findByEmployeeNumberAndPurposeAndUsedFalse(employeeNumber, VerificationPurpose.SIGNUP)) {
             if (verification.getExpiresAt().isAfter(now)) {
                 verification.setExpiresAt(now);
             }
@@ -315,9 +407,31 @@ public class UserService {
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "verification code not requested"));
     }
 
+    private EmailVerification getLatestSignupVerification(String email) {
+        return emailVerificationRepository.findTopByEmailIgnoreCaseAndPurposeOrderByCreatedAtDesc(
+                        email,
+                        VerificationPurpose.SIGNUP
+                )
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "verification code not requested"));
+    }
+
     private void validateLoginResendCooldown(EmailVerification latestVerification) {
         LocalDateTime allowedAt = latestVerification.getCreatedAt().plusSeconds(LOGIN_RESEND_WAIT_SECONDS);
         if (allowedAt.isAfter(LocalDateTime.now())) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "verification code resend too soon");
+        }
+    }
+
+    private void validateSignupResendCooldown(EmailVerification latestByEmail, EmailVerification latestByEmployeeNumber) {
+        LocalDateTime now = LocalDateTime.now();
+        if (latestByEmail != null
+                && !latestByEmail.isUsed()
+                && latestByEmail.getCreatedAt().plusSeconds(SIGNUP_RESEND_WAIT_SECONDS).isAfter(now)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "verification code resend too soon");
+        }
+        if (latestByEmployeeNumber != null
+                && !latestByEmployeeNumber.isUsed()
+                && latestByEmployeeNumber.getCreatedAt().plusSeconds(SIGNUP_RESEND_WAIT_SECONDS).isAfter(now)) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "verification code resend too soon");
         }
     }

@@ -5,6 +5,7 @@ import com.aivle26.aipm.Dto.LoginVerifyRequest;
 import com.aivle26.aipm.Dto.PasswordEmailCheckRequest;
 import com.aivle26.aipm.Dto.PasswordEmailSendRequest;
 import com.aivle26.aipm.Dto.SignupRequest;
+import com.aivle26.aipm.Dto.SignupVerifyRequest;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,7 +64,7 @@ class UserServiceTest {
     }
 
     @Test
-    void signupCreatesPmUser() {
+    void signupSendsVerificationWithoutCreatingUser() {
         var response = userService.signup(new SignupRequest(
                 "PM002",
                 "New PM",
@@ -70,6 +72,27 @@ class UserServiceTest {
                 "Signup123",
                 "PM"
         ));
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.verificationRequired()).isTrue();
+        assertThat(response.expiresIn()).isEqualTo(300);
+        assertThat(userRepository.findById("PM002")).isEmpty();
+        assertThat(emailVerificationRepository.count()).isOne();
+        verify(javaMailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void verifySignupCreatesPmUser() throws Exception {
+        userService.signup(new SignupRequest(
+                "PM002",
+                "New PM",
+                "newpm@example.com",
+                "Signup123",
+                "PM"
+        ));
+        String verificationCode = extractLatestVerificationCode();
+
+        var response = userService.verifySignup(new SignupVerifyRequest("newpm@example.com", verificationCode));
 
         User savedUser = userRepository.findById("PM002").orElseThrow();
         assertThat(response.employeeNumber()).isEqualTo("PM002");
@@ -82,15 +105,17 @@ class UserServiceTest {
     }
 
     @Test
-    void signupCreatesStaffUser() {
-        var response = userService.signup(new SignupRequest(
+    void verifySignupCreatesStaffUser() throws Exception {
+        userService.signup(new SignupRequest(
                 "ST002",
                 "New Staff",
                 "newstaff@example.com",
                 "Signup123",
                 "staff"
         ));
+        String verificationCode = extractLatestVerificationCode();
 
+        var response = userService.verifySignup(new SignupVerifyRequest("newstaff@example.com", verificationCode));
         User savedUser = userRepository.findById("ST002").orElseThrow();
         assertThat(response.role()).isEqualTo("STAFF");
         assertThat(savedUser.getRole()).isEqualTo("STAFF");
@@ -109,6 +134,7 @@ class UserServiceTest {
                     assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(exception.getMessage()).isEqualTo("email already exists");
                 });
+        verify(javaMailSender, never()).send(any(MimeMessage.class));
     }
 
     @Test
@@ -142,6 +168,74 @@ class UserServiceTest {
     }
 
     @Test
+    void signupDoesNotCreatePendingVerificationWhenMailDeliveryFails() {
+        doThrow(new MailSendException("smtp down")).when(javaMailSender).send(any(MimeMessage.class));
+
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "PM004",
+                "Mail Fail",
+                "mailfail@example.com",
+                "Signup123",
+                "PM"
+        )))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(exception.getMessage()).isEqualTo("mail delivery failed");
+                });
+
+        assertThat(userRepository.findById("PM004")).isEmpty();
+        assertThat(emailVerificationRepository.count()).isZero();
+    }
+
+    @Test
+    void verifySignupFailsWithoutVerificationCodeRequest() {
+        assertThatThrownBy(() -> userService.verifySignup(new SignupVerifyRequest("newpm@example.com", "123456")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("verification code not requested");
+                });
+    }
+
+    @Test
+    void verifySignupFailsForWrongCodeWithoutCreatingUser() {
+        userService.signup(new SignupRequest(
+                "PM004",
+                "Wrong Code",
+                "wrongcode@example.com",
+                "Signup123",
+                "PM"
+        ));
+
+        assertThatThrownBy(() -> userService.verifySignup(new SignupVerifyRequest("wrongcode@example.com", "000000")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("verification code mismatch");
+                });
+
+        assertThat(userRepository.findById("PM004")).isEmpty();
+    }
+
+    @Test
+    void verifySignupRejectsCodeIssuedForDifferentEmail() throws Exception {
+        userService.signup(new SignupRequest(
+                "PM004",
+                "Different Email",
+                "signup-a@example.com",
+                "Signup123",
+                "PM"
+        ));
+        String verificationCode = extractLatestVerificationCode();
+
+        assertThatThrownBy(() -> userService.verifySignup(new SignupVerifyRequest("signup-b@example.com", verificationCode)))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("verification code not requested");
+                });
+
+        assertThat(userRepository.findById("PM004")).isEmpty();
+    }
+
+    @Test
     void signupUserCanLoginAndVerify() throws Exception {
         userService.signup(new SignupRequest(
                 "PM003",
@@ -150,6 +244,8 @@ class UserServiceTest {
                 "Signup123",
                 "PM"
         ));
+        String signupCode = extractLatestVerificationCode();
+        userService.verifySignup(new SignupVerifyRequest("loginpm@example.com", signupCode));
 
         var loginResponse = userService.login(new LoginRequest("loginpm@example.com", "Signup123", "PM"));
         String verificationCode = extractLatestVerificationCode();
@@ -161,7 +257,7 @@ class UserServiceTest {
     }
 
     @Test
-    void signupUserLoginFailsForWrongRole() {
+    void signupUserLoginFailsForWrongRole() throws Exception {
         userService.signup(new SignupRequest(
                 "ST003",
                 "Login Staff",
@@ -169,6 +265,9 @@ class UserServiceTest {
                 "Signup123",
                 "STAFF"
         ));
+        String signupCode = extractLatestVerificationCode();
+        userService.verifySignup(new SignupVerifyRequest("loginstaff@example.com", signupCode));
+        clearInvocations(javaMailSender);
 
         assertThatThrownBy(() -> userService.login(new LoginRequest("loginstaff@example.com", "Signup123", "PM")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
