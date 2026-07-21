@@ -44,7 +44,7 @@ public class EmailVerification {
     private String signupRole;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = 30, columnDefinition = "varchar(30)")
     private VerificationPurpose purpose;
 
     @Column(nullable = false)
