@@ -78,3 +78,14 @@ app:
       - application/haansofthwp
       - application/octet-stream
       - text/plain
+
+  slack:
+    # Slack 앱 Bot 토큰(xoxb-). 비어 있으면 Slack 기능이 409를 반환하고, 앱은 정상 부팅된다.
+    bot-token: ${SLACK_BOT_TOKEN:}
+    # conversations.history 1회 호출당 최대 메시지 수 (Slack 상한 1000)
+    fetch-limit: ${SLACK_FETCH_LIMIT:200}
+  ai:
+    base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+    # LLM 호출이 포함돼 있어 넉넉히 잡는다
+    timeout-seconds: ${AI_SERVER_TIMEOUT_SECONDS:60}
+    enable-llm: ${AI_SERVER_ENABLE_LLM:true}
