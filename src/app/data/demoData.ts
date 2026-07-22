@@ -201,35 +201,6 @@ export const PROJECTS: ProjectSummary[] = [
   },
 ];
 
-/**
- * 프로젝트별 요구사항을 결정적으로 생성/반환.
- * - 추출된 requirements가 있으면 그것을 Requirement 형태로 보강해 사용
- * - 없으면 프로젝트 id 기반으로 풀에서 서로 다른 목록을 만들어 반환
- */
-export function projectRequirements(p: ProjectSummary): Requirement[] {
-  const seed = Array.from(p.id).reduce((a, c) => a + c.charCodeAt(0), 0);
-  const count = p.reqCount > 0 ? Math.min(p.reqCount, EXTRACTED_REQ_POOL.length) : 6;
-  const diffs: Difficulty[] = ["상", "중", "하"];
-  const statuses: ReqStatus[] = ["미배정", "배정됨", "검토중", "완료"];
-  const base =
-    p.requirements && p.requirements.length
-      ? p.requirements
-      : Array.from(
-          { length: count },
-          (_, i) => EXTRACTED_REQ_POOL[(seed + i) % EXTRACTED_REQ_POOL.length],
-        );
-  const statusRange = p.status === "진행중" || p.status === "완료" ? statuses.length : 2;
-  return base.map((r, i) => ({
-    id: i + 1,
-    text: r.text,
-    category: r.category,
-    priority: r.priority,
-    difficulty: diffs[(seed + i) % diffs.length],
-    recommendedOwner: ASSIGNEES[(seed + i) % ASSIGNEES.length],
-    status: statuses[(seed + i) % statusRange],
-  }));
-}
-
 export const KPI_PM = {
   progress: 62,
   daysLeft: 14,

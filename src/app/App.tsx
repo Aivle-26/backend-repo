@@ -17,7 +17,6 @@ import {
 import { Toaster } from "@/app/components/ui/sonner";
 import { Sidebar, type SidebarItem } from "@/app/components/layout/Sidebar";
 import { TopBar } from "@/app/components/layout/TopBar";
-import { ProjectScopeBar } from "@/app/components/layout/ProjectScopeBar";
 import { LoginScreen } from "@/app/components/auth/LoginScreen";
 import { PmAnalysis } from "@/app/components/pm/PmAnalysis";
 import { PmDocuments } from "@/app/components/pm/PmDocuments";
@@ -68,17 +67,6 @@ const STAFF_MENU: SidebarItem[] = [
   { key: "comments", label: "댓글", icon: MessagesSquare },
 ];
 
-// 프로젝트 단위로 다뤄야 하는 PM 메뉴 (상단에 프로젝트 선택 바 표시)
-const SCOPED_PM = new Set([
-  "upload",
-  "analysis",
-  "requirements",
-  "assign",
-  "documents",
-  "risk",
-  "review",
-]);
-
 export default function App() {
   const [role, setRole] = useState<Role | null>(() => {
     const saved =
@@ -92,9 +80,6 @@ export default function App() {
   const [pmDetail, setPmDetail] = useState<ProjectSummary | null>(null);
   const [pmWizard, setPmWizard] = useState<ProjectSummary | null>(null);
   const [pmExtract, setPmExtract] = useState<ProjectSummary | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(
-    () => PROJECTS[0]?.id ?? "",
-  );
 
   const startProject = (id: string) =>
     setProjects((prev) =>
@@ -163,34 +148,31 @@ export default function App() {
   let body: React.ReactNode = null;
   let actions: React.ReactNode = null;
 
-  const selectedProject =
-    projects.find((p) => p.id === selectedProjectId) ?? projects[0];
-
   if (isPm) {
     if (pmMenu === "slack") {
       subtitle = "Slack 연동";
       body = <SlackIntegration />;
     } else if (pmMenu === "upload") {
       subtitle = "공고문 업로드";
-      body = <PmUpload key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmUpload />;
     } else if (pmMenu === "documents") {
       subtitle = "문서 통합 관리";
-      body = <PmDocuments key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmDocuments />;
     } else if (pmMenu === "risk") {
       subtitle = "리스크 관리";
-      body = <PmRisk key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmRisk />;
     } else if (pmMenu === "review") {
       subtitle = "산출물 검토";
-      body = <PmReview key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmReview />;
     } else if (pmMenu === "requirements") {
       subtitle = "요구사항";
-      body = <PmRequirements key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmRequirements />;
     } else if (pmMenu === "assign") {
       subtitle = "업무 배정";
-      body = <PmAssign key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmAssign />;
     } else if (pmMenu === "analysis") {
       subtitle = "AI 분석";
-      body = <PmAnalysis key={selectedProject?.id} project={selectedProject!} />;
+      body = <PmAnalysis />;
     } else if (pmExtract) {
       subtitle = `${pmExtract.name} · AI 추출`;
       body = (
@@ -293,19 +275,6 @@ export default function App() {
       subtitle = "직원 대시보드";
       body = <StaffDashboard onOpenTask={() => setTaskOpen(true)} />;
     }
-  }
-
-  if (isPm && SCOPED_PM.has(pmMenu)) {
-    body = (
-      <div className="space-y-4">
-        <ProjectScopeBar
-          projects={projects}
-          value={selectedProjectId}
-          onChange={setSelectedProjectId}
-        />
-        {body}
-      </div>
-    );
   }
 
   return (
