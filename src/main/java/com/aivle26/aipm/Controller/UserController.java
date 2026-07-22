@@ -23,6 +23,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,12 +61,14 @@ public class UserController {
     }
 
     @GetMapping("/session")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<AuthSessionResponse> session(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         return ResponseEntity.ok(authService.getCurrentSession(user.employeeNumber()));
     }
 
     @GetMapping("/me")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<AuthSessionResponse> me(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         return ResponseEntity.ok(authService.getCurrentSession(user.employeeNumber()));
@@ -77,6 +80,7 @@ public class UserController {
     }
 
     @PostMapping("/activity")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<Map<String, String>> recordActivity(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         authService.recordActivity(user.employeeNumber());

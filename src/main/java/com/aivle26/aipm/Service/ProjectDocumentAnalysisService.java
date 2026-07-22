@@ -38,9 +38,11 @@ public class ProjectDocumentAnalysisService {
     private final ProjectDocumentAnalysisResultRepository analysisResultRepository;
     private final ProjectRequirementRepository projectRequirementRepository;
     private final ObjectMapper objectMapper;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional
     public SaveDocumentAnalysisResultResponse saveAnalysisResult(Long projectId, SaveDocumentAnalysisResultRequest request) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

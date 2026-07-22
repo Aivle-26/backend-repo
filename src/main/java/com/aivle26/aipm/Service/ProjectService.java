@@ -20,9 +20,11 @@ import java.util.List;
 public class ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectPmResolver projectPmResolver;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional
     public CreateProjectDraftResponse createProjectDraft(CreateProjectDraftRequest request) {
+        projectAuthorizationService.requireCurrentPm(request.pmEmployeeNumber());
         if (request.plannedEndDate().isBefore(request.plannedStartDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
         }

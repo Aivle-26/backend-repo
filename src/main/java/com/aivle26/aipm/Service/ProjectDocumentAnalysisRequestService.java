@@ -15,9 +15,11 @@ public class ProjectDocumentAnalysisRequestService {
     private final ProjectRepository projectRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final ProjectAgentClient projectAgentClient;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional(readOnly = true)
     public AgentRequestResult requestAnalysis(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         if (!projectRepository.existsById(projectId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "project not found");
         }

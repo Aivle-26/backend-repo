@@ -2,6 +2,7 @@ package com.aivle26.aipm.Config;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -22,5 +23,6 @@ public class AuthProperties {
     private long inactivityTimeoutMinutes = 30;
 
     @NotBlank
+    @Size(min = 32)
     private String jwtSecret;
 }
