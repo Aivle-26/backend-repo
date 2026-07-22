@@ -39,9 +39,11 @@ public class ProjectWbsService {
     private final ProjectRequirementRepository projectRequirementRepository;
     private final ProjectWbsResultRepository projectWbsResultRepository;
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional
     public SaveWbsResultResponse saveWbsResult(Long projectId, SaveWbsResultRequest request) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

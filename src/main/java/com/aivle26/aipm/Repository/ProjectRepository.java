@@ -9,4 +9,6 @@ import java.util.List;
 public interface ProjectRepository extends JpaRepository<Project, Long> {
     @EntityGraph(attributePaths = "pm")
     List<Project> findAllByOrderByCreatedAtDesc();
+
+    boolean existsByIdAndPm_EmployeeNumber(Long id, String employeeNumber);
 }

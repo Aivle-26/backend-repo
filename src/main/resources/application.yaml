@@ -52,7 +52,7 @@ app:
     access-token-expiration-minutes: ${AUTH_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
     absolute-login-expiration-hours: ${AUTH_ABSOLUTE_LOGIN_EXPIRATION_HOURS:8}
     inactivity-timeout-minutes: ${AUTH_INACTIVITY_TIMEOUT_MINUTES:30}
-    jwt-secret: ${AUTH_JWT_SECRET:change-this-secret-change-this-secret-change-this-secret}
+    jwt-secret: ${AUTH_JWT_SECRET}
   mail:
     from-address: ${MAIL_FROM_ADDRESS:}
     from-name: ${MAIL_FROM_NAME:AIPM}

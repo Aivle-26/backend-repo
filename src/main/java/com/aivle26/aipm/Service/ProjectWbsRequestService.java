@@ -16,9 +16,11 @@ public class ProjectWbsRequestService {
     private final ProjectRepository projectRepository;
     private final ProjectRequirementRepository projectRequirementRepository;
     private final ProjectAgentClient projectAgentClient;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional(readOnly = true)
     public AgentRequestResult requestWbsGeneration(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         var project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

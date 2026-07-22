@@ -36,9 +36,11 @@ public class ProjectScheduleService {
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleRepository projectScheduleRepository;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional
     public SaveScheduleResultResponse saveScheduleResult(Long projectId, SaveScheduleResultRequest request) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

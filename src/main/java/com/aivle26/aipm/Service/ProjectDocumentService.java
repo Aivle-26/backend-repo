@@ -33,9 +33,11 @@ public class ProjectDocumentService {
     private final ProjectRepository projectRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final DocumentStorageProperties documentStorageProperties;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional
     public ProjectDocumentUploadResponse uploadInitialDocuments(Long projectId, List<MultipartFile> files) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

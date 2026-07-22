@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,16 +50,19 @@ public class ProjectController {
     private final ProjectScheduleRequestService projectScheduleRequestService;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<List<ProjectSummaryResponse>> listProjects() {
         return ResponseEntity.ok(projectService.listProjects());
     }
 
     @PostMapping("/drafts")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<CreateProjectDraftResponse> createProjectDraft(@Valid @RequestBody CreateProjectDraftRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(projectService.createProjectDraft(request));
     }
 
     @PostMapping(path = "/{projectId}/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<ProjectDocumentUploadResponse> uploadDocuments(
             @PathVariable Long projectId,
             @RequestPart("files") List<MultipartFile> files
@@ -67,12 +71,14 @@ public class ProjectController {
     }
 
     @PostMapping("/{projectId}/documents/analyze")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<AgentRequestResult> requestDocumentAnalysis(@PathVariable Long projectId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(projectDocumentAnalysisRequestService.requestAnalysis(projectId));
     }
 
     @PostMapping("/{projectId}/documents/analysis-results")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<SaveDocumentAnalysisResultResponse> saveDocumentAnalysisResult(
             @PathVariable Long projectId,
             @Valid @RequestBody SaveDocumentAnalysisResultRequest request
@@ -82,12 +88,14 @@ public class ProjectController {
     }
 
     @PostMapping("/{projectId}/wbs/generate")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<AgentRequestResult> requestWbsGeneration(@PathVariable Long projectId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(projectWbsRequestService.requestWbsGeneration(projectId));
     }
 
     @PostMapping("/{projectId}/wbs/results")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<SaveWbsResultResponse> saveWbsResult(
             @PathVariable Long projectId,
             @Valid @RequestBody SaveWbsResultRequest request
@@ -97,12 +105,14 @@ public class ProjectController {
     }
 
     @PostMapping("/{projectId}/schedules/generate")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<AgentRequestResult> requestScheduleGeneration(@PathVariable Long projectId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(projectScheduleRequestService.requestScheduleGeneration(projectId));
     }
 
     @PostMapping("/{projectId}/schedules/results")
+    @PreAuthorize("hasRole('PM')")
     public ResponseEntity<SaveScheduleResultResponse> saveScheduleResult(
             @PathVariable Long projectId,
             @Valid @RequestBody SaveScheduleResultRequest request

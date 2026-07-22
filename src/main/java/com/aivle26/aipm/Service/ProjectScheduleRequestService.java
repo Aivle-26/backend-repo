@@ -16,9 +16,11 @@ public class ProjectScheduleRequestService {
     private final ProjectRepository projectRepository;
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
     private final ProjectAgentClient projectAgentClient;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     @Transactional(readOnly = true)
     public AgentRequestResult requestScheduleGeneration(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         var project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 
