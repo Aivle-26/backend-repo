@@ -37,6 +37,9 @@ public class Project {
     @Column(length = 2000)
     private String description;
 
+    @Column(length = 255)
+    private String clientOrganization;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "pm_employee_number", nullable = false)
     private User pm;
@@ -48,6 +51,15 @@ public class Project {
     private LocalDate plannedStartDate;
 
     private LocalDate plannedEndDate;
+
+    @Column(columnDefinition = "TEXT")
+    private String acceptanceConditionsJson;
+
+    @Column(columnDefinition = "TEXT")
+    private String budgetContractConditionsJson;
+
+    @Column(columnDefinition = "TEXT")
+    private String securityPrivacyConditionsJson;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

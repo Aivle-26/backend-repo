@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Controller;
 
 import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
+import com.aivle26.aipm.Dto.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Dto.ProjectSummaryResponse;
@@ -11,9 +12,12 @@ import com.aivle26.aipm.Dto.SaveScheduleResultRequest;
 import com.aivle26.aipm.Dto.SaveScheduleResultResponse;
 import com.aivle26.aipm.Dto.SaveWbsResultRequest;
 import com.aivle26.aipm.Dto.SaveWbsResultResponse;
+import com.aivle26.aipm.Exception.ApiException;
+import com.aivle26.aipm.Service.AuthenticatedUser;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisRequestService;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.ProjectDocumentService;
+import com.aivle26.aipm.Service.ProjectDraftFromDocumentsService;
 import com.aivle26.aipm.Service.ProjectScheduleRequestService;
 import com.aivle26.aipm.Service.ProjectScheduleService;
 import com.aivle26.aipm.Service.ProjectService;
@@ -24,11 +28,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,6 +46,7 @@ import java.util.List;
 @RequestMapping("/api/projects")
 public class ProjectController {
     private final ProjectService projectService;
+    private final ProjectDraftFromDocumentsService projectDraftFromDocumentsService;
     private final ProjectDocumentService projectDocumentService;
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
     private final ProjectDocumentAnalysisRequestService projectDocumentAnalysisRequestService;
@@ -56,6 +63,18 @@ public class ProjectController {
     @PostMapping("/drafts")
     public ResponseEntity<CreateProjectDraftResponse> createProjectDraft(@Valid @RequestBody CreateProjectDraftRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(projectService.createProjectDraft(request));
+    }
+
+    @PostMapping(path = "/drafts/from-documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CreateProjectDraftFromDocumentsResponse> createProjectDraftFromDocuments(
+            @RequestPart("files") List<MultipartFile> files,
+            @RequestParam(value = "enableLlm", defaultValue = "true") boolean enableLlm,
+            @RequestParam(value = "pmUserId", required = false) String pmUserId,
+            Authentication authentication
+    ) {
+        String pmEmployeeNumber = resolvePmEmployeeNumber(authentication, pmUserId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(projectDraftFromDocumentsService.createDraftFromDocuments(files, enableLlm, pmEmployeeNumber));
     }
 
     @PostMapping(path = "/{projectId}/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -109,5 +128,16 @@ public class ProjectController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(projectScheduleService.saveScheduleResult(projectId, request));
+    }
+
+    private String resolvePmEmployeeNumber(Authentication authentication, String pmUserId) {
+        if (authentication != null && authentication.getPrincipal() instanceof AuthenticatedUser user) {
+            return user.employeeNumber();
+        }
+        // TODO: 인증 연동이 완전히 정리되면 pmUserId fallback 제거
+        if (pmUserId != null && !pmUserId.isBlank()) {
+            return pmUserId.trim();
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "PM_USER_REQUIRED", "PM 사용자를 확인할 수 없습니다.");
     }
 }

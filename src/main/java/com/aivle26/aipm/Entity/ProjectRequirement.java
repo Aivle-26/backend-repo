@@ -11,11 +11,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -33,8 +35,8 @@ public class ProjectRequirement {
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "analysis_result_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "analysis_result_id")
     private ProjectDocumentAnalysisResult analysisResult;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -54,6 +56,23 @@ public class ProjectRequirement {
     @Column(nullable = false, length = 2000)
     private String description;
 
+    @Column(length = 2000)
+    private String acceptanceCriteria;
+
+    private LocalDate dueDate;
+
+    @Column(length = 255)
+    private String deliverableName;
+
+    @Column(length = 1000)
+    private String securityCondition;
+
+    @Column(length = 255)
+    private String sourceDocumentName;
+
+    @Column(columnDefinition = "TEXT")
+    private String sourceExcerpt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private RequirementPriority priority;
@@ -62,11 +81,24 @@ public class ProjectRequirement {
     @Column(nullable = false, length = 30)
     private RequirementStatus status;
 
+    @Column(nullable = false)
+    private boolean confirmed;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
     @PrePersist
     public void onCreate() {
-        this.createdAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    @PreUpdate
+    public void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 }

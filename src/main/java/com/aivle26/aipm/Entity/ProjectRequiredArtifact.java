@@ -11,7 +11,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -22,9 +24,11 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "project_documents")
-public class ProjectDocument {
-
+@Table(
+        name = "project_required_artifacts",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"project_id", "artifact_type", "artifact_name"})
+)
+public class ProjectRequiredArtifact {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -34,40 +38,30 @@ public class ProjectDocument {
     private Project project;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
-    private ProjectDocumentStatus status;
+    @Column(nullable = false, length = 50)
+    private RequiredArtifactType artifactType;
 
     @Column(nullable = false, length = 255)
-    private String originalFileName;
-
-    @Column(nullable = false, length = 255)
-    private String storedFileName;
-
-    @Column(nullable = false, length = 1000)
-    private String storagePath;
+    private String artifactName;
 
     @Column(nullable = false, length = 50)
-    private String extension;
-
-    @Column(length = 255)
-    private String contentType;
-
-    @Column(nullable = false)
-    private long fileSize;
-
-    private Long characterCount;
-
-    @Column(length = 50)
-    private String fileType;
-
-    @Column(length = 50)
-    private String processingMode;
+    private String requiredVersion;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
     @PrePersist
     public void onCreate() {
-        this.createdAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    @PreUpdate
+    public void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 }

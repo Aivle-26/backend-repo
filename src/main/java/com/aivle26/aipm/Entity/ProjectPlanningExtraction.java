@@ -22,9 +22,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "project_documents")
-public class ProjectDocument {
-
+@Table(name = "project_planning_extractions")
+public class ProjectPlanningExtraction {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -34,34 +33,17 @@ public class ProjectDocument {
     private Project project;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
-    private ProjectDocumentStatus status;
-
-    @Column(nullable = false, length = 255)
-    private String originalFileName;
-
-    @Column(nullable = false, length = 255)
-    private String storedFileName;
-
-    @Column(nullable = false, length = 1000)
-    private String storagePath;
-
     @Column(nullable = false, length = 50)
-    private String extension;
-
-    @Column(length = 255)
-    private String contentType;
+    private PlanningLlmStatus llmStatus;
 
     @Column(nullable = false)
-    private long fileSize;
+    private int documentCount;
 
-    private Long characterCount;
+    @Column(nullable = false)
+    private int requirementCount;
 
-    @Column(length = 50)
-    private String fileType;
-
-    @Column(length = 50)
-    private String processingMode;
+    @Column(nullable = false)
+    private int requiredArtifactCount;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
