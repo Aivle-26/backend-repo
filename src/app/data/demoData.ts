@@ -61,6 +61,7 @@ export type ProjectDocType = "RFP" | "요구사항정의서" | "제안서";
 export interface ProjectDoc {
   name: string;
   type: ProjectDocType;
+  file?: File;
 }
 
 export interface ProjectRequirement {
@@ -85,6 +86,19 @@ export interface ProjectSummary {
   updatedAt: string;
   docs: ProjectDoc[]; // 초기 문서 (없으면 나중에 업로드)
   requirements?: ProjectRequirement[]; // AI 추출 요구사항 (있으면 마법사에서 사용)
+}
+
+export function projectRequirements(project: ProjectSummary): ProjectRequirement[] {
+  if (project.requirements && project.requirements.length > 0) {
+    return project.requirements;
+  }
+  return EXTRACTED_REQ_POOL.slice(0, Math.max(1, project.reqCount || 6)).map((requirement, index) => ({
+    id: index + 1,
+    text: requirement.text,
+    category: requirement.category,
+    priority: requirement.priority,
+    source: project.docs[index % Math.max(1, project.docs.length)]?.name ?? "AI 분석 문서",
+  }));
 }
 
 /** AI 추출 시뮬레이션용 요구사항 풀 */

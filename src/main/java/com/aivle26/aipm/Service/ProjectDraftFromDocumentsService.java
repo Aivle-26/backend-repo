@@ -6,6 +6,7 @@ import com.aivle26.aipm.Dto.PlanningDocumentExtractResponse;
 import com.aivle26.aipm.Entity.PlanningLlmStatus;
 import com.aivle26.aipm.Entity.Project;
 import com.aivle26.aipm.Entity.ProjectDocument;
+import com.aivle26.aipm.Entity.ProjectDocumentAnalysisResult;
 import com.aivle26.aipm.Entity.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.ProjectKeyFeature;
 import com.aivle26.aipm.Entity.ProjectPlanningExtraction;
@@ -18,6 +19,7 @@ import com.aivle26.aipm.Entity.RequirementType;
 import com.aivle26.aipm.Entity.RequiredArtifactType;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Exception.ApiException;
+import com.aivle26.aipm.Repository.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.ProjectKeyFeatureRepository;
 import com.aivle26.aipm.Repository.ProjectPlanningExtractionRepository;
@@ -72,6 +74,7 @@ public class ProjectDraftFromDocumentsService {
     private final ProjectRequiredArtifactRepository requiredArtifactRepository;
     private final ProjectKeyFeatureRepository keyFeatureRepository;
     private final ProjectPlanningExtractionRepository extractionRepository;
+    private final ProjectDocumentAnalysisResultRepository analysisResultRepository;
     private final DocumentStorageProperties documentStorageProperties;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
@@ -80,34 +83,33 @@ public class ProjectDraftFromDocumentsService {
         List<ValidatedUploadFile> validatedFiles = validateFiles(files);
         PlanningDocumentExtractResponse agentResponse = planningAgentClient.extractDocuments(files, enableLlm);
         ValidatedAgentResult validatedAgentResult = validateAgentResponse(agentResponse, validatedFiles);
-        // TODO: 동일 문서 세트 재요청 시 프로젝트 중복 생성을 방지하기 위한 Idempotency-Key 저장 적용
         return transactionTemplate.execute(status -> saveDraft(validatedFiles, validatedAgentResult, pmEmployeeNumber));
     }
 
     private List<ValidatedUploadFile> validateFiles(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "PROJECT_DOCUMENT_REQUIRED", "문서를 하나 이상 업로드해야 합니다.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "PROJECT_DOCUMENT_REQUIRED", "At least one document must be uploaded.");
         }
         if (files.size() > MAX_FILE_COUNT) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TOO_MANY_PROJECT_DOCUMENTS", "문서는 최대 10개까지 업로드할 수 있습니다.");
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TOO_MANY_PROJECT_DOCUMENTS", "A maximum of 10 documents can be uploaded.");
         }
 
         Set<String> fileNames = new HashSet<>();
         List<ValidatedUploadFile> validatedFiles = new ArrayList<>();
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "PROJECT_DOCUMENT_EMPTY", "빈 파일은 업로드할 수 없습니다.");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "PROJECT_DOCUMENT_EMPTY", "Empty files are not allowed.");
             }
             String fileName = normalizeFileName(file.getOriginalFilename());
             if (!fileNames.add(fileName)) {
-                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "DUPLICATE_PROJECT_DOCUMENT_NAME", "중복된 파일명은 업로드할 수 없습니다: " + fileName);
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "DUPLICATE_PROJECT_DOCUMENT_NAME", "Duplicate file name: " + fileName);
             }
             String extension = extractExtension(fileName);
             if (!ALLOWED_EXTENSIONS.contains(extension)) {
-                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "지원하지 않는 파일 형식입니다: ." + extension);
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported file extension: ." + extension);
             }
             if (file.getSize() > MAX_FILE_SIZE) {
-                throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "PROJECT_DOCUMENT_TOO_LARGE", "파일 크기는 20MB를 초과할 수 없습니다: " + fileName);
+                throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "PROJECT_DOCUMENT_TOO_LARGE", "File size exceeds 20MB: " + fileName);
             }
             validateMimeType(extension, file.getContentType(), fileName);
             validatedFiles.add(new ValidatedUploadFile(file, fileName, extension, file.getContentType(), file.getSize()));
@@ -119,11 +121,13 @@ public class ProjectDraftFromDocumentsService {
         if (response == null || response.projectInfo() == null) {
             throw invalidAgentResponse();
         }
-        PlanningDocumentExtractResponse.ProjectInfo projectInfo = response.projectInfo();
+
+        PlanningDocumentExtractResponse normalizedResponse = normalizeResponseFileNames(response, files);
+        PlanningDocumentExtractResponse.ProjectInfo projectInfo = normalizedResponse.projectInfo();
         requireText(projectInfo.projectName(), "project_name");
         requireText(projectInfo.projectGoal(), "project_goal");
         validateDateRange(projectInfo.periodStart(), projectInfo.periodEnd());
-        PlanningLlmStatus llmStatus = parseEnum(response.llmStatus(), PlanningLlmStatus.class, "llm_status");
+        PlanningLlmStatus llmStatus = parseEnum(normalizedResponse.llmStatus(), PlanningLlmStatus.class, "llm_status");
 
         List<PlanningDocumentExtractResponse.RequiredArtifact> artifacts = requireList(projectInfo.requiredArtifacts(), "required_artifacts");
         List<RequiredArtifactType> artifactTypes = new ArrayList<>();
@@ -134,7 +138,7 @@ public class ProjectDraftFromDocumentsService {
             requireText(artifact.requiredVersion(), "required_version");
             RequiredArtifactType type = parseEnum(artifact.artifactType(), RequiredArtifactType.class, "artifact_type");
             if (!artifactKeys.add(type.name() + "|" + artifact.artifactName().trim())) {
-                throw invalidAgentResponse("중복된 산출물입니다: " + artifact.artifactName());
+                throw invalidAgentResponse("Duplicate required_artifact: " + artifact.artifactName());
             }
             artifactTypes.add(type);
         }
@@ -145,23 +149,20 @@ public class ProjectDraftFromDocumentsService {
         }
 
         Map<String, PlanningDocumentExtractResponse.DocumentResult> documentByName = new HashMap<>();
-        for (PlanningDocumentExtractResponse.DocumentResult document : requireList(response.documents(), "documents")) {
+        for (PlanningDocumentExtractResponse.DocumentResult document : requireList(normalizedResponse.documents(), "documents")) {
             requireText(document.fileName(), "file_name");
-            if (!uploadByName.containsKey(document.fileName())) {
-                throw invalidAgentResponse("응답 문서명이 실제 업로드 파일과 일치하지 않습니다: " + document.fileName());
-            }
             requireText(document.fileType(), "file_type");
             requireText(document.processingMode(), "processing_mode");
             if (document.characterCount() == null || document.characterCount() < 0) {
-                throw invalidAgentResponse("character_count가 올바르지 않습니다.");
+                throw invalidAgentResponse("character_count is invalid.");
             }
             documentByName.put(document.fileName(), document);
         }
         if (!documentByName.keySet().equals(uploadByName.keySet())) {
-            throw invalidAgentResponse("AI 응답 문서 목록이 업로드 파일 목록과 일치하지 않습니다.");
+            throw invalidAgentResponse("AI response document list does not match uploaded files.");
         }
 
-        List<PlanningDocumentExtractResponse.RequirementCandidate> requirements = requireList(response.requirementCandidates(), "requirement_candidates");
+        List<PlanningDocumentExtractResponse.RequirementCandidate> requirements = requireList(normalizedResponse.requirementCandidates(), "requirement_candidates");
         Set<String> requirementIds = new HashSet<>();
         List<RequirementType> requirementTypes = new ArrayList<>();
         List<RequirementPriority> requirementPriorities = new ArrayList<>();
@@ -173,16 +174,68 @@ public class ProjectDraftFromDocumentsService {
             requireText(requirement.priority(), "priority");
             requireText(requirement.sourceDocument(), "source_document");
             if (!requirementIds.add(requirement.requirementId().trim())) {
-                throw invalidAgentResponse("중복된 requirement_id입니다: " + requirement.requirementId());
-            }
-            if (!uploadByName.containsKey(requirement.sourceDocument())) {
-                throw invalidAgentResponse("요구사항의 원본 문서명이 업로드 파일과 일치하지 않습니다: " + requirement.sourceDocument());
+                throw invalidAgentResponse("Duplicate requirement_id: " + requirement.requirementId());
             }
             requirementTypes.add(parseEnum(requirement.category(), RequirementType.class, "category"));
             requirementPriorities.add(parseEnum(requirement.priority(), RequirementPriority.class, "priority"));
         }
 
-        return new ValidatedAgentResult(response, llmStatus, artifactTypes, documentByName, requirementTypes, requirementPriorities);
+        return new ValidatedAgentResult(normalizedResponse, llmStatus, artifactTypes, documentByName, requirementTypes, requirementPriorities);
+    }
+
+    private PlanningDocumentExtractResponse normalizeResponseFileNames(PlanningDocumentExtractResponse response, List<ValidatedUploadFile> files) {
+        List<PlanningDocumentExtractResponse.DocumentResult> responseDocuments = requireList(response.documents(), "documents");
+        if (responseDocuments.size() != files.size()) {
+            throw invalidAgentResponse("AI response document count does not match uploaded files.");
+        }
+
+        Map<String, String> responseToUploadNames = new LinkedHashMap<>();
+        List<PlanningDocumentExtractResponse.DocumentResult> normalizedDocuments = new ArrayList<>();
+        for (int i = 0; i < files.size(); i++) {
+            PlanningDocumentExtractResponse.DocumentResult document = responseDocuments.get(i);
+            requireText(document.fileName(), "file_name");
+            String responseFileName = normalizeFileName(document.fileName());
+            String uploadFileName = files.get(i).fileName();
+            if (responseToUploadNames.putIfAbsent(responseFileName, uploadFileName) != null) {
+                throw invalidAgentResponse("Duplicate AI document file_name: " + responseFileName);
+            }
+            normalizedDocuments.add(new PlanningDocumentExtractResponse.DocumentResult(
+                    uploadFileName,
+                    document.fileType(),
+                    document.characterCount(),
+                    document.processingMode()
+            ));
+        }
+
+        List<PlanningDocumentExtractResponse.RequirementCandidate> normalizedRequirements = new ArrayList<>();
+        for (PlanningDocumentExtractResponse.RequirementCandidate requirement : requireList(response.requirementCandidates(), "requirement_candidates")) {
+            requireText(requirement.sourceDocument(), "source_document");
+            String sourceDocument = normalizeFileName(requirement.sourceDocument());
+            String uploadFileName = responseToUploadNames.get(sourceDocument);
+            if (uploadFileName == null) {
+                throw invalidAgentResponse("Requirement source_document is not mapped to an uploaded file: " + requirement.sourceDocument());
+            }
+            normalizedRequirements.add(new PlanningDocumentExtractResponse.RequirementCandidate(
+                    requirement.requirementId(),
+                    requirement.functionName(),
+                    requirement.requirementText(),
+                    requirement.category(),
+                    requirement.priority(),
+                    requirement.acceptanceCriteria(),
+                    requirement.dueDate(),
+                    requirement.deliverableName(),
+                    requirement.securityCondition(),
+                    uploadFileName,
+                    requirement.sourceExcerpt()
+            ));
+        }
+
+        return new PlanningDocumentExtractResponse(
+                response.projectInfo(),
+                normalizedRequirements,
+                normalizedDocuments,
+                response.llmStatus()
+        );
     }
 
     protected CreateProjectDraftFromDocumentsResponse saveDraft(List<ValidatedUploadFile> files, ValidatedAgentResult result, String pmEmployeeNumber) {
@@ -202,6 +255,7 @@ public class ProjectDraftFromDocumentsService {
             project.setBudgetContractConditionsJson(toNullableJson(projectInfo.budgetContractConditions()));
             project.setSecurityPrivacyConditionsJson(toNullableJson(projectInfo.securityPrivacyConditions()));
             Project savedProject = projectRepository.save(project);
+            ProjectDocumentAnalysisResult savedAnalysisResult = analysisResultRepository.save(createAnalysisResult(savedProject, projectInfo));
 
             List<ProjectDocument> savedDocuments = new ArrayList<>();
             for (ValidatedUploadFile uploadFile : files) {
@@ -255,6 +309,7 @@ public class ProjectDraftFromDocumentsService {
                 PlanningDocumentExtractResponse.RequirementCandidate candidate = result.response().requirementCandidates().get(i);
                 ProjectRequirement requirement = new ProjectRequirement();
                 requirement.setProject(savedProject);
+                requirement.setAnalysisResult(savedAnalysisResult);
                 requirement.setSourceDocument(savedDocumentByName.get(candidate.sourceDocument()));
                 requirement.setExternalReferenceId(candidate.requirementId().trim());
                 requirement.setType(result.requirementTypes().get(i));
@@ -289,7 +344,7 @@ public class ProjectDraftFromDocumentsService {
                     requirements.size(),
                     artifacts.size(),
                     savedDocuments.size(),
-                    "AI 문서 분석 결과를 기반으로 임시 프로젝트가 생성되었습니다."
+                    "Project draft created from analyzed documents."
             );
         } catch (RuntimeException exception) {
             cleanupFiles(savedPaths);
@@ -297,12 +352,27 @@ public class ProjectDraftFromDocumentsService {
         }
     }
 
+    private ProjectDocumentAnalysisResult createAnalysisResult(Project project, PlanningDocumentExtractResponse.ProjectInfo projectInfo) {
+        ProjectDocumentAnalysisResult analysisResult = new ProjectDocumentAnalysisResult();
+        analysisResult.setProject(project);
+        analysisResult.setAgentExecutionId("draft-" + UUID.randomUUID());
+        analysisResult.setAgentVersion("planning-agent:draft-from-documents");
+        analysisResult.setProjectGoal(projectInfo.projectGoal().trim());
+        analysisResult.setScope(buildScope(projectInfo));
+        analysisResult.setDeliverablesJson(toStringListJson(extractArtifactNames(projectInfo.requiredArtifacts())));
+        analysisResult.setMilestonesJson(emptyJsonArray());
+        analysisResult.setTechnologyStacksJson(emptyJsonArray());
+        analysisResult.setConstraintsJson(toStringListJson(defaultIfNull(projectInfo.budgetContractConditions())));
+        analysisResult.setRisksJson(toStringListJson(defaultIfNull(projectInfo.securityPrivacyConditions())));
+        return analysisResult;
+    }
+
     private StoredFile storeFile(ValidatedUploadFile uploadFile) {
         Path rootDirectory = Path.of(documentStorageProperties.getStoragePath()).toAbsolutePath().normalize();
         String storedFileName = UUID.randomUUID() + "." + uploadFile.extension();
         Path targetPath = rootDirectory.resolve(storedFileName).normalize();
         if (!targetPath.startsWith(rootDirectory)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "파일 경로가 올바르지 않습니다.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file path.");
         }
         try {
             Files.createDirectories(rootDirectory);
@@ -311,7 +381,7 @@ public class ProjectDraftFromDocumentsService {
             }
             return new StoredFile(storedFileName, targetPath);
         } catch (IOException exception) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PROJECT_DOCUMENT_SAVE_FAILED", "파일 저장에 실패했습니다.", exception);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PROJECT_DOCUMENT_SAVE_FAILED", "Failed to store file.", exception);
         }
     }
 
@@ -321,18 +391,18 @@ public class ProjectDraftFromDocumentsService {
         }
         Set<String> allowedMimeTypes = ALLOWED_MIME_TYPES.get(extension);
         if (contentType == null || allowedMimeTypes == null || allowedMimeTypes.stream().noneMatch(contentType::equalsIgnoreCase)) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "지원하지 않는 파일 형식입니다: " + fileName);
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported MIME type for file: " + fileName);
         }
     }
 
     private String normalizeFileName(String fileName) {
         if (fileName == null || fileName.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "파일명이 올바르지 않습니다.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
         }
         String normalized = Normalizer.normalize(fileName, Normalizer.Form.NFC).replace("\\", "/");
         String baseName = normalized.substring(normalized.lastIndexOf('/') + 1).trim();
         if (baseName.isBlank() || ".".equals(baseName) || "..".equals(baseName) || baseName.contains("..")) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "파일명이 올바르지 않습니다.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
         }
         return baseName;
     }
@@ -340,27 +410,27 @@ public class ProjectDraftFromDocumentsService {
     private String extractExtension(String fileName) {
         int dotIndex = fileName.lastIndexOf('.');
         if (dotIndex <= 0 || dotIndex == fileName.length() - 1) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "지원하지 않는 파일 형식입니다: " + fileName);
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported file extension: " + fileName);
         }
         return fileName.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
     }
 
     private void validateDateRange(LocalDate start, LocalDate end) {
         if (start != null && end != null && end.isBefore(start)) {
-            throw invalidAgentResponse("프로젝트 종료일이 시작일보다 빠릅니다.");
+            throw invalidAgentResponse("period_end is before period_start.");
         }
     }
 
     private <T> List<T> requireList(List<T> value, String fieldName) {
         if (value == null) {
-            throw invalidAgentResponse(fieldName + "이 누락되었습니다.");
+            throw invalidAgentResponse(fieldName + " is missing.");
         }
         return value;
     }
 
     private void requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw invalidAgentResponse(fieldName + "이 누락되었습니다.");
+            throw invalidAgentResponse(fieldName + " is missing.");
         }
     }
 
@@ -369,12 +439,50 @@ public class ProjectDraftFromDocumentsService {
         try {
             return Enum.valueOf(enumType, value.trim().toUpperCase(Locale.ROOT));
         } catch (RuntimeException exception) {
-            throw invalidAgentResponse(fieldName + " 값이 올바르지 않습니다: " + value);
+            throw invalidAgentResponse(fieldName + " is invalid: " + value);
         }
     }
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String buildScope(PlanningDocumentExtractResponse.ProjectInfo projectInfo) {
+        List<String> keyFeatures = defaultIfNull(projectInfo.keyFeatures()).stream()
+                .map(this::trimToNull)
+                .filter(value -> value != null)
+                .toList();
+        if (!keyFeatures.isEmpty()) {
+            return String.join(", ", keyFeatures);
+        }
+        return projectInfo.projectGoal().trim();
+    }
+
+    private List<String> extractArtifactNames(List<PlanningDocumentExtractResponse.RequiredArtifact> artifacts) {
+        List<String> artifactNames = new ArrayList<>();
+        for (PlanningDocumentExtractResponse.RequiredArtifact artifact : defaultIfNull(artifacts)) {
+            String artifactName = trimToNull(artifact.artifactName());
+            if (artifactName != null) {
+                artifactNames.add(artifactName);
+            }
+        }
+        return artifactNames;
+    }
+
+    private <T> List<T> defaultIfNull(List<T> value) {
+        return value == null ? List.of() : value;
+    }
+
+    private String emptyJsonArray() {
+        return "[]";
+    }
+
+    private String toStringListJson(List<String> value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw invalidAgentResponse();
+        }
     }
 
     private String toNullableJson(List<String> value) {
@@ -389,7 +497,7 @@ public class ProjectDraftFromDocumentsService {
     }
 
     private ApiException invalidAgentResponse() {
-        return invalidAgentResponse("문서 분석 결과 형식이 올바르지 않습니다.");
+        return invalidAgentResponse("Planning agent response is invalid.");
     }
 
     private ApiException invalidAgentResponse(String message) {

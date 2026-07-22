@@ -1,137 +1,104 @@
-import { useRef, useState } from "react";
-import { UploadCloud, RefreshCw, Download, Trash2, FileText } from "lucide-react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { AlertTriangle, CheckCircle2, FileText, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
-import { Badge } from "@/app/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/app/components/ui/table";
 import { cn } from "@/app/components/ui/utils";
 import { projectRepository } from "@/app/api/projectRepository";
-import type { ProjectSummary, UploadedRfp } from "@/app/data/demoData";
-
-function statusClass(s: UploadedRfp["status"]) {
-  if (s === "분석 완료") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (s === "분석 중") return "bg-blue-50 text-blue-700 border-blue-200";
-  return "bg-amber-50 text-amber-700 border-amber-200";
-}
+import type { ProjectSummary } from "@/app/data/demoData";
 
 export function PmUpload({ project }: { project: ProjectSummary }) {
-  const [files, setFiles] = useState<UploadedRfp[]>(() =>
-    project.docs.map((d, i) => ({
-      id: `doc-${i}`,
-      name: d.name,
-      size: "—",
-      uploadedAt: `${d.type} · 업로드됨`,
-      status: "분석 완료",
-      requirementCount: project.reqCount,
-    })),
-  );
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successPayload, setSuccessPayload] = useState<unknown | null>(null);
+  const [errorPayload, setErrorPayload] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const addFile = async (name: string) => {
-    await projectRepository.uploadRfp();
-    const now = new Date().toLocaleString("ko-KR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    setFiles((prev) => [
-      {
-        id: `rfp${Date.now()}`,
-        name,
-        size: "—",
-        uploadedAt: `방금 · ${now}`,
-        status: "분석 중",
-        requirementCount: 0,
-      },
-      ...prev,
-    ]);
-    toast.success(`"${name}" 업로드 완료. AI 분석을 시작합니다.`);
-    // 분석 완료 시뮬레이션
-    setTimeout(() => {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.name === name && f.status === "분석 중"
-            ? { ...f, status: "분석 완료", requirementCount: 21 }
-            : f,
-        ),
-      );
-    }, 1500);
+  const relayProjectId = useMemo(() => {
+    const numeric = Number.parseInt(project.id, 10);
+    return Number.isFinite(numeric) ? numeric : 1;
+  }, [project.id]);
+
+  const addFiles = (incoming: FileList | null) => {
+    if (!incoming || incoming.length === 0) return;
+    setSelectedFiles((prev) => [...prev, ...Array.from(incoming)]);
+    setErrorPayload(null);
   };
 
-  const handlePick = () => inputRef.current?.click();
-
-  const onSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) addFile(f.name);
-    e.target.value = "";
+  const onSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    addFiles(event.target.files);
+    event.target.value = "";
   };
 
-  const reanalyze = async (id: string) => {
-    await projectRepository.reanalyzeRfp();
-    setFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, status: "분석 중" } : f)),
-    );
-    toast("AI 재분석을 시작했습니다.");
-    setTimeout(() => {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === id ? { ...f, status: "분석 완료" } : f,
-        ),
-      );
-    }, 1200);
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
   };
 
-  const remove = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    toast("파일을 목록에서 제거했습니다.");
+  const submitFiles = async () => {
+    if (selectedFiles.length === 0) {
+      toast.error("Select at least one file.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorPayload(null);
+
+    try {
+      const payload = await projectRepository.extractProjectDocuments(relayProjectId, selectedFiles);
+      setSuccessPayload(payload);
+      toast.success("Files were relayed to the AI server.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Document relay request failed.";
+      setErrorPayload(message);
+      setSuccessPayload(null);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>RFP 공고문 업로드</CardTitle>
+          <CardTitle>Document Relay Test</CardTitle>
           <CardDescription>
-            PDF 형식의 공고문을 업로드하면 AI가 자동으로 요구사항을 추출합니다.
+            Upload files through Spring Boot and inspect the raw AI server response.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf"
+            multiple
+            accept=".pdf,.hwp,.hwpx,.docx,.txt,.md,.csv"
             className="hidden"
             onChange={onSelected}
           />
+
           <div
             role="button"
             tabIndex={0}
-            onClick={handlePick}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handlePick()}
-            onDragOver={(e) => {
-              e.preventDefault();
+            onClick={() => inputRef.current?.click()}
+            onKeyDown={(event) =>
+              (event.key === "Enter" || event.key === " ") && inputRef.current?.click()
+            }
+            onDragOver={(event) => {
+              event.preventDefault();
               setDragging(true);
             }}
             onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
+            onDrop={(event) => {
+              event.preventDefault();
               setDragging(false);
-              const f = e.dataTransfer.files?.[0];
-              addFile(f ? f.name : "새-공고문.pdf");
+              addFiles(event.dataTransfer.files);
             }}
             className={cn(
               "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-12 text-center transition-colors",
@@ -141,89 +108,86 @@ export function PmUpload({ project }: { project: ProjectSummary }) {
             )}
           >
             <UploadCloud className="size-7 text-muted-foreground" />
-            <div className="text-foreground">파일을 끌어다 놓거나 클릭하여 업로드</div>
-            <div className="text-muted-foreground text-xs">PDF · 최대 50MB</div>
+            <div className="text-foreground">Drop files here or click to select.</div>
+            <div className="text-muted-foreground text-xs">
+              Supported: PDF, HWP, HWPX, DOCX, TXT, MD, CSV
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border">
+            <div className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
+              Selected files: {selectedFiles.length}
+            </div>
+            <div className="space-y-2 p-4">
+              {selectedFiles.length === 0 && (
+                <div className="text-sm text-muted-foreground">No files selected.</div>
+              )}
+              {selectedFiles.map((file, index) => (
+                <div
+                  key={`${file.name}-${index}`}
+                  className="flex items-center gap-3 rounded-md border border-border px-3 py-2"
+                >
+                  <FileText className="size-4 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-foreground">{file.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => removeFile(index)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={submitFiles} disabled={isSubmitting || selectedFiles.length === 0}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Uploading
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="size-4" /> Upload
+                </>
+              )}
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              Relay project id: {relayProjectId}
+            </div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>업로드된 공고문</CardTitle>
-          <CardDescription>업로드한 RFP 목록과 분석 상태입니다.</CardDescription>
+          <CardTitle>Relay Result</CardTitle>
+          <CardDescription>
+            The backend returns the AI server JSON response as-is. Errors are shown below.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>파일명</TableHead>
-                <TableHead className="w-24">용량</TableHead>
-                <TableHead className="w-40">업로드</TableHead>
-                <TableHead className="w-24">추출 요구사항</TableHead>
-                <TableHead className="w-24">상태</TableHead>
-                <TableHead className="w-32 text-right">작업</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {files.map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span className="flex size-8 items-center justify-center rounded-md bg-red-50 text-red-600">
-                        <FileText className="size-4" />
-                      </span>
-                      <span className="text-foreground text-sm">{f.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">{f.size}</TableCell>
-                  <TableCell className="text-muted-foreground text-xs">{f.uploadedAt}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {f.requirementCount > 0 ? `${f.requirementCount}건` : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn("font-normal", statusClass(f.status))}>
-                      {f.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1 text-muted-foreground">
-                      <button
-                        onClick={() => reanalyze(f.id)}
-                        className="rounded p-1 hover:bg-muted hover:text-foreground"
-                        aria-label="다시 분석"
-                        title="다시 분석"
-                      >
-                        <RefreshCw className="size-4" />
-                      </button>
-                      <button
-                        onClick={() => toast(`"${f.name}" 다운로드`)}
-                        className="rounded p-1 hover:bg-muted hover:text-foreground"
-                        aria-label="다운로드"
-                        title="다운로드"
-                      >
-                        <Download className="size-4" />
-                      </button>
-                      <button
-                        onClick={() => remove(f.id)}
-                        className="rounded p-1 hover:bg-muted hover:text-destructive"
-                        aria-label="삭제"
-                        title="삭제"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {files.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                    업로드된 공고문이 없습니다.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-border p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm text-foreground">
+              <CheckCircle2 className="size-4 text-emerald-600" />
+              Success response
+            </div>
+            <pre className="overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">
+              {successPayload ? JSON.stringify(successPayload, null, 2) : "No successful response yet."}
+            </pre>
+          </div>
+
+          <div className="rounded-lg border border-border p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm text-foreground">
+              <AlertTriangle className="size-4 text-amber-600" />
+              Error response
+            </div>
+            <pre className="overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">
+              {errorPayload ?? "No error response."}
+            </pre>
+          </div>
         </CardContent>
       </Card>
     </div>

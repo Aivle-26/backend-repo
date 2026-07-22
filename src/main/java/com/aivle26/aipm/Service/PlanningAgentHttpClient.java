@@ -3,12 +3,14 @@ package com.aivle26.aipm.Service;
 import com.aivle26.aipm.Config.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.PlanningDocumentExtractResponse;
 import com.aivle26.aipm.Exception.ApiException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -29,6 +31,7 @@ import java.util.List;
 public class PlanningAgentHttpClient implements PlanningAgentClient {
     private final RestClient planningAgentRestClient;
     private final PlanningAgentProperties properties;
+    private final ObjectMapper objectMapper;
 
     @Override
     public PlanningDocumentExtractResponse extractDocuments(List<MultipartFile> files, boolean enableLlm) {
@@ -39,12 +42,13 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
         body.add("enable_llm", String.valueOf(enableLlm));
 
         try {
-            PlanningDocumentExtractResponse response = planningAgentRestClient.post()
+            ResponseEntity<byte[]> responseEntity = planningAgentRestClient.post()
                     .uri(properties.getExtractPath())
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(body)
                     .retrieve()
-                    .body(PlanningDocumentExtractResponse.class);
+                    .toEntity(byte[].class);
+            PlanningDocumentExtractResponse response = decodeResponse(responseEntity.getBody());
             if (response == null) {
                 throw invalidResponse();
             }
@@ -59,6 +63,17 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             }
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PLANNING_AGENT_UNAVAILABLE", "문서 분석 서버에 연결할 수 없습니다.", exception);
         } catch (RestClientException exception) {
+            throw invalidResponse(exception);
+        }
+    }
+
+    private PlanningDocumentExtractResponse decodeResponse(byte[] responseBody) {
+        if (responseBody == null || responseBody.length == 0) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(responseBody, PlanningDocumentExtractResponse.class);
+        } catch (IOException exception) {
             throw invalidResponse(exception);
         }
     }

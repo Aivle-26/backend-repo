@@ -49,6 +49,7 @@ import {
 } from "@/app/data/demoData";
 
 import { DocPicker } from "@/app/components/pm/DocPicker";
+import { projectRepository } from "@/app/api/projectRepository";
 
 type Filter = "전체" | ProjectStatus;
 
@@ -137,8 +138,45 @@ export function ProjectBoard({
     setNewOpen(true);
   };
 
-  const createProject = () => {
+  const createProject = async () => {
     if (!newName.trim()) return toast.error("프로젝트 이름을 입력하세요.");
+    const uploadFiles = pendingDocs
+      .map((doc) => doc.file)
+      .filter((file): file is File => file instanceof File);
+
+    if (pendingDocs.length > 0 && uploadFiles.length !== pendingDocs.length) {
+      return toast.error("실제 업로드 파일을 확인할 수 없습니다. 문서를 다시 선택해주세요.");
+    }
+
+    if (uploadFiles.length > 0) {
+      try {
+        const response = await projectRepository.createDraftFromDocuments(uploadFiles, true);
+        const p: ProjectSummary = {
+          id: String(response.projectId),
+          name: response.projectName,
+          client: "AI 분석 결과",
+          status: "준비",
+          progress: 0,
+          dueDate: "-",
+          riskCount: 0,
+          reqCount: response.requirementCount,
+          wizardStep: 0,
+          estimate: "-",
+          updatedAt: "방금",
+          docs: pendingDocs.map(({ file, ...doc }) => doc),
+        };
+        setProjects((prev) => [p, ...prev]);
+        setNewOpen(false);
+        setNewName("");
+        setPendingDocs([]);
+        toast.success(response.message || "AI 문서 분석 결과로 프로젝트가 생성되었습니다.");
+        onExtract(p);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "프로젝트 문서 분석 요청에 실패했습니다.");
+      }
+      return;
+    }
+
     const id = `prj-${Date.now()}`;
     const hasDocs = pendingDocs.length > 0;
     const p: ProjectSummary = {

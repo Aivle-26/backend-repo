@@ -25,6 +25,7 @@ export function DocPicker({
     const added: ProjectDoc[] = Array.from(files).map((f) => ({
       name: f.name,
       type: "RFP",
+      file: f,
     }));
     onChange([...docs, ...added]);
   };

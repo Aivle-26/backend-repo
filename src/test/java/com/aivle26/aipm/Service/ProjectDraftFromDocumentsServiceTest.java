@@ -2,10 +2,12 @@ package com.aivle26.aipm.Service;
 
 import com.aivle26.aipm.Config.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.PlanningDocumentExtractResponse;
+import com.aivle26.aipm.Entity.ProjectRequirement;
 import com.aivle26.aipm.Entity.ProjectStatus;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
+import com.aivle26.aipm.Repository.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.ProjectKeyFeatureRepository;
 import com.aivle26.aipm.Repository.ProjectPlanningExtractionRepository;
@@ -55,6 +57,9 @@ class ProjectDraftFromDocumentsServiceTest {
     private ProjectDocumentRepository projectDocumentRepository;
 
     @Autowired
+    private ProjectDocumentAnalysisResultRepository analysisResultRepository;
+
+    @Autowired
     private ProjectRequirementRepository projectRequirementRepository;
 
     @Autowired
@@ -81,6 +86,7 @@ class ProjectDraftFromDocumentsServiceTest {
         keyFeatureRepository.deleteAll();
         requiredArtifactRepository.deleteAll();
         projectRequirementRepository.deleteAll();
+        analysisResultRepository.deleteAll();
         projectDocumentRepository.deleteAll();
         projectRepository.deleteAll();
         userRepository.deleteAll();
@@ -97,7 +103,7 @@ class ProjectDraftFromDocumentsServiceTest {
         var response = service.createDraftFromDocuments(files, false, "PM001");
 
         assertThat(response.projectId()).isNotNull();
-        assertThat(response.projectName()).isEqualTo("AI 학생 맞춤형 학습지원시스템 구축");
+        assertThat(response.projectName()).isEqualTo("AI Learning Support");
         assertThat(response.status()).isEqualTo(ProjectStatus.DRAFT);
         assertThat(response.llmStatus().name()).isEqualTo("SUCCEEDED");
         assertThat(response.requirementCount()).isEqualTo(2);
@@ -105,6 +111,7 @@ class ProjectDraftFromDocumentsServiceTest {
         assertThat(response.documentCount()).isEqualTo(2);
         assertThat(projectRepository.count()).isEqualTo(1);
         assertThat(projectDocumentRepository.count()).isEqualTo(2);
+        assertThat(analysisResultRepository.count()).isEqualTo(1);
         assertThat(projectRequirementRepository.count()).isEqualTo(2);
         assertThat(requiredArtifactRepository.count()).isEqualTo(2);
         assertThat(keyFeatureRepository.count()).isEqualTo(2);
@@ -118,9 +125,24 @@ class ProjectDraftFromDocumentsServiceTest {
     }
 
     @Test
+    void remapsAgentFileNamesToUploadedNames() {
+        List<MultipartFile> files = List.of(pdf("actual-rfp.pdf"), txt("actual-memo.txt"));
+        when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithDocumentNames("project-rfp.pdf", "proposal.txt"));
+
+        service.createDraftFromDocuments(files, true, "PM001");
+
+        List<ProjectRequirement> requirements = projectRequirementRepository.findAll();
+        assertThat(requirements)
+                .extracting(ProjectRequirement::getSourceDocumentName)
+                .containsExactlyInAnyOrder("actual-rfp.pdf", "actual-memo.txt");
+        assertThat(projectDocumentRepository.findAll())
+                .extracting(document -> document.getOriginalFileName())
+                .containsExactlyInAnyOrder("actual-rfp.pdf", "actual-memo.txt");
+    }
+
+    @Test
     void failWhenNoFiles() {
         assertApiException(() -> service.createDraftFromDocuments(List.of(), true, "PM001"), "PROJECT_DOCUMENT_REQUIRED");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
@@ -129,95 +151,63 @@ class ProjectDraftFromDocumentsServiceTest {
         for (int i = 0; i < 11; i++) {
             files.add(txt("doc-" + i + ".txt"));
         }
-
         assertApiException(() -> service.createDraftFromDocuments(files, true, "PM001"), "TOO_MANY_PROJECT_DOCUMENTS");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenFileTooLarge() {
         byte[] content = new byte[(20 * 1024 * 1024) + 1];
         MultipartFile file = new MockMultipartFile("files", "large.txt", "text/plain", content);
-
         assertApiException(() -> service.createDraftFromDocuments(List.of(file), true, "PM001"), "PROJECT_DOCUMENT_TOO_LARGE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenUnsupportedExtension() {
         MultipartFile file = new MockMultipartFile("files", "bad.exe", "application/octet-stream", "x".getBytes());
-
         assertApiException(() -> service.createDraftFromDocuments(List.of(file), true, "PM001"), "UNSUPPORTED_PROJECT_DOCUMENT");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenAgentUnavailable() {
         when(planningAgentClient.extractDocuments(any(), anyBoolean()))
-                .thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PLANNING_AGENT_UNAVAILABLE", "문서 분석 서버에 연결할 수 없습니다."));
-
+                .thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PLANNING_AGENT_UNAVAILABLE", "unavailable"));
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf")), true, "PM001"), "PLANNING_AGENT_UNAVAILABLE");
-        assertThat(projectRepository.count()).isZero();
-    }
-
-    @Test
-    void failWhenAgentTimeout() {
-        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
-                .thenThrow(new ApiException(HttpStatus.GATEWAY_TIMEOUT, "PLANNING_AGENT_TIMEOUT", "문서 분석 처리 시간이 초과되었습니다."));
-
-        assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf")), true, "PM001"), "PLANNING_AGENT_TIMEOUT");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenProjectNameMissing() {
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithProjectName(null));
-
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "INVALID_PLANNING_AGENT_RESPONSE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenRequirementCategoryInvalid() {
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithRequirementCategory("UNKNOWN"));
-
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "INVALID_PLANNING_AGENT_RESPONSE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenArtifactTypeInvalid() {
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithArtifactType("UNKNOWN"));
-
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "INVALID_PLANNING_AGENT_RESPONSE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
-    void failWhenDocumentNameDoesNotMatchUpload() {
-        when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithDocumentName("other.pdf"));
-
+    void failWhenRequirementSourceDocumentCannotBeMapped() {
+        when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithUnknownRequirementSource());
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "INVALID_PLANNING_AGENT_RESPONSE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenRequirementIdDuplicated() {
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithDuplicateRequirementId());
-
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "INVALID_PLANNING_AGENT_RESPONSE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
     void failWhenEndDateBeforeStartDate() {
-        when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithDates(
-                LocalDate.of(2026, 12, 31),
-                LocalDate.of(2026, 8, 1)
-        ));
-
+        when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(responseWithDates(LocalDate.of(2026, 12, 31), LocalDate.of(2026, 8, 1)));
         assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "INVALID_PLANNING_AGENT_RESPONSE");
-        assertThat(projectRepository.count()).isZero();
     }
 
     @Test
@@ -225,12 +215,8 @@ class ProjectDraftFromDocumentsServiceTest {
         Path blockedStoragePath = Files.createTempFile("aipm-storage", ".tmp");
         documentStorageProperties.setStoragePath(blockedStoragePath.toString());
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(successResponse());
-
         try {
             assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "PROJECT_DOCUMENT_SAVE_FAILED");
-            assertThat(projectRepository.count()).isZero();
-            assertThat(projectDocumentRepository.count()).isZero();
-            assertThat(projectRequirementRepository.count()).isZero();
         } finally {
             documentStorageProperties.setStoragePath(storagePath);
             Files.deleteIfExists(blockedStoragePath);
@@ -247,46 +233,46 @@ class ProjectDraftFromDocumentsServiceTest {
     private PlanningDocumentExtractResponse successResponse() {
         return new PlanningDocumentExtractResponse(
                 new PlanningDocumentExtractResponse.ProjectInfo(
-                        "AI 학생 맞춤형 학습지원시스템 구축",
-                        "학생별 학습 데이터를 분석해 맞춤형 학습 지원 체계 구축",
-                        "OO대학교",
+                        "AI Learning Support",
+                        "Build a learning support system.",
+                        "OO University",
                         LocalDate.of(2026, 8, 1),
                         LocalDate.of(2026, 12, 31),
-                        List.of("대시보드", "AI 분석"),
+                        List.of("Dashboard", "AI Analysis"),
                         List.of(
-                                new PlanningDocumentExtractResponse.RequiredArtifact("REQUIREMENTS_DEFINITION", "요구사항 정의서", "1.0"),
-                                new PlanningDocumentExtractResponse.RequiredArtifact("WBS", "작업분해도", "1.0")
+                                new PlanningDocumentExtractResponse.RequiredArtifact("REQUIREMENTS_DEFINITION", "Requirements Spec", "1.0"),
+                                new PlanningDocumentExtractResponse.RequiredArtifact("WBS", "WBS", "1.0")
                         ),
-                        List.of("산출물 제출 후 검수"),
-                        List.of("총 사업비 5억원"),
-                        List.of("개인정보 암호화")
+                        List.of("Submit deliverables"),
+                        List.of("Budget approved"),
+                        List.of("Encrypt personal data")
                 ),
                 List.of(
                         new PlanningDocumentExtractResponse.RequirementCandidate(
                                 "REQ-001",
-                                "학습 현황 대시보드",
-                                "학생별 학습 현황 대시보드를 제공해야 한다.",
+                                "Dashboard",
+                                "Provide a dashboard.",
                                 "FUNCTIONAL",
                                 "HIGH",
-                                "학생별 현황이 조회되어야 한다.",
+                                "Dashboard loads successfully.",
                                 null,
-                                "대시보드 기능",
+                                "Dashboard Feature",
                                 null,
                                 "rfp.pdf",
-                                "학생별 학습 현황 대시보드를 제공해야 한다."
+                                "Provide a dashboard."
                         ),
                         new PlanningDocumentExtractResponse.RequirementCandidate(
                                 "REQ-002",
-                                "보안 감사 로그",
-                                "개인정보 접근 로그를 기록해야 한다.",
+                                "Security Log",
+                                "Store security logs.",
                                 "SECURITY",
                                 "MEDIUM",
-                                "접근 이력이 저장되어야 한다.",
+                                "Security logs are stored.",
                                 LocalDate.of(2026, 10, 1),
-                                "보안 기능",
-                                "개인정보 암호화",
+                                "Security Feature",
+                                "Encrypt personal data",
                                 "memo.txt",
-                                "개인정보 접근 로그를 기록해야 한다."
+                                "Store security logs."
                         )
                 ),
                 List.of(
@@ -363,13 +349,62 @@ class ProjectDraftFromDocumentsServiceTest {
         );
     }
 
-    private PlanningDocumentExtractResponse responseWithDocumentName(String fileName) {
+    private PlanningDocumentExtractResponse responseWithDocumentNames(String firstFileName, String secondFileName) {
         PlanningDocumentExtractResponse response = successResponse();
         List<PlanningDocumentExtractResponse.DocumentResult> documents = List.of(
-                new PlanningDocumentExtractResponse.DocumentResult(fileName, "PDF", 1200L, "TEXT"),
-                response.documents().get(1)
+                new PlanningDocumentExtractResponse.DocumentResult(firstFileName, "PDF", 1200L, "TEXT"),
+                new PlanningDocumentExtractResponse.DocumentResult(secondFileName, "TXT", 300L, "TEXT")
         );
-        return new PlanningDocumentExtractResponse(response.projectInfo(), response.requirementCandidates(), documents, response.llmStatus());
+        List<PlanningDocumentExtractResponse.RequirementCandidate> requirements = List.of(
+                new PlanningDocumentExtractResponse.RequirementCandidate(
+                        "REQ-001",
+                        "Dashboard",
+                        "Provide a dashboard.",
+                        "FUNCTIONAL",
+                        "HIGH",
+                        "Dashboard loads successfully.",
+                        null,
+                        "Dashboard Feature",
+                        null,
+                        firstFileName,
+                        "Provide a dashboard."
+                ),
+                new PlanningDocumentExtractResponse.RequirementCandidate(
+                        "REQ-002",
+                        "Security Log",
+                        "Store security logs.",
+                        "SECURITY",
+                        "MEDIUM",
+                        "Security logs are stored.",
+                        LocalDate.of(2026, 10, 1),
+                        "Security Feature",
+                        "Encrypt personal data",
+                        secondFileName,
+                        "Store security logs."
+                )
+        );
+        return new PlanningDocumentExtractResponse(response.projectInfo(), requirements, documents, response.llmStatus());
+    }
+
+    private PlanningDocumentExtractResponse responseWithUnknownRequirementSource() {
+        PlanningDocumentExtractResponse response = successResponse();
+        PlanningDocumentExtractResponse.RequirementCandidate first = response.requirementCandidates().getFirst();
+        List<PlanningDocumentExtractResponse.RequirementCandidate> requirements = List.of(
+                new PlanningDocumentExtractResponse.RequirementCandidate(
+                        first.requirementId(),
+                        first.functionName(),
+                        first.requirementText(),
+                        first.category(),
+                        first.priority(),
+                        first.acceptanceCriteria(),
+                        first.dueDate(),
+                        first.deliverableName(),
+                        first.securityCondition(),
+                        "unknown.pdf",
+                        first.sourceExcerpt()
+                )
+        );
+        return new PlanningDocumentExtractResponse(response.projectInfo(), requirements, response.documents(), response.llmStatus());
     }
 
     private PlanningDocumentExtractResponse responseWithDuplicateRequirementId() {

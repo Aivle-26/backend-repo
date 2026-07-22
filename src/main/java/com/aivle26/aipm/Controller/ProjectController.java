@@ -16,6 +16,7 @@ import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Service.AuthenticatedUser;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisRequestService;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisService;
+import com.aivle26.aipm.Service.ProjectDocumentExtractService;
 import com.aivle26.aipm.Service.ProjectDocumentService;
 import com.aivle26.aipm.Service.ProjectDraftFromDocumentsService;
 import com.aivle26.aipm.Service.ProjectScheduleRequestService;
@@ -23,6 +24,7 @@ import com.aivle26.aipm.Service.ProjectScheduleService;
 import com.aivle26.aipm.Service.ProjectService;
 import com.aivle26.aipm.Service.ProjectWbsRequestService;
 import com.aivle26.aipm.Service.ProjectWbsService;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -48,6 +50,7 @@ public class ProjectController {
     private final ProjectService projectService;
     private final ProjectDraftFromDocumentsService projectDraftFromDocumentsService;
     private final ProjectDocumentService projectDocumentService;
+    private final ProjectDocumentExtractService projectDocumentExtractService;
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
     private final ProjectDocumentAnalysisRequestService projectDocumentAnalysisRequestService;
     private final ProjectWbsService projectWbsService;
@@ -83,6 +86,15 @@ public class ProjectController {
             @RequestPart("files") List<MultipartFile> files
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(projectDocumentService.uploadInitialDocuments(projectId, files));
+    }
+
+    @PostMapping(path = "/{projectId}/documents/extract", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<JsonNode> extractDocuments(
+            @PathVariable Long projectId,
+            @RequestPart("files") List<MultipartFile> files
+    ) {
+        var response = projectDocumentExtractService.extractDocuments(projectId, files);
+        return ResponseEntity.status(response.status()).body(response.body());
     }
 
     @PostMapping("/{projectId}/documents/analyze")

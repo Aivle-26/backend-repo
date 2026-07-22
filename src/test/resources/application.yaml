@@ -25,7 +25,7 @@ management:
 
 app:
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,https://frontend-repo-coral.vercel.app}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,https://frontend-repo-coral.vercel.app}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
   auth:
     access-token-expiration-minutes: 30
@@ -54,3 +54,9 @@ agent:
     extract-path: /api/v1/planning/documents/extract
     connect-timeout: 1s
     read-timeout: 2s
+
+ai-server:
+  base-url: http://localhost:8000
+  document-extract-path: /api/v1/planning/documents/extract
+  connect-timeout-seconds: 1
+  response-timeout-seconds: 2

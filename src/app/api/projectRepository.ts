@@ -65,6 +65,32 @@ export interface AddCommentInput {
   text: string;
 }
 
+export interface CreateDraftFromDocumentsResponse {
+  projectId: number;
+  projectName: string;
+  status: string;
+  llmStatus: string;
+  requirementCount: number;
+  requiredArtifactCount: number;
+  documentCount: number;
+  message: string;
+}
+
+export type DocumentExtractRelayResponse = Record<string, unknown>;
+
+const API_BASE: string =
+  (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env
+    ?.VITE_API_BASE_URL || "http://localhost:8080";
+
+function authHeaders(): HeadersInit {
+  if (typeof window === "undefined") return {};
+  const token =
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("auth.accessToken") ||
+    localStorage.getItem("aipm.accessToken");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export const projectRepository = {
   getProjectName() {
     return PROJECT_NAME;
@@ -198,6 +224,60 @@ export const projectRepository = {
 
   async reanalyzeRfp() {
     return { ok: true };
+  },
+
+  async createDraftFromDocuments(files: File[], enableLlm = true) {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    formData.append("enableLlm", String(enableLlm));
+
+    const response = await fetch(`${API_BASE}/api/projects/drafts/from-documents`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let message = "프로젝트 문서 분석 요청에 실패했습니다.";
+      try {
+        const error = await response.json();
+        message = error.message || message;
+      } catch {
+        // ignore non-json error bodies
+      }
+      throw new Error(message);
+    }
+
+    return (await response.json()) as CreateDraftFromDocumentsResponse;
+  },
+
+  async extractProjectDocuments(projectId: number, files: File[]) {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+
+    const response = await fetch(`${API_BASE}/api/projects/${projectId}/documents/extract`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: formData,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    if (!response.ok) {
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "message" in payload &&
+        typeof payload.message === "string"
+          ? payload.message
+          : "Document relay request failed.";
+      throw new Error(message);
+    }
+
+    return payload as DocumentExtractRelayResponse;
   },
 
   async assignRequirement(_input: AssignRequirementInput) {
