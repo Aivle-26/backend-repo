@@ -36,6 +36,11 @@ logging:
     com.aivle26.aipm: DEBUG
 
 app:
+  auth:
+    # 로컬 전용 더미 JWT secret. 운영은 EC2의 AUTH_JWT_SECRET 환경변수를 쓴다.
+    # 팀원 권한 작업(910aa3e)이 secret에 "최소 32자" 검증을 걸어서,
+    # 로컬에 값이 없으면 부팅이 실패한다. 이 값은 로컬 전용이라 시크릿이 아니다.
+    jwt-secret: ${AUTH_JWT_SECRET:local-dev-only-jwt-secret-please-change-in-prod-0123456789}
   slack:
     # IntelliJ 실행 설정의 환경변수에 SLACK_BOT_TOKEN 을 넣으면 여기로 들어온다.
     bot-token: ${SLACK_BOT_TOKEN:}
