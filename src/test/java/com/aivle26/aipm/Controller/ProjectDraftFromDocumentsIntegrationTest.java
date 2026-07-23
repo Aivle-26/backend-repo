@@ -5,8 +5,8 @@ import com.aivle26.aipm.Entity.ProjectDocument;
 import com.aivle26.aipm.Entity.ProjectStatus;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
-import com.aivle26.aipm.Repository.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.ProjectDocumentAnalysisResultRepository;
+import com.aivle26.aipm.Repository.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.ProjectKeyFeatureRepository;
 import com.aivle26.aipm.Repository.ProjectPlanningExtractionRepository;
 import com.aivle26.aipm.Repository.ProjectRepository;
@@ -40,7 +40,6 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 
@@ -151,7 +150,7 @@ class ProjectDraftFromDocumentsIntegrationTest {
                         .with(csrf())
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.projectName").value("mock-rfp 기반 프로젝트"))
+                .andExpect(jsonPath("$.projectName").value("문서 기반 테스트 프로젝트"))
                 .andExpect(jsonPath("$.status").value(ProjectStatus.DRAFT.name()))
                 .andExpect(jsonPath("$.llmStatus").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.requirementCount").value(2))
@@ -226,46 +225,64 @@ class ProjectDraftFromDocumentsIntegrationTest {
             String response = """
                     {
                       "project_info": {
-                        "project_name": "mock-rfp 기반 프로젝트",
-                        "project_goal": "업로드된 문서를 기반으로 프로젝트 초안을 생성합니다.",
+                        "project_name": "\\uBB38\\uC11C \\uAE30\\uBC18 \\uD14C\\uC2A4\\uD2B8 \\uD504\\uB85C\\uC81D\\uD2B8",
+                        "project_goal": "\\uC5C5\\uB85C\\uB4DC\\uD55C \\uBB38\\uC11C\\uB97C \\uAE30\\uBC18\\uC73C\\uB85C \\uD504\\uB85C\\uC81D\\uD2B8 \\uCD08\\uC548\\uC744 \\uC0DD\\uC131\\uD569\\uB2C8\\uB2E4.",
                         "client_organization": "Mock Client",
                         "period_start": "2026-07-22",
                         "period_end": "2026-09-30",
-                        "key_features": ["문서 업로드", "요구사항 추출", "초안 생성"],
-                        "required_artifacts": [
-                          {"artifact_type": "RFP", "artifact_name": "제안요청서", "required_version": "v1.0"},
-                          {"artifact_type": "WBS", "artifact_name": "작업분류체계", "required_version": "v1.0"}
+                        "key_features": [
+                          "\\uBB38\\uC11C \\uC5C5\\uB85C\\uB4DC",
+                          "\\uC694\\uAD6C\\uC0AC\\uD56D \\uCD94\\uCD9C",
+                          "\\uCD08\\uC548 \\uC0DD\\uC131"
                         ],
-                        "acceptance_conditions": ["요구사항이 저장되어야 한다."],
-                        "budget_contract_conditions": ["예산 별도 협의"],
-                        "security_privacy_conditions": ["개인정보 비식별 처리"]
+                        "required_artifacts": [
+                          {
+                            "artifact_type": "RFP",
+                            "artifact_name": "\\uC81C\\uC548\\uC694\\uCCAD\\uC11C",
+                            "required_version": "v1.0"
+                          },
+                          {
+                            "artifact_type": "WBS",
+                            "artifact_name": "WBS",
+                            "required_version": "v1.0"
+                          }
+                        ],
+                        "acceptance_conditions": [
+                          "\\uAE30\\uB2A5 \\uD14C\\uC2A4\\uD2B8 \\uD1B5\\uACFC"
+                        ],
+                        "budget_contract_conditions": [
+                          "\\uC608\\uC0B0 \\uBCC4\\uB3C4 \\uD611\\uC758"
+                        ],
+                        "security_privacy_conditions": [
+                          "\\uAC1C\\uC778\\uC815\\uBCF4 \\uBE44\\uC2DD\\uBCC4 \\uCC98\\uB9AC"
+                        ]
                       },
                       "requirement_candidates": [
                         {
                           "requirement_id": "REQ-001",
-                          "function_name": "문서 업로드 분석",
-                          "requirement_text": "업로드된 문서를 분석하여 요구사항을 생성해야 한다.",
+                          "function_name": "\\uBB38\\uC11C \\uC5C5\\uB85C\\uB4DC \\uBD84\\uC11D",
+                          "requirement_text": "\\uC5C5\\uB85C\\uB4DC\\uD55C \\uBB38\\uC11C\\uB97C \\uBD84\\uC11D\\uD558\\uC5EC \\uC694\\uAD6C\\uC0AC\\uD56D\\uC744 \\uC0DD\\uC131\\uD574\\uC57C \\uD55C\\uB2E4.",
                           "category": "FUNCTIONAL",
                           "priority": "HIGH",
-                          "acceptance_criteria": "문서 업로드 후 요구사항이 생성된다.",
+                          "acceptance_criteria": "\\uBB38\\uC11C \\uC5C5\\uB85C\\uB4DC \\uD6C4 \\uC694\\uAD6C\\uC0AC\\uD56D\\uC774 \\uC0DD\\uC131\\uB41C\\uB2E4.",
                           "due_date": "2026-08-15",
-                          "deliverable_name": "요구사항 정의서",
-                          "security_condition": "문서는 내부 저장소에만 보관",
+                          "deliverable_name": "\\uC694\\uAD6C\\uC0AC\\uD56D \\uC815\\uC758\\uC11C",
+                          "security_condition": "\\uBB38\\uC11C\\uB294 \\uC804\\uC6A9 \\uC800\\uC7A5\\uC18C\\uC5D0\\uB9CC \\uBCF4\\uAD00",
                           "source_document": "%s",
-                          "source_excerpt": "문서 업로드 후 분석 기능"
+                          "source_excerpt": "\\uBB38\\uC11C \\uC5C5\\uB85C\\uB4DC \\uBC0F \\uBD84\\uC11D \\uAE30\\uB2A5"
                         },
                         {
                           "requirement_id": "REQ-002",
-                          "function_name": "문서 메타데이터 저장",
-                          "requirement_text": "분석된 문서 메타데이터를 저장해야 한다.",
+                          "function_name": "\\uBB38\\uC11C \\uBA54\\uD0C0\\uB370\\uC774\\uD130 \\uC800\\uC7A5",
+                          "requirement_text": "\\uBD84\\uC11D\\uD55C \\uBB38\\uC11C \\uBA54\\uD0C0\\uB370\\uC774\\uD130\\uB97C \\uC800\\uC7A5\\uD574\\uC57C \\uD55C\\uB2E4.",
                           "category": "DATA",
                           "priority": "MEDIUM",
-                          "acceptance_criteria": "문서 메타데이터가 DB에 저장된다.",
+                          "acceptance_criteria": "\\uBB38\\uC11C \\uBA54\\uD0C0\\uB370\\uC774\\uD130\\uAC00 DB\\uC5D0 \\uC800\\uC7A5\\uB41C\\uB2E4.",
                           "due_date": "2026-08-20",
-                          "deliverable_name": "문서 목록",
-                          "security_condition": "원본 파일명 추적 가능",
+                          "deliverable_name": "\\uBB38\\uC11C \\uBAA9\\uB85D",
+                          "security_condition": "\\uC6D0\\uBCF8 \\uD30C\\uC77C\\uBA85 \\uCD94\\uC801 \\uAC00\\uB2A5",
                           "source_document": "%s",
-                          "source_excerpt": "원본 파일명을 저장"
+                          "source_excerpt": "\\uC6D0\\uBCF8 \\uD30C\\uC77C\\uBA85\\uC744 \\uC800\\uC7A5"
                         }
                       ],
                       "documents": [

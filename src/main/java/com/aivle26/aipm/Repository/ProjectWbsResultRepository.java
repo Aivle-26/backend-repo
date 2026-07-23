@@ -7,4 +7,6 @@ public interface ProjectWbsResultRepository extends JpaRepository<ProjectWbsResu
     boolean existsByAgentExecutionId(String agentExecutionId);
 
     boolean existsByProjectId(Long projectId);
+
+    void deleteAllByProjectId(Long projectId);
 }

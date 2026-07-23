@@ -2,6 +2,7 @@ package com.aivle26.aipm.Service;
 
 import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.ProjectDocumentUploadResponse;
+import com.aivle26.aipm.Entity.ProjectDocument;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
@@ -96,6 +97,7 @@ class ProjectDocumentServiceTest {
         assertThat(response.documents()).hasSize(1);
         assertThat(response.documents().getFirst().originalFileName()).isEqualTo("requirements.txt");
         assertThat(projectDocumentRepository.count()).isEqualTo(1);
+        assertThat(projectDocumentService.getStoredDocumentFiles(projectId)).hasSize(1);
     }
 
     @Test
@@ -105,7 +107,8 @@ class ProjectDocumentServiceTest {
 
         assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(file)))
                 .isInstanceOf(ApiException.class)
-                .hasMessage("invalid file");
+                .extracting("code")
+                .isEqualTo("UNSUPPORTED_PROJECT_DOCUMENT");
 
         assertThat(projectDocumentRepository.count()).isZero();
     }
@@ -117,7 +120,8 @@ class ProjectDocumentServiceTest {
 
         assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(file)))
                 .isInstanceOf(ApiException.class)
-                .hasMessage("invalid file");
+                .extracting("code")
+                .isEqualTo("PROJECT_DOCUMENT_EMPTY");
 
         assertThat(projectDocumentRepository.count()).isZero();
     }
@@ -130,7 +134,8 @@ class ProjectDocumentServiceTest {
 
         assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(validFile, invalidFile)))
                 .isInstanceOf(ApiException.class)
-                .hasMessage("invalid file");
+                .extracting("code")
+                .isEqualTo("PROJECT_DOCUMENT_EMPTY");
 
         assertThat(projectDocumentRepository.count()).isZero();
         Path directory = Path.of(storagePath);
@@ -139,6 +144,48 @@ class ProjectDocumentServiceTest {
                 assertThat(files.count()).isZero();
             }
         }
+    }
+
+    @Test
+    void uploadInitialDocumentsFailWhenDuplicateFileNameInSingleRequest() throws IOException {
+        Long projectId = createProjectId();
+        MockMultipartFile first = new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
+        MockMultipartFile second = new MockMultipartFile("files", "requirements.txt", "text/plain", "world".getBytes());
+
+        assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(first, second)))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("DUPLICATE_PROJECT_DOCUMENT_NAME");
+
+        assertThat(projectDocumentRepository.count()).isZero();
+        Path directory = Path.of(storagePath);
+        if (Files.exists(directory)) {
+            try (var files = Files.list(directory)) {
+                assertThat(files.count()).isZero();
+            }
+        }
+    }
+
+    @Test
+    void uploadInitialDocumentsReplacesExistingDocumentWithSameFileName() throws IOException {
+        Long projectId = createProjectId();
+        MockMultipartFile first = new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
+        MockMultipartFile second = new MockMultipartFile("files", "requirements.txt", "text/plain", "updated".getBytes());
+
+        projectDocumentService.uploadInitialDocuments(projectId, List.of(first));
+        ProjectDocument originalDocument = projectDocumentRepository.findByProjectId(projectId).getFirst();
+        Path originalPath = Path.of(originalDocument.getStoragePath());
+        assertThat(Files.exists(originalPath)).isTrue();
+
+        projectDocumentService.uploadInitialDocuments(projectId, List.of(second));
+
+        List<ProjectDocument> documents = projectDocumentRepository.findByProjectId(projectId);
+        assertThat(documents).hasSize(1);
+        ProjectDocument replacedDocument = documents.getFirst();
+        assertThat(replacedDocument.getId()).isNotEqualTo(originalDocument.getId());
+        assertThat(replacedDocument.getOriginalFileName()).isEqualTo("requirements.txt");
+        assertThat(Files.exists(originalPath)).isFalse();
+        assertThat(Files.exists(Path.of(replacedDocument.getStoragePath()))).isTrue();
     }
 
     private Long createProjectId() {

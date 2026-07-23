@@ -25,7 +25,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -117,10 +116,13 @@ class ProjectDraftFromDocumentsServiceTest {
         assertThat(keyFeatureRepository.count()).isEqualTo(2);
         assertThat(extractionRepository.count()).isEqualTo(1);
 
-        ArgumentCaptor<List<MultipartFile>> filesCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<StoredDocumentFile>> filesCaptor = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<Boolean> enableLlmCaptor = ArgumentCaptor.forClass(Boolean.class);
         verify(planningAgentClient).extractDocuments(filesCaptor.capture(), enableLlmCaptor.capture());
         assertThat(filesCaptor.getValue()).hasSize(2);
+        assertThat(filesCaptor.getValue())
+                .extracting(StoredDocumentFile::originalFileName)
+                .containsExactly("rfp.pdf", "memo.txt");
         assertThat(enableLlmCaptor.getValue()).isFalse();
     }
 

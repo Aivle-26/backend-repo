@@ -10,4 +10,6 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     boolean existsByProjectIdAndStatus(Long projectId, RequirementStatus status);
 
     List<ProjectRequirement> findByProjectIdAndStatus(Long projectId, RequirementStatus status);
+
+    void deleteAllByProjectId(Long projectId);
 }

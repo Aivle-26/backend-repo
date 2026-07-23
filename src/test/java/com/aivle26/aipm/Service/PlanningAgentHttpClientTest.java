@@ -9,10 +9,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,20 +26,32 @@ class PlanningAgentHttpClientTest {
     private static final String FUNCTION_NAME = "\uD559\uC2B5 \uC9C4\uB3C4 \uC870\uD68C";
 
     private MockWebServer mockWebServer;
+    private Path tempDirectory;
 
     @BeforeEach
     void setUp() throws Exception {
         mockWebServer = new MockWebServer();
         mockWebServer.start();
+        tempDirectory = Files.createTempDirectory("planning-agent-client-test");
     }
 
     @AfterEach
     void tearDown() throws Exception {
         mockWebServer.shutdown();
+        if (tempDirectory != null) {
+            try (var paths = Files.walk(tempDirectory)) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        }
     }
 
     @Test
-    void decodesKoreanJsonResponseUsingUtf8() {
+    void decodesKoreanJsonResponseUsingUtf8() throws Exception {
         String responseBody = """
                 {
                   "project_info": {
@@ -92,11 +105,13 @@ class PlanningAgentHttpClientTest {
                 .setBody(responseBody));
 
         PlanningAgentHttpClient client = createClient(mockWebServer.url("/").toString());
-        MockMultipartFile file = new MockMultipartFile(
-                "files",
+        Path storedFilePath = tempDirectory.resolve("simple-learning-support-rfp.txt");
+        Files.writeString(storedFilePath, "test", StandardCharsets.UTF_8);
+        StoredDocumentFile file = new StoredDocumentFile(
                 "simple-learning-support-rfp.txt",
                 "text/plain",
-                "test".getBytes(StandardCharsets.UTF_8)
+                Files.size(storedFilePath),
+                storedFilePath
         );
 
         PlanningDocumentExtractResponse response = client.extractDocuments(List.of(file), true);

@@ -27,6 +27,7 @@ import java.time.LocalDate;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -83,6 +84,13 @@ class ProjectControllerSecurityTest {
     @Test
     void listProjectsRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/projects"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
+    void deleteProjectRequiresAuthentication() throws Exception {
+        mockMvc.perform(delete("/api/projects/1"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
     }

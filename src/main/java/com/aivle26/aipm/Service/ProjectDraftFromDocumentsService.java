@@ -1,6 +1,5 @@
 package com.aivle26.aipm.Service;
 
-import com.aivle26.aipm.Config.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.PlanningDocumentExtractResponse;
 import com.aivle26.aipm.Entity.PlanningLlmStatus;
@@ -34,12 +33,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,18 +47,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProjectDraftFromDocumentsService {
-    private static final int MAX_FILE_COUNT = 10;
-    private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "hwp", "hwpx", "docx", "txt", "md", "csv");
-    private static final Set<String> STRICT_MIME_EXTENSIONS = Set.of("pdf", "docx", "txt", "md", "csv");
-    private static final Map<String, Set<String>> ALLOWED_MIME_TYPES = Map.of(
-            "pdf", Set.of("application/pdf"),
-            "docx", Set.of("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            "txt", Set.of("text/plain"),
-            "md", Set.of("text/markdown", "text/plain"),
-            "csv", Set.of("text/csv", "application/csv", "application/vnd.ms-excel", "text/plain")
-    );
-
     private final PlanningAgentClient planningAgentClient;
     private final ProjectPmResolver projectPmResolver;
     private final ProjectRepository projectRepository;
@@ -75,49 +56,145 @@ public class ProjectDraftFromDocumentsService {
     private final ProjectKeyFeatureRepository keyFeatureRepository;
     private final ProjectPlanningExtractionRepository extractionRepository;
     private final ProjectDocumentAnalysisResultRepository analysisResultRepository;
-    private final DocumentStorageProperties documentStorageProperties;
+    private final ProjectDocumentService projectDocumentService;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
 
     public CreateProjectDraftFromDocumentsResponse createDraftFromDocuments(List<MultipartFile> files, boolean enableLlm, String pmEmployeeNumber) {
-        List<ValidatedUploadFile> validatedFiles = validateFiles(files);
-        PlanningDocumentExtractResponse agentResponse = planningAgentClient.extractDocuments(files, enableLlm);
-        ValidatedAgentResult validatedAgentResult = validateAgentResponse(agentResponse, validatedFiles);
-        return transactionTemplate.execute(status -> saveDraft(validatedFiles, validatedAgentResult, pmEmployeeNumber));
+        List<ProjectDocumentService.ValidatedUploadFile> validatedFiles = projectDocumentService.validateUploadFiles(files);
+        DraftProjectContext draftContext = transactionTemplate.execute(status -> createDraftWithStoredDocuments(validatedFiles, pmEmployeeNumber));
+
+        try {
+            List<StoredDocumentFile> storedFiles = projectDocumentService.getStoredDocumentFiles(draftContext.projectId());
+            PlanningDocumentExtractResponse agentResponse = planningAgentClient.extractDocuments(storedFiles, enableLlm);
+            ValidatedAgentResult validatedAgentResult = validateAgentResponse(agentResponse, validatedFiles);
+            return transactionTemplate.execute(status -> finalizeDraft(draftContext.projectId(), validatedAgentResult));
+        } catch (RuntimeException exception) {
+            transactionTemplate.executeWithoutResult(status -> cleanupFailedDraft(draftContext.projectId()));
+            throw exception;
+        }
     }
 
-    private List<ValidatedUploadFile> validateFiles(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "PROJECT_DOCUMENT_REQUIRED", "At least one document must be uploaded.");
-        }
-        if (files.size() > MAX_FILE_COUNT) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TOO_MANY_PROJECT_DOCUMENTS", "A maximum of 10 documents can be uploaded.");
-        }
+    private DraftProjectContext createDraftWithStoredDocuments(List<ProjectDocumentService.ValidatedUploadFile> files, String pmEmployeeNumber) {
+        User pm = projectPmResolver.resolve(pmEmployeeNumber);
+        Project project = new Project();
+        project.setName("Document Analysis Pending");
+        project.setDescription("Document analysis in progress.");
+        project.setStatus(ProjectStatus.DRAFT);
+        project.setPm(pm);
 
-        Set<String> fileNames = new HashSet<>();
-        List<ValidatedUploadFile> validatedFiles = new ArrayList<>();
-        for (MultipartFile file : files) {
-            if (file == null || file.isEmpty()) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "PROJECT_DOCUMENT_EMPTY", "Empty files are not allowed.");
-            }
-            String fileName = normalizeFileName(file.getOriginalFilename());
-            if (!fileNames.add(fileName)) {
-                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "DUPLICATE_PROJECT_DOCUMENT_NAME", "Duplicate file name: " + fileName);
-            }
-            String extension = extractExtension(fileName);
-            if (!ALLOWED_EXTENSIONS.contains(extension)) {
-                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported file extension: ." + extension);
-            }
-            if (file.getSize() > MAX_FILE_SIZE) {
-                throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "PROJECT_DOCUMENT_TOO_LARGE", "File size exceeds 20MB: " + fileName);
-            }
-            validateMimeType(extension, file.getContentType(), fileName);
-            validatedFiles.add(new ValidatedUploadFile(file, fileName, extension, file.getContentType(), file.getSize()));
-        }
-        return validatedFiles;
+        Project savedProject = projectRepository.save(project);
+        projectDocumentService.replaceProjectDocuments(savedProject, files, ProjectDocumentStatus.UPLOADED);
+        return new DraftProjectContext(savedProject.getId());
     }
 
-    private ValidatedAgentResult validateAgentResponse(PlanningDocumentExtractResponse response, List<ValidatedUploadFile> files) {
+    private void cleanupFailedDraft(Long projectId) {
+        List<ProjectDocument> documents = projectDocumentService.getProjectDocuments(projectId);
+        projectDocumentService.cleanupStoredFiles(documents);
+        projectDocumentService.deleteProjectDocumentRecords(projectId);
+        projectRepository.deleteById(projectId);
+    }
+
+    private CreateProjectDraftFromDocumentsResponse finalizeDraft(Long projectId, ValidatedAgentResult result) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
+        List<ProjectDocument> savedDocuments = projectDocumentRepository.findByProjectId(projectId);
+        if (savedDocuments.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "document not found");
+        }
+
+        PlanningDocumentExtractResponse.ProjectInfo projectInfo = result.response().projectInfo();
+        project.setName(projectInfo.projectName().trim());
+        project.setDescription(projectInfo.projectGoal().trim());
+        project.setClientOrganization(trimToNull(projectInfo.clientOrganization()));
+        project.setPlannedStartDate(projectInfo.periodStart());
+        project.setPlannedEndDate(projectInfo.periodEnd());
+        project.setAcceptanceConditionsJson(toNullableJson(projectInfo.acceptanceConditions()));
+        project.setBudgetContractConditionsJson(toNullableJson(projectInfo.budgetContractConditions()));
+        project.setSecurityPrivacyConditionsJson(toNullableJson(projectInfo.securityPrivacyConditions()));
+
+        ProjectDocumentAnalysisResult savedAnalysisResult = analysisResultRepository.save(createAnalysisResult(project, projectInfo));
+
+        Map<String, ProjectDocument> savedDocumentByName = new HashMap<>();
+        for (ProjectDocument document : savedDocuments) {
+            PlanningDocumentExtractResponse.DocumentResult documentResult = result.documentByName().get(document.getOriginalFileName());
+            document.setStatus(ProjectDocumentStatus.ANALYZED);
+            document.setFileType(documentResult.fileType().trim());
+            document.setCharacterCount(documentResult.characterCount());
+            document.setProcessingMode(documentResult.processingMode().trim());
+            savedDocumentByName.put(document.getOriginalFileName(), document);
+        }
+
+        List<ProjectKeyFeature> features = new ArrayList<>();
+        for (String feature : requireList(projectInfo.keyFeatures(), "key_features")) {
+            requireText(feature, "key_features");
+            ProjectKeyFeature keyFeature = new ProjectKeyFeature();
+            keyFeature.setProject(project);
+            keyFeature.setFeatureName(feature.trim());
+            features.add(keyFeature);
+        }
+        keyFeatureRepository.saveAll(features);
+
+        List<ProjectRequiredArtifact> artifacts = new ArrayList<>();
+        for (int i = 0; i < projectInfo.requiredArtifacts().size(); i++) {
+            PlanningDocumentExtractResponse.RequiredArtifact artifactResponse = projectInfo.requiredArtifacts().get(i);
+            ProjectRequiredArtifact artifact = new ProjectRequiredArtifact();
+            artifact.setProject(project);
+            artifact.setArtifactType(result.artifactTypes().get(i));
+            artifact.setArtifactName(artifactResponse.artifactName().trim());
+            artifact.setRequiredVersion(artifactResponse.requiredVersion().trim());
+            artifacts.add(artifact);
+        }
+        requiredArtifactRepository.saveAll(artifacts);
+
+        List<ProjectRequirement> requirements = new ArrayList<>();
+        for (int i = 0; i < result.response().requirementCandidates().size(); i++) {
+            PlanningDocumentExtractResponse.RequirementCandidate candidate = result.response().requirementCandidates().get(i);
+            ProjectRequirement requirement = new ProjectRequirement();
+            requirement.setProject(project);
+            requirement.setAnalysisResult(savedAnalysisResult);
+            requirement.setSourceDocument(savedDocumentByName.get(candidate.sourceDocument()));
+            requirement.setExternalReferenceId(candidate.requirementId().trim());
+            requirement.setType(result.requirementTypes().get(i));
+            requirement.setTitle(candidate.functionName().trim());
+            requirement.setDescription(candidate.requirementText().trim());
+            requirement.setPriority(result.requirementPriorities().get(i));
+            requirement.setStatus(RequirementStatus.UNCONFIRMED);
+            requirement.setConfirmed(false);
+            requirement.setAcceptanceCriteria(trimToNull(candidate.acceptanceCriteria()));
+            requirement.setDueDate(candidate.dueDate());
+            requirement.setDeliverableName(trimToNull(candidate.deliverableName()));
+            requirement.setSecurityCondition(trimToNull(candidate.securityCondition()));
+            requirement.setSourceDocumentName(candidate.sourceDocument().trim());
+            requirement.setSourceExcerpt(trimToNull(candidate.sourceExcerpt()));
+            requirements.add(requirement);
+        }
+        projectRequirementRepository.saveAll(requirements);
+
+        ProjectPlanningExtraction extraction = new ProjectPlanningExtraction();
+        extraction.setProject(project);
+        extraction.setLlmStatus(result.llmStatus());
+        extraction.setDocumentCount(savedDocuments.size());
+        extraction.setRequirementCount(requirements.size());
+        extraction.setRequiredArtifactCount(artifacts.size());
+        extractionRepository.save(extraction);
+
+        return new CreateProjectDraftFromDocumentsResponse(
+                project.getId(),
+                project.getName(),
+                project.getStatus(),
+                result.llmStatus(),
+                requirements.size(),
+                artifacts.size(),
+                savedDocuments.size(),
+                "Project draft created from analyzed documents."
+        );
+    }
+
+    private ValidatedAgentResult validateAgentResponse(
+            PlanningDocumentExtractResponse response,
+            List<ProjectDocumentService.ValidatedUploadFile> files
+    ) {
         if (response == null || response.projectInfo() == null) {
             throw invalidAgentResponse();
         }
@@ -143,9 +220,9 @@ public class ProjectDraftFromDocumentsService {
             artifactTypes.add(type);
         }
 
-        Map<String, ValidatedUploadFile> uploadByName = new LinkedHashMap<>();
-        for (ValidatedUploadFile file : files) {
-            uploadByName.put(file.fileName(), file);
+        Map<String, ProjectDocumentService.ValidatedUploadFile> uploadByName = new LinkedHashMap<>();
+        for (ProjectDocumentService.ValidatedUploadFile file : files) {
+            uploadByName.put(file.originalFileName(), file);
         }
 
         Map<String, PlanningDocumentExtractResponse.DocumentResult> documentByName = new HashMap<>();
@@ -183,7 +260,10 @@ public class ProjectDraftFromDocumentsService {
         return new ValidatedAgentResult(normalizedResponse, llmStatus, artifactTypes, documentByName, requirementTypes, requirementPriorities);
     }
 
-    private PlanningDocumentExtractResponse normalizeResponseFileNames(PlanningDocumentExtractResponse response, List<ValidatedUploadFile> files) {
+    private PlanningDocumentExtractResponse normalizeResponseFileNames(
+            PlanningDocumentExtractResponse response,
+            List<ProjectDocumentService.ValidatedUploadFile> files
+    ) {
         List<PlanningDocumentExtractResponse.DocumentResult> responseDocuments = requireList(response.documents(), "documents");
         if (responseDocuments.size() != files.size()) {
             throw invalidAgentResponse("AI response document count does not match uploaded files.");
@@ -195,7 +275,7 @@ public class ProjectDraftFromDocumentsService {
             PlanningDocumentExtractResponse.DocumentResult document = responseDocuments.get(i);
             requireText(document.fileName(), "file_name");
             String responseFileName = normalizeFileName(document.fileName());
-            String uploadFileName = files.get(i).fileName();
+            String uploadFileName = files.get(i).originalFileName();
             if (responseToUploadNames.putIfAbsent(responseFileName, uploadFileName) != null) {
                 throw invalidAgentResponse("Duplicate AI document file_name: " + responseFileName);
             }
@@ -238,120 +318,6 @@ public class ProjectDraftFromDocumentsService {
         );
     }
 
-    protected CreateProjectDraftFromDocumentsResponse saveDraft(List<ValidatedUploadFile> files, ValidatedAgentResult result, String pmEmployeeNumber) {
-        User pm = projectPmResolver.resolve(pmEmployeeNumber);
-        List<Path> savedPaths = new ArrayList<>();
-        try {
-            PlanningDocumentExtractResponse.ProjectInfo projectInfo = result.response().projectInfo();
-            Project project = new Project();
-            project.setName(projectInfo.projectName().trim());
-            project.setDescription(projectInfo.projectGoal().trim());
-            project.setClientOrganization(trimToNull(projectInfo.clientOrganization()));
-            project.setPlannedStartDate(projectInfo.periodStart());
-            project.setPlannedEndDate(projectInfo.periodEnd());
-            project.setStatus(ProjectStatus.DRAFT);
-            project.setPm(pm);
-            project.setAcceptanceConditionsJson(toNullableJson(projectInfo.acceptanceConditions()));
-            project.setBudgetContractConditionsJson(toNullableJson(projectInfo.budgetContractConditions()));
-            project.setSecurityPrivacyConditionsJson(toNullableJson(projectInfo.securityPrivacyConditions()));
-            Project savedProject = projectRepository.save(project);
-            ProjectDocumentAnalysisResult savedAnalysisResult = analysisResultRepository.save(createAnalysisResult(savedProject, projectInfo));
-
-            List<ProjectDocument> savedDocuments = new ArrayList<>();
-            for (ValidatedUploadFile uploadFile : files) {
-                StoredFile storedFile = storeFile(uploadFile);
-                savedPaths.add(storedFile.path());
-                PlanningDocumentExtractResponse.DocumentResult documentResult = result.documentByName().get(uploadFile.fileName());
-                ProjectDocument document = new ProjectDocument();
-                document.setProject(savedProject);
-                document.setStatus(ProjectDocumentStatus.ANALYZED);
-                document.setOriginalFileName(uploadFile.fileName());
-                document.setStoredFileName(storedFile.storedFileName());
-                document.setStoragePath(storedFile.path().toString());
-                document.setExtension(uploadFile.extension());
-                document.setContentType(uploadFile.contentType());
-                document.setFileSize(uploadFile.fileSize());
-                document.setFileType(documentResult.fileType().trim());
-                document.setCharacterCount(documentResult.characterCount());
-                document.setProcessingMode(documentResult.processingMode().trim());
-                savedDocuments.add(document);
-            }
-            savedDocuments = projectDocumentRepository.saveAll(savedDocuments);
-            Map<String, ProjectDocument> savedDocumentByName = new HashMap<>();
-            for (ProjectDocument document : savedDocuments) {
-                savedDocumentByName.put(document.getOriginalFileName(), document);
-            }
-
-            List<ProjectKeyFeature> features = new ArrayList<>();
-            for (String feature : requireList(projectInfo.keyFeatures(), "key_features")) {
-                requireText(feature, "key_features");
-                ProjectKeyFeature keyFeature = new ProjectKeyFeature();
-                keyFeature.setProject(savedProject);
-                keyFeature.setFeatureName(feature.trim());
-                features.add(keyFeature);
-            }
-            keyFeatureRepository.saveAll(features);
-
-            List<ProjectRequiredArtifact> artifacts = new ArrayList<>();
-            for (int i = 0; i < result.response().projectInfo().requiredArtifacts().size(); i++) {
-                PlanningDocumentExtractResponse.RequiredArtifact artifactResponse = result.response().projectInfo().requiredArtifacts().get(i);
-                ProjectRequiredArtifact artifact = new ProjectRequiredArtifact();
-                artifact.setProject(savedProject);
-                artifact.setArtifactType(result.artifactTypes().get(i));
-                artifact.setArtifactName(artifactResponse.artifactName().trim());
-                artifact.setRequiredVersion(artifactResponse.requiredVersion().trim());
-                artifacts.add(artifact);
-            }
-            requiredArtifactRepository.saveAll(artifacts);
-
-            List<ProjectRequirement> requirements = new ArrayList<>();
-            for (int i = 0; i < result.response().requirementCandidates().size(); i++) {
-                PlanningDocumentExtractResponse.RequirementCandidate candidate = result.response().requirementCandidates().get(i);
-                ProjectRequirement requirement = new ProjectRequirement();
-                requirement.setProject(savedProject);
-                requirement.setAnalysisResult(savedAnalysisResult);
-                requirement.setSourceDocument(savedDocumentByName.get(candidate.sourceDocument()));
-                requirement.setExternalReferenceId(candidate.requirementId().trim());
-                requirement.setType(result.requirementTypes().get(i));
-                requirement.setTitle(candidate.functionName().trim());
-                requirement.setDescription(candidate.requirementText().trim());
-                requirement.setPriority(result.requirementPriorities().get(i));
-                requirement.setStatus(RequirementStatus.UNCONFIRMED);
-                requirement.setConfirmed(false);
-                requirement.setAcceptanceCriteria(trimToNull(candidate.acceptanceCriteria()));
-                requirement.setDueDate(candidate.dueDate());
-                requirement.setDeliverableName(trimToNull(candidate.deliverableName()));
-                requirement.setSecurityCondition(trimToNull(candidate.securityCondition()));
-                requirement.setSourceDocumentName(candidate.sourceDocument().trim());
-                requirement.setSourceExcerpt(trimToNull(candidate.sourceExcerpt()));
-                requirements.add(requirement);
-            }
-            projectRequirementRepository.saveAll(requirements);
-
-            ProjectPlanningExtraction extraction = new ProjectPlanningExtraction();
-            extraction.setProject(savedProject);
-            extraction.setLlmStatus(result.llmStatus());
-            extraction.setDocumentCount(savedDocuments.size());
-            extraction.setRequirementCount(requirements.size());
-            extraction.setRequiredArtifactCount(artifacts.size());
-            extractionRepository.save(extraction);
-
-            return new CreateProjectDraftFromDocumentsResponse(
-                    savedProject.getId(),
-                    savedProject.getName(),
-                    savedProject.getStatus(),
-                    result.llmStatus(),
-                    requirements.size(),
-                    artifacts.size(),
-                    savedDocuments.size(),
-                    "Project draft created from analyzed documents."
-            );
-        } catch (RuntimeException exception) {
-            cleanupFiles(savedPaths);
-            throw exception;
-        }
-    }
-
     private ProjectDocumentAnalysisResult createAnalysisResult(Project project, PlanningDocumentExtractResponse.ProjectInfo projectInfo) {
         ProjectDocumentAnalysisResult analysisResult = new ProjectDocumentAnalysisResult();
         analysisResult.setProject(project);
@@ -367,52 +333,16 @@ public class ProjectDraftFromDocumentsService {
         return analysisResult;
     }
 
-    private StoredFile storeFile(ValidatedUploadFile uploadFile) {
-        Path rootDirectory = Path.of(documentStorageProperties.getStoragePath()).toAbsolutePath().normalize();
-        String storedFileName = UUID.randomUUID() + "." + uploadFile.extension();
-        Path targetPath = rootDirectory.resolve(storedFileName).normalize();
-        if (!targetPath.startsWith(rootDirectory)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file path.");
-        }
-        try {
-            Files.createDirectories(rootDirectory);
-            try (InputStream inputStream = uploadFile.file().getInputStream()) {
-                Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-            return new StoredFile(storedFileName, targetPath);
-        } catch (IOException exception) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PROJECT_DOCUMENT_SAVE_FAILED", "Failed to store file.", exception);
-        }
-    }
-
-    private void validateMimeType(String extension, String contentType, String fileName) {
-        if (!STRICT_MIME_EXTENSIONS.contains(extension)) {
-            return;
-        }
-        Set<String> allowedMimeTypes = ALLOWED_MIME_TYPES.get(extension);
-        if (contentType == null || allowedMimeTypes == null || allowedMimeTypes.stream().noneMatch(contentType::equalsIgnoreCase)) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported MIME type for file: " + fileName);
-        }
-    }
-
     private String normalizeFileName(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
         }
-        String normalized = Normalizer.normalize(fileName, Normalizer.Form.NFC).replace("\\", "/");
+        String normalized = java.text.Normalizer.normalize(fileName, java.text.Normalizer.Form.NFC).replace("\\", "/");
         String baseName = normalized.substring(normalized.lastIndexOf('/') + 1).trim();
         if (baseName.isBlank() || ".".equals(baseName) || "..".equals(baseName) || baseName.contains("..")) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
         }
         return baseName;
-    }
-
-    private String extractExtension(String fileName) {
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex <= 0 || dotIndex == fileName.length() - 1) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported file extension: " + fileName);
-        }
-        return fileName.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
     }
 
     private void validateDateRange(LocalDate start, LocalDate end) {
@@ -504,19 +434,7 @@ public class ProjectDraftFromDocumentsService {
         return new ApiException(HttpStatus.BAD_GATEWAY, "INVALID_PLANNING_AGENT_RESPONSE", message);
     }
 
-    private void cleanupFiles(List<Path> savedPaths) {
-        for (Path path : savedPaths) {
-            try {
-                Files.deleteIfExists(path);
-            } catch (IOException ignored) {
-            }
-        }
-    }
-
-    private record ValidatedUploadFile(MultipartFile file, String fileName, String extension, String contentType, long fileSize) {
-    }
-
-    private record StoredFile(String storedFileName, Path path) {
+    private record DraftProjectContext(Long projectId) {
     }
 
     private record ValidatedAgentResult(

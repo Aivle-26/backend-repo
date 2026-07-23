@@ -1,11 +1,11 @@
 package com.aivle26.aipm.Controller;
 
-import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
+import com.aivle26.aipm.Dto.AgentRequestResult;
 import com.aivle26.aipm.Dto.CreateProjectDraftFromDocumentsResponse;
+import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Dto.ProjectSummaryResponse;
-import com.aivle26.aipm.Dto.AgentRequestResult;
 import com.aivle26.aipm.Dto.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.SaveDocumentAnalysisResultResponse;
 import com.aivle26.aipm.Dto.SaveScheduleResultRequest;
@@ -31,8 +31,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -63,6 +64,13 @@ public class ProjectController {
         return ResponseEntity.ok(projectService.listProjects());
     }
 
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> deleteProject(@PathVariable Long projectId, Authentication authentication) {
+        AuthenticatedUser user = requireAuthenticatedUser(authentication);
+        projectService.deleteProject(projectId, user.employeeNumber());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/drafts")
     public ResponseEntity<CreateProjectDraftResponse> createProjectDraft(@Valid @RequestBody CreateProjectDraftRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(projectService.createProjectDraft(request));
@@ -88,12 +96,9 @@ public class ProjectController {
         return ResponseEntity.status(HttpStatus.CREATED).body(projectDocumentService.uploadInitialDocuments(projectId, files));
     }
 
-    @PostMapping(path = "/{projectId}/documents/extract", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<JsonNode> extractDocuments(
-            @PathVariable Long projectId,
-            @RequestPart("files") List<MultipartFile> files
-    ) {
-        var response = projectDocumentExtractService.extractDocuments(projectId, files);
+    @PostMapping("/{projectId}/documents/extract")
+    public ResponseEntity<JsonNode> extractDocuments(@PathVariable Long projectId) {
+        var response = projectDocumentExtractService.extractStoredDocuments(projectId);
         return ResponseEntity.status(response.status()).body(response.body());
     }
 
@@ -146,10 +151,16 @@ public class ProjectController {
         if (authentication != null && authentication.getPrincipal() instanceof AuthenticatedUser user) {
             return user.employeeNumber();
         }
-        // TODO: 인증 연동이 완전히 정리되면 pmUserId fallback 제거
         if (pmUserId != null && !pmUserId.isBlank()) {
             return pmUserId.trim();
         }
         throw new ApiException(HttpStatus.BAD_REQUEST, "PM_USER_REQUIRED", "PM 사용자를 확인할 수 없습니다.");
+    }
+
+    private AuthenticatedUser requireAuthenticatedUser(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof AuthenticatedUser user) {
+            return user;
+        }
+        throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH_UNAUTHORIZED", "인증이 필요합니다.");
     }
 }

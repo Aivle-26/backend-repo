@@ -4,4 +4,5 @@ import com.aivle26.aipm.Entity.ProjectKeyFeature;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ProjectKeyFeatureRepository extends JpaRepository<ProjectKeyFeature, Long> {
+    void deleteAllByProjectId(Long projectId);
 }

@@ -17,6 +17,7 @@ import com.aivle26.aipm.Repository.UserRepository;
 import com.aivle26.aipm.Service.AiServerDocumentExtractClient;
 import com.aivle26.aipm.Service.AiServerJsonResponse;
 import com.aivle26.aipm.Service.AuthService;
+import com.aivle26.aipm.Service.StoredDocumentFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,19 +29,22 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -87,6 +91,7 @@ class ProjectDocumentExtractControllerTest {
     private AiServerDocumentExtractClient aiServerDocumentExtractClient;
 
     private String accessToken;
+    private Long projectId;
 
     @BeforeEach
     void setUp() {
@@ -101,117 +106,92 @@ class ProjectDocumentExtractControllerTest {
         userRepository.deleteAll();
 
         User pm = userRepository.save(createPmUser("PM001"));
-        projectRepository.save(createProject(pm));
+        projectId = projectRepository.save(createProject(pm)).getId();
         AuthSessionResponse session = authService.issueSession(pm);
         accessToken = session.accessToken();
     }
 
     @Test
-    void uploadSingleFileRelaysAiServerResponse() throws Exception {
-        ObjectNode body = objectMapper.createObjectNode();
-        body.put("llm_status", "FALLBACK");
-        when(aiServerDocumentExtractClient.extractDocuments(anyList()))
-                .thenReturn(new AiServerJsonResponse(HttpStatus.OK, body));
-
-        MockMultipartFile file = new MockMultipartFile(
-                "files",
-                "project-rfp.pdf",
-                "application/pdf",
-                "pdf-content".getBytes()
+    void extractUsesStoredFilesWithoutCreatingNewDocumentRecords() throws Exception {
+        uploadDocuments(
+                new MockMultipartFile("files", "project-rfp.pdf", "application/pdf", "one".getBytes()),
+                new MockMultipartFile("files", "project-proposal.docx",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "two".getBytes())
         );
 
-        mockMvc.perform(multipart("/api/projects/1/documents/extract")
-                        .file(file)
-                        .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.llm_status").value("FALLBACK"));
-
-        verify(aiServerDocumentExtractClient)
-                .extractDocuments(argThat(matchesFileNames("project-rfp.pdf")));
-    }
-
-    @Test
-    void uploadMultipleFilesRelaysInOriginalOrder() throws Exception {
+        long documentCountBefore = projectDocumentRepository.count();
         ObjectNode body = objectMapper.createObjectNode();
         body.put("llm_status", "SUCCEEDED");
         when(aiServerDocumentExtractClient.extractDocuments(anyList()))
                 .thenReturn(new AiServerJsonResponse(HttpStatus.OK, body));
 
-        MockMultipartFile first = new MockMultipartFile("files", "project-rfp.pdf", "application/pdf", "one".getBytes());
-        MockMultipartFile second = new MockMultipartFile("files", "project-proposal.docx",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "two".getBytes());
-
-        mockMvc.perform(multipart("/api/projects/1/documents/extract")
-                        .file(first)
-                        .file(second)
+        mockMvc.perform(post("/api/projects/{projectId}/documents/extract", projectId)
+                        .with(csrf())
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.llm_status").value("SUCCEEDED"));
 
+        assertThat(projectDocumentRepository.count()).isEqualTo(documentCountBefore);
         verify(aiServerDocumentExtractClient)
                 .extractDocuments(argThat(matchesFileNames("project-rfp.pdf", "project-proposal.docx")));
     }
 
     @Test
-    void emptyFileFailsBeforeRelay() throws Exception {
-        MockMultipartFile emptyFile = new MockMultipartFile("files", "empty.txt", "text/plain", new byte[0]);
-
-        mockMvc.perform(multipart("/api/projects/1/documents/extract")
-                        .file(emptyFile)
+    void extractFailsWhenStoredDocumentMissing() throws Exception {
+        mockMvc.perform(post("/api/projects/{projectId}/documents/extract", projectId)
+                        .with(csrf())
                         .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("PROJECT_DOCUMENT_EMPTY"));
+                .andExpect(status().isNotFound());
 
         verifyNoInteractions(aiServerDocumentExtractClient);
     }
 
     @Test
-    void elevenFilesFailBeforeRelay() throws Exception {
-        MockMultipartHttpServletRequestBuilder requestBuilder = multipart("/api/projects/1/documents/extract");
-        requestBuilder.header("Authorization", "Bearer " + accessToken);
+    void uploadRejectsEmptyFileBeforeSaving() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile("files", "empty.txt", "text/plain", new byte[0]);
+
+        mockMvc.perform(multipart("/api/projects/{projectId}/documents/upload", projectId)
+                        .file(emptyFile)
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(aiServerDocumentExtractClient);
+    }
+
+    @Test
+    void uploadRejectsTooManyFilesBeforeSaving() throws Exception {
+        MockMultipartHttpServletRequestBuilder request = multipart("/api/projects/{projectId}/documents/upload", projectId);
+        request.with(csrf());
+        request.header("Authorization", "Bearer " + accessToken);
         for (int i = 0; i < 11; i++) {
-            requestBuilder.file(new MockMultipartFile("files", "doc-" + i + ".txt", "text/plain", "x".getBytes()));
+            request.file(new MockMultipartFile("files", "doc-" + i + ".txt", "text/plain", "x".getBytes()));
         }
 
-        mockMvc.perform(requestBuilder)
+        mockMvc.perform(request)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("TOO_MANY_PROJECT_DOCUMENTS"));
 
         verifyNoInteractions(aiServerDocumentExtractClient);
     }
 
-    @Test
-    void fileLargerThanTwentyMbFailsBeforeRelay() throws Exception {
-        byte[] largeContent = new byte[20 * 1024 * 1024 + 1];
-        MockMultipartFile file = new MockMultipartFile("files", "large.txt", "text/plain", largeContent);
+    private void uploadDocuments(MockMultipartFile... files) throws Exception {
+        MockMultipartHttpServletRequestBuilder request = multipart("/api/projects/{projectId}/documents/upload", projectId);
+        request.with(csrf());
+        request.header("Authorization", "Bearer " + accessToken);
+        for (MockMultipartFile file : files) {
+            request.file(file);
+        }
 
-        mockMvc.perform(multipart("/api/projects/1/documents/extract")
-                        .file(file)
-                        .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isPayloadTooLarge())
-                .andExpect(jsonPath("$.code").value("PROJECT_DOCUMENT_TOO_LARGE"));
-
-        verifyNoInteractions(aiServerDocumentExtractClient);
+        mockMvc.perform(request)
+                .andExpect(status().isCreated());
     }
 
-    @Test
-    void unsupportedExtensionFailsBeforeRelay() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("files", "unsupported.exe", "application/octet-stream", "abc".getBytes());
-
-        mockMvc.perform(multipart("/api/projects/1/documents/extract")
-                        .file(file)
-                        .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.code").value("UNSUPPORTED_PROJECT_DOCUMENT"));
-
-        verifyNoInteractions(aiServerDocumentExtractClient);
-    }
-
-    private ArgumentMatcher<List<org.springframework.web.multipart.MultipartFile>> matchesFileNames(String... fileNames) {
+    private ArgumentMatcher<List<StoredDocumentFile>> matchesFileNames(String... fileNames) {
         return files -> {
             List<String> names = new ArrayList<>();
-            for (var file : files) {
-                names.add(file.getOriginalFilename());
+            for (StoredDocumentFile file : files) {
+                names.add(file.originalFileName());
             }
             return names.equals(List.of(fileNames));
         };

@@ -7,4 +7,6 @@ public interface ProjectScheduleResultRepository extends JpaRepository<ProjectSc
     boolean existsByAgentExecutionId(String agentExecutionId);
 
     boolean existsByProjectId(Long projectId);
+
+    void deleteAllByProjectId(Long projectId);
 }

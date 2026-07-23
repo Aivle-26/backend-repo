@@ -11,10 +11,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.client.RestClient;
 
 import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -25,20 +27,32 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiServerDocumentExtractClientTest {
     private MockWebServer mockWebServer;
+    private Path tempDirectory;
 
     @BeforeEach
     void setUp() throws Exception {
         mockWebServer = new MockWebServer();
         mockWebServer.start();
+        tempDirectory = Files.createTempDirectory("ai-server-client-test");
     }
 
     @AfterEach
     void tearDown() throws Exception {
         mockWebServer.shutdown();
+        if (tempDirectory != null) {
+            try (var paths = Files.walk(tempDirectory)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        }
     }
 
     @Test
-    void relaysMultipartFilesToAiServer() throws Exception {
+    void relaysStoredFilesToAiServer() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -47,10 +61,12 @@ class AiServerDocumentExtractClientTest {
                         """));
 
         AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 5, 5);
-
-        MockMultipartFile first = new MockMultipartFile("files", "project-rfp.pdf", "application/pdf", "one".getBytes());
-        MockMultipartFile second = new MockMultipartFile("files", "project-proposal.docx",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "two".getBytes());
+        StoredDocumentFile first = createStoredFile("project-rfp.pdf", "application/pdf", "one");
+        StoredDocumentFile second = createStoredFile(
+                "project-proposal.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "two"
+        );
 
         AiServerJsonResponse response = client.extractDocuments(List.of(first, second));
         RecordedRequest recordedRequest = mockWebServer.takeRequest(5, TimeUnit.SECONDS);
@@ -70,7 +86,7 @@ class AiServerDocumentExtractClientTest {
     }
 
     @Test
-    void translatesAiServerPayloadTooLarge() {
+    void translatesAiServerPayloadTooLarge() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(413)
                 .addHeader("Content-Type", "application/json")
@@ -79,7 +95,7 @@ class AiServerDocumentExtractClientTest {
                         """));
 
         AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 5, 5);
-        MockMultipartFile file = new MockMultipartFile("files", "large.txt", "text/plain", "content".getBytes());
+        StoredDocumentFile file = createStoredFile("large.txt", "text/plain", "content");
 
         assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
                 .isInstanceOf(ApiException.class)
@@ -92,7 +108,7 @@ class AiServerDocumentExtractClientTest {
     }
 
     @Test
-    void translatesAiServerValidationFailure() {
+    void translatesAiServerValidationFailure() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(422)
                 .addHeader("Content-Type", "application/json")
@@ -101,7 +117,7 @@ class AiServerDocumentExtractClientTest {
                         """));
 
         AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 5, 5);
-        MockMultipartFile file = new MockMultipartFile("files", "bad.exe", "application/octet-stream", "content".getBytes());
+        StoredDocumentFile file = createStoredFile("bad.exe", "application/octet-stream", "content");
 
         assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
                 .isInstanceOf(ApiException.class)
@@ -121,7 +137,7 @@ class AiServerDocumentExtractClientTest {
         }
 
         AiServerDocumentExtractClient client = createClient("http://127.0.0.1:" + unusedPort, 1, 1);
-        MockMultipartFile file = new MockMultipartFile("files", "sample.txt", "text/plain", "content".getBytes());
+        StoredDocumentFile file = createStoredFile("sample.txt", "text/plain", "content");
 
         assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
                 .isInstanceOf(ApiException.class)
@@ -133,13 +149,13 @@ class AiServerDocumentExtractClientTest {
     }
 
     @Test
-    void returnsTimeoutWhenAiServerDoesNotRespond() {
+    void returnsTimeoutWhenAiServerDoesNotRespond() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setHeadersDelay(2, TimeUnit.SECONDS)
                 .setBody("{}"));
 
         AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 1, 1);
-        MockMultipartFile file = new MockMultipartFile("files", "sample.txt", "text/plain", "content".getBytes());
+        StoredDocumentFile file = createStoredFile("sample.txt", "text/plain", "content");
 
         assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
                 .isInstanceOf(ApiException.class)
@@ -167,6 +183,12 @@ class AiServerDocumentExtractClientTest {
                 .build();
 
         return new AiServerDocumentExtractClient(restClient, properties, new ObjectMapper());
+    }
+
+    private StoredDocumentFile createStoredFile(String fileName, String contentType, String content) throws Exception {
+        Path path = tempDirectory.resolve(fileName);
+        Files.writeString(path, content);
+        return new StoredDocumentFile(fileName, contentType, Files.size(path), path);
     }
 
     private long countOccurrences(String body, String token) {

@@ -5,4 +5,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ProjectDocumentAnalysisResultRepository extends JpaRepository<ProjectDocumentAnalysisResult, Long> {
     boolean existsByAgentExecutionId(String agentExecutionId);
+
+    void deleteAllByProjectId(Long projectId);
 }

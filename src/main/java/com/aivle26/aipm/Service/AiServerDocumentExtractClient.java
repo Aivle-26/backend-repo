@@ -19,13 +19,13 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.util.List;
 
 @Component
@@ -44,9 +44,9 @@ public class AiServerDocumentExtractClient {
         this.objectMapper = objectMapper;
     }
 
-    public AiServerJsonResponse extractDocuments(List<MultipartFile> files) {
+    public AiServerJsonResponse extractDocuments(List<StoredDocumentFile> files) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        for (MultipartFile file : files) {
+        for (StoredDocumentFile file : files) {
             body.add("files", toFilePart(file));
         }
 
@@ -109,19 +109,19 @@ public class AiServerDocumentExtractClient {
         }
     }
 
-    private HttpEntity<InputStreamResource> toFilePart(MultipartFile file) {
+    private HttpEntity<InputStreamResource> toFilePart(StoredDocumentFile file) {
         try {
             HttpHeaders headers = new HttpHeaders();
-            headers.setContentDispositionFormData("files", file.getOriginalFilename());
-            if (file.getContentType() != null && !file.getContentType().isBlank()) {
-                headers.setContentType(MediaType.parseMediaType(file.getContentType()));
+            headers.setContentDispositionFormData("files", file.originalFileName());
+            if (file.contentType() != null && !file.contentType().isBlank()) {
+                headers.setContentType(MediaType.parseMediaType(file.contentType()));
             }
-            return new HttpEntity<>(new MultipartFileResource(file), headers);
+            return new HttpEntity<>(new StoredDocumentResource(file), headers);
         } catch (IOException exception) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST,
                     "INVALID_PROJECT_DOCUMENT",
-                    "Failed to read uploaded file: " + file.getOriginalFilename(),
+                    "저장된 파일을 읽을 수 없습니다: " + file.originalFileName(),
                     exception
             );
         }
@@ -182,27 +182,27 @@ public class AiServerDocumentExtractClient {
         return false;
     }
 
-    private static final class MultipartFileResource extends InputStreamResource {
-        private final MultipartFile file;
+    private static final class StoredDocumentResource extends InputStreamResource {
+        private final StoredDocumentFile file;
 
-        private MultipartFileResource(MultipartFile file) throws IOException {
-            super(file.getInputStream());
+        private StoredDocumentResource(StoredDocumentFile file) throws IOException {
+            super(Files.newInputStream(file.path()));
             this.file = file;
         }
 
         @Override
         public String getFilename() {
-            return file.getOriginalFilename();
+            return file.originalFileName();
         }
 
         @Override
         public long contentLength() {
-            return file.getSize();
+            return file.fileSize();
         }
 
         @Override
         public InputStream getInputStream() throws IOException {
-            return file.getInputStream();
+            return Files.newInputStream(file.path());
         }
     }
 }
