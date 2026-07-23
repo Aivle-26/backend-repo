@@ -4,6 +4,7 @@ import com.aivle26.aipm.Dto.AgentRequestResult;
 import com.aivle26.aipm.Dto.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.CreateProjectDraftResponse;
+import com.aivle26.aipm.Dto.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Dto.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Dto.ProjectSummaryResponse;
 import com.aivle26.aipm.Dto.SaveDocumentAnalysisResultRequest;
@@ -15,6 +16,7 @@ import com.aivle26.aipm.Dto.SaveWbsResultResponse;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Service.AuthenticatedUser;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisRequestService;
+import com.aivle26.aipm.Service.ProjectDocumentAnalysisQueryService;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.ProjectDocumentExtractService;
 import com.aivle26.aipm.Service.ProjectDocumentService;
@@ -54,6 +56,7 @@ public class ProjectController {
     private final ProjectDocumentExtractService projectDocumentExtractService;
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
     private final ProjectDocumentAnalysisRequestService projectDocumentAnalysisRequestService;
+    private final ProjectDocumentAnalysisQueryService projectDocumentAnalysisQueryService;
     private final ProjectWbsService projectWbsService;
     private final ProjectWbsRequestService projectWbsRequestService;
     private final ProjectScheduleService projectScheduleService;
@@ -62,6 +65,11 @@ public class ProjectController {
     @GetMapping
     public ResponseEntity<List<ProjectSummaryResponse>> listProjects() {
         return ResponseEntity.ok(projectService.listProjects());
+    }
+
+    @GetMapping("/documents")
+    public ResponseEntity<List<ProjectDocumentUploadResponse>> listProjectDocuments() {
+        return ResponseEntity.ok(projectDocumentService.listProjectDocuments());
     }
 
     @DeleteMapping("/{projectId}")
@@ -106,6 +114,11 @@ public class ProjectController {
     public ResponseEntity<AgentRequestResult> requestDocumentAnalysis(@PathVariable Long projectId) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(projectDocumentAnalysisRequestService.requestAnalysis(projectId));
+    }
+
+    @GetMapping("/{projectId}/documents/analysis-results")
+    public ResponseEntity<ProjectDocumentAnalysisResultsResponse> getDocumentAnalysisResults(@PathVariable Long projectId) {
+        return ResponseEntity.ok(projectDocumentAnalysisQueryService.getAnalysisResults(projectId));
     }
 
     @PostMapping("/{projectId}/documents/analysis-results")

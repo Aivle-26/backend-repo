@@ -2,6 +2,8 @@ package com.aivle26.aipm.Controller;
 
 import com.aivle26.aipm.Dto.AuthSessionResponse;
 import com.aivle26.aipm.Entity.Project;
+import com.aivle26.aipm.Entity.ProjectDocument;
+import com.aivle26.aipm.Entity.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.ProjectStatus;
 import com.aivle26.aipm.Entity.User;
 import com.aivle26.aipm.Entity.UserStatus;
@@ -89,8 +91,22 @@ class ProjectControllerSecurityTest {
     }
 
     @Test
+    void listProjectDocumentsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/projects/documents"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
     void deleteProjectRequiresAuthentication() throws Exception {
         mockMvc.perform(delete("/api/projects/1"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
+    void getDocumentAnalysisResultsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/projects/1/documents/analysis-results"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
     }
@@ -108,6 +124,36 @@ class ProjectControllerSecurityTest {
                 .andExpect(jsonPath("$[0].name").value("New PM Project"))
                 .andExpect(jsonPath("$[0].pmEmployeeNumber").value("PM001"))
                 .andExpect(jsonPath("$[0].status").value(ProjectStatus.DRAFT.name()));
+    }
+
+    @Test
+    void listProjectDocumentsReturnsStoredMetadataWithBearerToken() throws Exception {
+        User pm = userRepository.save(createPmUser("PM002"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        ProjectDocument document = projectDocumentRepository.saveAndFlush(createDocument(project));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(get("/api/projects/documents")
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$[0].documents.length()").value(1))
+                .andExpect(jsonPath("$[0].documents[0].documentId").value(document.getId().intValue()))
+                .andExpect(jsonPath("$[0].documents[0].originalFileName").value("저장된-공고문.pdf"))
+                .andExpect(jsonPath("$[0].documents[0].fileSize").value(2048));
+    }
+
+    @Test
+    void listProjectDocumentsReturnsEmptyListWhenNoDocumentsExist() throws Exception {
+        User pm = userRepository.save(createPmUser("PM003"));
+        projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(get("/api/projects/documents")
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
@@ -129,6 +175,19 @@ class ProjectControllerSecurityTest {
         project.setPlannedStartDate(LocalDate.of(2026, 7, 20));
         project.setPlannedEndDate(LocalDate.of(2026, 8, 20));
         return project;
+    }
+
+    private ProjectDocument createDocument(Project project) {
+        ProjectDocument document = new ProjectDocument();
+        document.setProject(project);
+        document.setStatus(ProjectDocumentStatus.UPLOADED);
+        document.setOriginalFileName("저장된-공고문.pdf");
+        document.setStoredFileName("stored-document.pdf");
+        document.setStoragePath("uploads/documents/stored-document.pdf");
+        document.setExtension("pdf");
+        document.setContentType("application/pdf");
+        document.setFileSize(2048L);
+        return document;
     }
 
     private User createPmUser(String employeeNumber) {

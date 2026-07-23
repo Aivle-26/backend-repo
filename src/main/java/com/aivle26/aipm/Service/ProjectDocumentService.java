@@ -24,8 +24,10 @@ import java.nio.file.StandardCopyOption;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -53,6 +55,20 @@ public class ProjectDocumentService {
     @Transactional(readOnly = true)
     public List<ProjectDocument> getProjectDocuments(Long projectId) {
         return loadProjectDocuments(projectId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectDocumentUploadResponse> listProjectDocuments() {
+        Map<Long, List<ProjectDocument>> documentsByProject = new LinkedHashMap<>();
+        for (ProjectDocument document : projectDocumentRepository.findAllWithProjectOrderByProjectIdAndCreatedAt()) {
+            documentsByProject
+                    .computeIfAbsent(document.getProject().getId(), ignored -> new ArrayList<>())
+                    .add(document);
+        }
+
+        return documentsByProject.entrySet().stream()
+                .map(entry -> buildUploadResponse(entry.getKey(), entry.getValue()))
+                .toList();
     }
 
     @Transactional

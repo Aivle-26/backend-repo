@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Controller;
 
 import com.aivle26.aipm.Dto.AuthSessionResponse;
+import com.aivle26.aipm.Entity.Project;
 import com.aivle26.aipm.Entity.ProjectDocument;
 import com.aivle26.aipm.Entity.ProjectStatus;
 import com.aivle26.aipm.Entity.User;
@@ -45,7 +46,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -132,13 +136,13 @@ class ProjectDraftFromDocumentsIntegrationTest {
 
         MockMultipartFile rfp = new MockMultipartFile(
                 "files",
-                "mock-rfp.pdf",
+                "한글-공고문.pdf",
                 MediaType.APPLICATION_PDF_VALUE,
                 "mock-rfp-content".getBytes(StandardCharsets.UTF_8)
         );
         MockMultipartFile memo = new MockMultipartFile(
                 "files",
-                "notes.txt",
+                "요구사항-메모.txt",
                 MediaType.TEXT_PLAIN_VALUE,
                 "mock-notes-content".getBytes(StandardCharsets.UTF_8)
         );
@@ -150,7 +154,7 @@ class ProjectDraftFromDocumentsIntegrationTest {
                         .with(csrf())
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.projectName").value("문서 기반 테스트 프로젝트"))
+                .andExpect(jsonPath("$.projectName").value("문서 기반 한글 프로젝트"))
                 .andExpect(jsonPath("$.status").value(ProjectStatus.DRAFT.name()))
                 .andExpect(jsonPath("$.llmStatus").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.requirementCount").value(2))
@@ -174,9 +178,57 @@ class ProjectDraftFromDocumentsIntegrationTest {
         assertThat(documents).hasSize(2);
         assertThat(documents)
                 .extracting(ProjectDocument::getOriginalFileName)
-                .containsExactlyInAnyOrder("mock-rfp.pdf", "notes.txt");
+                .containsExactlyInAnyOrder("한글-공고문.pdf", "요구사항-메모.txt");
         assertThat(documents)
                 .allSatisfy(document -> assertThat(Files.exists(Path.of(document.getStoragePath()))).isTrue());
+
+        assertThat(projectRepository.findById(projectId).orElseThrow())
+                .satisfies(project -> {
+                    assertThat(project.getName()).isEqualTo("문서 기반 한글 프로젝트");
+                    assertThat(project.getDescription()).isEqualTo("한글 설명 저장과 조회를 검증합니다.");
+                });
+
+        mockMvc.perform(get("/api/projects")
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$[0].name").value("문서 기반 한글 프로젝트"))
+                .andExpect(jsonPath("$[0].description").value("한글 설명 저장과 조회를 검증합니다."));
+    }
+
+    @Test
+    void preserveKoreanProjectNameAndDescriptionFromJsonRequestThroughListResponse() throws Exception {
+        User pm = userRepository.save(createPmUser("PM9002"));
+        AuthSessionResponse session = authService.issueSession(pm);
+        byte[] requestBody = """
+                {
+                  "name": "한글 프로젝트 생성 검증",
+                  "description": "한글 설명 저장과 조회 검증",
+                  "pmEmployeeNumber": "PM9002",
+                  "plannedStartDate": "2026-07-23",
+                  "plannedEndDate": "2026-08-23"
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/projects/drafts")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + session.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .characterEncoding(StandardCharsets.UTF_8)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.name").value("한글 프로젝트 생성 검증"));
+
+        Project savedProject = projectRepository.findAll().get(0);
+        assertThat(savedProject.getName()).isEqualTo("한글 프로젝트 생성 검증");
+        assertThat(savedProject.getDescription()).isEqualTo("한글 설명 저장과 조회 검증");
+
+        mockMvc.perform(get("/api/projects")
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("한글 프로젝트 생성 검증"))
+                .andExpect(jsonPath("$[0].description").value("한글 설명 저장과 조회 검증"));
     }
 
     private User createPmUser(String employeeNumber) {
@@ -215,18 +267,18 @@ class ProjectDraftFromDocumentsIntegrationTest {
 
             String requestBody;
             try (InputStream inputStream = exchange.getRequestBody()) {
-                requestBody = new String(inputStream.readAllBytes(), StandardCharsets.ISO_8859_1);
+                requestBody = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
             }
 
-            List<String> uploadedFiles = List.of("mock-rfp.pdf", "notes.txt").stream()
+            List<String> uploadedFiles = List.of("한글-공고문.pdf", "요구사항-메모.txt").stream()
                     .filter(requestBody::contains)
                     .toList();
 
             String response = """
                     {
                       "project_info": {
-                        "project_name": "\\uBB38\\uC11C \\uAE30\\uBC18 \\uD14C\\uC2A4\\uD2B8 \\uD504\\uB85C\\uC81D\\uD2B8",
-                        "project_goal": "\\uC5C5\\uB85C\\uB4DC\\uD55C \\uBB38\\uC11C\\uB97C \\uAE30\\uBC18\\uC73C\\uB85C \\uD504\\uB85C\\uC81D\\uD2B8 \\uCD08\\uC548\\uC744 \\uC0DD\\uC131\\uD569\\uB2C8\\uB2E4.",
+                        "project_name": "문서 기반 한글 프로젝트",
+                        "project_goal": "한글 설명 저장과 조회를 검증합니다.",
                         "client_organization": "Mock Client",
                         "period_start": "2026-07-22",
                         "period_end": "2026-09-30",

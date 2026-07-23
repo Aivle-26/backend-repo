@@ -11,5 +11,7 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
 
     List<ProjectRequirement> findByProjectIdAndStatus(Long projectId, RequirementStatus status);
 
+    List<ProjectRequirement> findByProjectIdAndAnalysisResultIdOrderByIdAsc(Long projectId, Long analysisResultId);
+
     void deleteAllByProjectId(Long projectId);
 }
