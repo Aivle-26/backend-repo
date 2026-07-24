@@ -124,6 +124,34 @@ class ProjectControllerSecurityTest {
     }
 
     @Test
+    void artifactStatusAllowsProjectOwnerPm() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/status", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$.totalRequiredCount").value(0))
+                .andExpect(jsonPath("$.registrationRate").value(0.0))
+                .andExpect(jsonPath("$.approvalCompletionRate").value(0.0));
+    }
+
+    @Test
+    void artifactStatusRejectsStaff() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(staff);
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/status", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
     void createProjectDraftAllowsPm() throws Exception {
         User pm = userRepository.save(createPmUser("PM001"));
         AuthSessionResponse session = authService.issueSession(pm);
