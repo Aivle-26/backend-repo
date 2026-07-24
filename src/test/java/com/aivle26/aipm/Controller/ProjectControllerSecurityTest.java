@@ -25,7 +25,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import software.amazon.awssdk.services.s3.S3Client;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -33,6 +36,7 @@ import java.time.Instant;
 import java.util.Date;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -42,6 +46,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProjectControllerSecurityTest {
+
+    @MockitoBean
+    private S3Client s3Client;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -146,6 +154,47 @@ class ProjectControllerSecurityTest {
         AuthSessionResponse session = authService.issueSession(staff);
 
         mockMvc.perform(get("/api/projects/{projectId}/artifacts/status", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void uploadDocumentsAllowsProjectOwnerPm() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(pm);
+        MockMultipartFile file = new MockMultipartFile(
+                "files",
+                "requirements.txt",
+                "text/plain",
+                "hello".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/projects/{projectId}/documents/upload", project.getId())
+                        .file(file)
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$.documents[0].originalFileName").value("requirements.txt"))
+                .andExpect(jsonPath("$.documents[0].status").value("UPLOADED"));
+    }
+
+    @Test
+    void uploadDocumentsRejectsStaff() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(staff);
+        MockMultipartFile file = new MockMultipartFile(
+                "files",
+                "requirements.txt",
+                "text/plain",
+                "hello".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/projects/{projectId}/documents/upload", project.getId())
+                        .file(file)
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));

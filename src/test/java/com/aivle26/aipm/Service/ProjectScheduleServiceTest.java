@@ -28,6 +28,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -38,6 +40,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @WithMockUser(username = "PM001", roles = "PM")
 class ProjectScheduleServiceTest {
+
+    @MockitoBean
+    private S3Client s3Client;
 
     @Autowired
     private ProjectScheduleService projectScheduleService;
