@@ -2,6 +2,7 @@ package com.aivle26.aipm.Controller;
 
 import com.aivle26.aipm.Dto.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.CreateProjectDraftResponse;
+import com.aivle26.aipm.Dto.ProjectArtifactStatusResponse;
 import com.aivle26.aipm.Dto.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Dto.ProjectSummaryResponse;
 import com.aivle26.aipm.Dto.AgentRequestResult;
@@ -14,6 +15,7 @@ import com.aivle26.aipm.Dto.SaveWbsResultResponse;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisRequestService;
 import com.aivle26.aipm.Service.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.ProjectDocumentService;
+import com.aivle26.aipm.Service.ProjectArtifactStatusService;
 import com.aivle26.aipm.Service.ProjectScheduleRequestService;
 import com.aivle26.aipm.Service.ProjectScheduleService;
 import com.aivle26.aipm.Service.ProjectService;
@@ -41,6 +43,7 @@ import java.util.List;
 @RequestMapping("/api/projects")
 public class ProjectController {
     private final ProjectService projectService;
+    private final ProjectArtifactStatusService projectArtifactStatusService;
     private final ProjectDocumentService projectDocumentService;
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
     private final ProjectDocumentAnalysisRequestService projectDocumentAnalysisRequestService;
@@ -53,6 +56,12 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<List<ProjectSummaryResponse>> listProjects() {
         return ResponseEntity.ok(projectService.listProjects());
+    }
+
+    @GetMapping("/{projectId}/artifacts/status")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<ProjectArtifactStatusResponse> getArtifactStatus(@PathVariable Long projectId) {
+        return ResponseEntity.ok(projectArtifactStatusService.getStatus(projectId));
     }
 
     @PostMapping("/drafts")
