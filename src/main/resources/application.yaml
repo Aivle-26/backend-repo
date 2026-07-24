@@ -31,6 +31,11 @@ spring:
       hibernate:
         format_sql: ${JPA_FORMAT_SQL:false}
 
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_MULTIPART_MAX_FILE_SIZE:10MB}
+      max-request-size: ${SPRING_MULTIPART_MAX_REQUEST_SIZE:50MB}
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -64,22 +69,15 @@ app:
     max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10485760}
     allowed-extensions:
       - pdf
-      - doc
       - docx
-      - xls
       - xlsx
-      - hwp
-      - hwpx
+      - pptx
       - txt
     allowed-mime-types:
       - application/pdf
-      - application/msword
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
-      - application/vnd.ms-excel
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-      - application/x-hwp
-      - application/haansofthwp
-      - application/octet-stream
+      - application/vnd.openxmlformats-officedocument.presentationml.presentation
       - text/plain
 
   slack:

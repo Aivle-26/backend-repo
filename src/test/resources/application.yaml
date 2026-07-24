@@ -15,6 +15,11 @@ spring:
     username: test@example.com
     password: test-password
 
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 5MB
+
 server:
   port: 0
 
@@ -42,11 +47,13 @@ app:
     max-file-size: 1048576
     allowed-extensions:
       - pdf
-      - doc
       - docx
+      - xlsx
+      - pptx
       - txt
     allowed-mime-types:
       - application/pdf
-      - application/msword
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - application/vnd.openxmlformats-officedocument.presentationml.presentation
       - text/plain
