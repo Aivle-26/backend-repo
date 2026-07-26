@@ -1,0 +1,38 @@
+package com.aivle26.aipm.Repository.project;
+
+import com.aivle26.aipm.Entity.project.ProjectDocument;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument, Long> {
+    // 프로젝트에 연결된 문서 레코드가 존재하는지 반환한다.
+    boolean existsByProjectId(Long projectId);
+
+    // 프로젝트에 연결된 모든 문서 레코드를 조회한다.
+    List<ProjectDocument> findByProjectId(Long projectId);
+
+    // 프로젝트 문서를 생성 시각과 ID 오름차순으로 조회한다.
+    List<ProjectDocument> findByProjectIdOrderByCreatedAtAscIdAsc(Long projectId);
+
+    // 전체 문서와 프로젝트를 함께 로딩해 프로젝트·생성 시각 순으로 반환한다.
+    @Query("""
+            select document
+            from ProjectDocument document
+            join fetch document.project project
+            order by project.id asc, document.createdAt asc, document.id asc
+            """)
+    List<ProjectDocument> findAllWithProjectOrderByProjectIdAndCreatedAt();
+
+    // 프로젝트에서 원본 파일명이 일치하는 교체 대상 문서를 조회한다.
+    Optional<ProjectDocument> findByProjectIdAndOriginalFileName(Long projectId, String originalFileName);
+
+    // 문서 ID와 프로젝트 ID가 모두 일치하는 문서를 조회한다.
+    Optional<ProjectDocument> findByIdAndProjectId(Long id, Long projectId);
+
+    // 프로젝트에 연결된 모든 문서 레코드를 삭제한다.
+    void deleteAllByProjectId(Long projectId);
+}

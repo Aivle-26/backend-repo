@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // 도메인 ApiException의 상태·코드·메시지를 공통 오류 응답으로 반환한다.
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApiException(ApiException exception) {
         HttpStatus status = exception.getStatus();
@@ -29,6 +30,7 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    // DTO 필드 검증 오류를 필드별 메시지로 조합해 400 응답으로 반환한다.
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult().getFieldErrors().stream()
@@ -38,6 +40,7 @@ public class GlobalExceptionHandler {
         return buildBadRequest(message.isBlank() ? "invalid request" : message);
     }
 
+    // JSON·경로 변수·multipart 해석 실패를 공통 잘못된 요청 응답으로 반환한다.
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
             MethodArgumentTypeMismatchException.class,
@@ -47,6 +50,7 @@ public class GlobalExceptionHandler {
         return buildBadRequest("invalid request");
     }
 
+    // 처리되지 않은 예외의 내부 정보를 숨기고 공통 500 응답을 반환한다.
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpectedException(Exception exception) {
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
@@ -59,6 +63,7 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    // 전달된 검증 메시지로 표준 400 오류 응답을 생성한다.
     private ResponseEntity<ErrorResponse> buildBadRequest(String message) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(new ErrorResponse(
@@ -70,6 +75,7 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    // 검증 실패 필드명과 기본 메시지를 클라이언트 표시 문자열로 결합한다.
     private String formatFieldError(FieldError fieldError) {
         return fieldError.getField() + ": " + fieldError.getDefaultMessage();
     }

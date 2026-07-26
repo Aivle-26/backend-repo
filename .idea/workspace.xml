@@ -6,17 +6,138 @@
   <component name="ChangeListManager">
     <list default="true" id="4d9e8b80-e12d-4eac-b86d-684035885346" name="변경" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Controller/ProjectController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Controller/ProjectController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectDocumentAnalysisResultRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectDocumentAnalysisResultRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectDocumentRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectDocumentRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectKeyFeatureRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectKeyFeatureRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectPlanningExtractionRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectPlanningExtractionRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRequiredArtifactRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRequiredArtifactRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRequirementRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRequirementRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectControllerSecurityTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectControllerSecurityTest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectDraftFromDocumentsIntegrationTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectDraftFromDocumentsIntegrationTest.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/AiServerConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/AiServerProperties.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/AuthProperties.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/CorsProperties.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/DocumentStorageConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/DocumentStorageProperties.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/JwtAuthenticationFilter.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/PasswordConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/PlanningAgentConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/PlanningAgentProperties.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Config/SecurityConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Controller/AdminUserController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Controller/ProjectController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Controller/UserController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/AdminCreateUserRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/AgentRequestResult.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/AuthRefreshRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/AuthSessionResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/CreateProjectDraftFromDocumentsResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/CreateProjectDraftRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/CreateProjectDraftResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/DocumentAnalysisRequirementRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/LoginRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/LoginResendRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/LoginResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/LoginVerifyRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/LoginVerifyResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/LogoutRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/PasswordChangeRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/PasswordEmailCheckRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/PasswordEmailCheckResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/PasswordEmailSendRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/PlanningDocumentExtractResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/ProjectDocumentAnalysisResultsResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/ProjectDocumentUploadItemResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/ProjectDocumentUploadResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/ProjectSummaryResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SaveDocumentAnalysisResultRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SaveDocumentAnalysisResultResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SaveScheduleResultRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SaveScheduleResultResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SaveWbsResultRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SaveWbsResultResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/ScheduleResultRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SignupRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SignupResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SignupStartResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/SignupVerifyRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/UserResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Dto/WbsTaskResultRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/AgentExecutionStatus.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/EmailVerification.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/PlanningLlmStatus.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/Project.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectDocument.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectDocumentAnalysisResult.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectDocumentStatus.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectKeyFeature.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectPlanningExtraction.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectRequiredArtifact.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectRequirement.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectSchedule.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectScheduleResult.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectStatus.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectWbsResult.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/ProjectWbsTask.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/RequiredArtifactType.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/RequirementPriority.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/RequirementStatus.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/RequirementType.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/User.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/UserStatus.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/VerificationPurpose.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/WbsDifficulty.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/WbsPhase.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Entity/WbsSkill.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Exception/GlobalExceptionHandler.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Exception/GlobalExceptionHandler.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/EmailVerificationRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectDocumentAnalysisResultRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectDocumentRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectKeyFeatureRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectPlanningExtractionRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRequiredArtifactRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectRequirementRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectScheduleRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectScheduleResultRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectWbsResultRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/ProjectWbsTaskRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Repository/UserRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/AdminUserService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/AiServerDocumentExtractClient.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/AiServerJsonResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/AuthCodes.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/AuthService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/AuthenticatedUser.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/JwtService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/MailService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/PlanningAgentClient.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/PlanningAgentHttpClient.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectAgentClient.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentAnalysisQueryService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentAnalysisRequestService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentAnalysisService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentExtractService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDocumentService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectDraftFromDocumentsService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectPmResolver.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectScheduleRequestService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectScheduleService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectWbsRequestService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/ProjectWbsService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/StoredDocumentFile.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/UnavailableProjectAgentClient.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/aivle26/aipm/Service/UserService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectControllerSecurityTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectDeleteIntegrationTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectDocumentAnalysisResultsControllerTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectDocumentExtractControllerTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Controller/ProjectDraftFromDocumentsIntegrationTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/AiServerDocumentExtractClientTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/AuthServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/PlanningAgentHttpClientTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectDocumentAnalysisRequestServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectDocumentAnalysisServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectDocumentServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectDraftFromDocumentsServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectScheduleServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/ProjectWbsServiceTest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/java/com/aivle26/aipm/Service/UserServiceTest.java" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,7 +145,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="199" />
+    <option name="cachedIndexableFilesCount" value="194" />
   </component>
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
@@ -58,20 +179,20 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Gradle.backend-repo 빌드.executor": "Run",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "Spring Boot.AipmApplication.executor": "Run",
-    "git-widget-placeholder": "project-planning",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "C:/Users/User/Desktop/pm-agent/backend-repo"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Gradle.backend-repo 빌드.executor&quot;: &quot;Run&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;Spring Boot.AipmApplication.executor&quot;: &quot;Run&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;project-planning&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/User/Desktop/pm-agent/backend-repo&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration default="true" type="JetRunConfigurationType">
       <method v="2">
