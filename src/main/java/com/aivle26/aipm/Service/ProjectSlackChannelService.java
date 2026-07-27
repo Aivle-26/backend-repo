@@ -2,10 +2,10 @@ package com.aivle26.aipm.Service;
 
 import com.aivle26.aipm.Dto.SlackChannelCandidateResponse;
 import com.aivle26.aipm.Dto.SlackChannelResponse;
-import com.aivle26.aipm.Entity.Project;
+import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.ProjectSlackChannel;
 import com.aivle26.aipm.Exception.ApiException;
-import com.aivle26.aipm.Repository.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.ProjectSlackChannelRepository;
 import com.slack.api.model.Conversation;
 import lombok.RequiredArgsConstructor;

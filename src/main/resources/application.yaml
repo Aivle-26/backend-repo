@@ -1,4 +1,7 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   application:
     name: aipm
 
@@ -51,7 +54,7 @@ management:
 
 app:
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://frontend-repo-coral.vercel.app}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://frontend-repo-coral.vercel.app}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
   s3:
     region: ${AWS_REGION:ap-northeast-2}
@@ -90,3 +93,16 @@ app:
     # LLM 호출이 포함돼 있어 넉넉히 잡는다
     timeout-seconds: ${AI_SERVER_TIMEOUT_SECONDS:60}
     enable-llm: ${AI_SERVER_ENABLE_LLM:true}
+
+agent:
+  planning:
+    base-url: ${PLANNING_AGENT_BASE_URL:http://localhost:8000}
+    extract-path: ${PLANNING_AGENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+    connect-timeout: ${PLANNING_AGENT_CONNECT_TIMEOUT:5s}
+    read-timeout: ${PLANNING_AGENT_READ_TIMEOUT:120s}
+
+ai-server:
+  base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+  document-extract-path: ${AI_SERVER_DOCUMENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+  connect-timeout-seconds: ${AI_SERVER_CONNECT_TIMEOUT_SECONDS:5}
+  response-timeout-seconds: ${AI_SERVER_RESPONSE_TIMEOUT_SECONDS:120}
