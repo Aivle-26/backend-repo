@@ -7,6 +7,8 @@ import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Dto.project.ProjectSummaryResponse;
+import com.aivle26.aipm.Dto.project.ProjectWbsResponse;
+import com.aivle26.aipm.Dto.project.SaveFinalWbsRequest;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultResponse;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
@@ -37,6 +39,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -147,12 +150,12 @@ public class ProjectController {
                 .body(projectDocumentAnalysisService.saveAnalysisResult(projectId, request));
     }
 
-    // 프로젝트의 확정 요구사항을 기반으로 AI WBS 생성을 요청한다.
+    // 프로젝트의 확정 요구사항을 AI Server에 전달하고 생성된 WBS를 즉시 저장한다.
     @PostMapping("/{projectId}/wbs/generate")
     @PreAuthorize("hasRole('PM')")
-    public ResponseEntity<AgentRequestResult> requestWbsGeneration(@PathVariable Long projectId) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(projectWbsService.requestWbsGeneration(projectId));
+    public ResponseEntity<ProjectWbsResponse> generateWbs(@PathVariable Long projectId) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(projectWbsService.generateWbs(projectId));
     }
 
     // AI Server가 전달한 WBS 결과를 프로젝트에 저장하고 저장 결과를 반환한다.
@@ -164,6 +167,23 @@ public class ProjectController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(projectWbsService.saveWbsResult(projectId, request));
+    }
+
+    // 새로고침 시 AI 최초안과 사용자의 현재 최종안을 DB에서 함께 복원한다.
+    @GetMapping("/{projectId}/wbs")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<ProjectWbsResponse> getWbs(@PathVariable Long projectId) {
+        return ResponseEntity.ok(projectWbsService.getWbs(projectId));
+    }
+
+    // 편집된 전체 최종 WBS를 교체 저장해 추가·수정·삭제·순서 변경을 원자적으로 반영한다.
+    @PutMapping("/{projectId}/wbs/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<ProjectWbsResponse> saveFinalWbs(
+            @PathVariable Long projectId,
+            @Valid @RequestBody SaveFinalWbsRequest request
+    ) {
+        return ResponseEntity.ok(projectWbsService.saveFinalWbs(projectId, request));
     }
 
     // 프로젝트의 저장 WBS를 기반으로 AI 일정 생성을 요청한다.

@@ -10,6 +10,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -20,7 +21,13 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "project_wbs_results")
+@Table(
+        name = "project_wbs_results",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_project_wbs_results_project",
+                columnNames = "project_id"
+        )
+)
 public class ProjectWbsResult {
 
     @Id
@@ -36,6 +43,9 @@ public class ProjectWbsResult {
 
     @Column(nullable = false, length = 100)
     private String agentVersion;
+
+    @Column(columnDefinition = "TEXT")
+    private String initialTasksJson;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
