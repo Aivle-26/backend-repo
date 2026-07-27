@@ -2,9 +2,11 @@ package com.aivle26.aipm.Config;
 
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
+import com.aivle26.aipm.Entity.risk.RiskTeamMember;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,7 @@ public class LocalDataSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
+    private final RiskTeamMemberRepository riskTeamMemberRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -77,9 +80,33 @@ public class LocalDataSeeder implements CommandLineRunner {
         project.setPlannedEndDate(LocalDate.now().plusDays(30));
         Project saved = projectRepository.save(project);
 
+        // 담당자 재배정 추천 흐름 검증용 더미 팀원. (배정 도메인 생기면 제거)
+        seedDummyTeamMembers(saved.getId());
+
         log.info("=== local 시드 생성 ===");
         log.info("  PM 계정   : {} / {}", PM_EMAIL, PM_PASSWORD);
         log.info("  직원 계정 : {} / {}", STAFF_EMAIL, STAFF_PASSWORD);
         log.info("  프로젝트 ID: {}", saved.getId());
+    }
+
+    /** 재배정 추천 테스트용 더미 팀원 4명 (1명은 현재 담당자). */
+    private void seedDummyTeamMembers(Long projectId) {
+        riskTeamMemberRepository.save(member(projectId, "김개발", "Backend", "Java", 85, 3, true));
+        riskTeamMemberRepository.save(member(projectId, "이수현", "Backend", "Java,Spring,AWS", 40, 0, false));
+        riskTeamMemberRepository.save(member(projectId, "박지민", "Backend", "Java", 60, 1, false));
+        riskTeamMemberRepository.save(member(projectId, "최유진", "Frontend", "React", 30, 0, false));
+    }
+
+    private RiskTeamMember member(Long projectId, String name, String role, String skills,
+                                  double workloadRate, int overdueTaskCount, boolean currentAssignee) {
+        RiskTeamMember m = new RiskTeamMember();
+        m.setProjectId(projectId);
+        m.setMemberName(name);
+        m.setRole(role);
+        m.setSkills(skills);
+        m.setWorkloadRate(workloadRate);
+        m.setOverdueTaskCount(overdueTaskCount);
+        m.setCurrentAssignee(currentAssignee);
+        return m;
     }
 }
