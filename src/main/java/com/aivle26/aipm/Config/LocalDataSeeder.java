@@ -1,11 +1,11 @@
 package com.aivle26.aipm.Config;
 
-import com.aivle26.aipm.Entity.Project;
-import com.aivle26.aipm.Entity.ProjectStatus;
-import com.aivle26.aipm.Entity.User;
-import com.aivle26.aipm.Entity.UserStatus;
-import com.aivle26.aipm.Repository.ProjectRepository;
-import com.aivle26.aipm.Repository.UserRepository;
+import com.aivle26.aipm.Entity.project.Project;
+import com.aivle26.aipm.Entity.project.ProjectStatus;
+import com.aivle26.aipm.Entity.user.User;
+import com.aivle26.aipm.Entity.user.UserStatus;
+import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;

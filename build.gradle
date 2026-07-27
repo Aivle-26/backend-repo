@@ -25,6 +25,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation platform('software.amazon.awssdk:bom:2.49.2')
+	implementation 'software.amazon.awssdk:s3'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	// Slack Web API (conversations.list / conversations.history)
 	implementation 'com.slack.api:slack-api-client:1.44.2'
@@ -39,6 +41,7 @@ dependencies {
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'com.h2database:h2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -47,4 +50,13 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	jvmArgs '-Dfile.encoding=UTF-8'
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
+
+tasks.withType(JavaExec).configureEach {
+	jvmArgs '-Dfile.encoding=UTF-8'
 }

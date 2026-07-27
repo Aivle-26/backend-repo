@@ -1,4 +1,7 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   application:
     name: aipm
 
@@ -31,6 +34,11 @@ spring:
       hibernate:
         format_sql: ${JPA_FORMAT_SQL:false}
 
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_MULTIPART_MAX_FILE_SIZE:10MB}
+      max-request-size: ${SPRING_MULTIPART_MAX_REQUEST_SIZE:50MB}
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -46,8 +54,11 @@ management:
 
 app:
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://frontend-repo-coral.vercel.app}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://frontend-repo-coral.vercel.app}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+  s3:
+    region: ${AWS_REGION:ap-northeast-2}
+    bucket: ${AWS_S3_BUCKET}
   auth:
     access-token-expiration-minutes: ${AUTH_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
     absolute-login-expiration-hours: ${AUTH_ABSOLUTE_LOGIN_EXPIRATION_HOURS:8}
@@ -61,22 +72,15 @@ app:
     max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10485760}
     allowed-extensions:
       - pdf
-      - doc
       - docx
-      - xls
       - xlsx
-      - hwp
-      - hwpx
+      - pptx
       - txt
     allowed-mime-types:
       - application/pdf
-      - application/msword
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
-      - application/vnd.ms-excel
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-      - application/x-hwp
-      - application/haansofthwp
-      - application/octet-stream
+      - application/vnd.openxmlformats-officedocument.presentationml.presentation
       - text/plain
 
   slack:
@@ -89,3 +93,16 @@ app:
     # LLM 호출이 포함돼 있어 넉넉히 잡는다
     timeout-seconds: ${AI_SERVER_TIMEOUT_SECONDS:60}
     enable-llm: ${AI_SERVER_ENABLE_LLM:true}
+
+agent:
+  planning:
+    base-url: ${PLANNING_AGENT_BASE_URL:http://localhost:8000}
+    extract-path: ${PLANNING_AGENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+    connect-timeout: ${PLANNING_AGENT_CONNECT_TIMEOUT:5s}
+    read-timeout: ${PLANNING_AGENT_READ_TIMEOUT:120s}
+
+ai-server:
+  base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+  document-extract-path: ${AI_SERVER_DOCUMENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+  connect-timeout-seconds: ${AI_SERVER_CONNECT_TIMEOUT_SECONDS:5}
+  response-timeout-seconds: ${AI_SERVER_RESPONSE_TIMEOUT_SECONDS:120}

@@ -1,5 +1,6 @@
 package com.aivle26.aipm.Entity;
 
+import com.aivle26.aipm.Entity.project.Project;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

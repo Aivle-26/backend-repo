@@ -1,0 +1,206 @@
+package com.aivle26.aipm.client.ai;
+
+import com.aivle26.aipm.Config.ai.AiServerProperties;
+import com.aivle26.aipm.Exception.ApiException;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.util.List;
+
+@Component
+public class AiServerDocumentExtractClient {
+    private final RestClient aiServerRestClient;
+    private final AiServerProperties properties;
+    private final ObjectMapper objectMapper;
+
+    public AiServerDocumentExtractClient(
+            @Qualifier("aiServerRestClient") RestClient aiServerRestClient,
+            AiServerProperties properties,
+            ObjectMapper objectMapper
+    ) {
+        this.aiServerRestClient = aiServerRestClient;
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+    }
+
+    // 저장 파일 목록을 multipart 요청으로 AI Server에 전송하고 상태 코드와 JSON을 반환한다.
+    public AiServerJsonResponse extractDocuments(List<StoredDocumentFile> files) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        for (StoredDocumentFile file : files) {
+            body.add("files", toFilePart(file));
+        }
+
+        try {
+            var response = aiServerRestClient.post()
+                    .uri(properties.getDocumentExtractPath())
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(JsonNode.class);
+            JsonNode responseBody = response.getBody();
+            if (responseBody == null) {
+                throw new ApiException(
+                        HttpStatus.BAD_GATEWAY,
+                        "AI_SERVER_INVALID_RESPONSE",
+                        "AI Server가 빈 응답을 반환했습니다."
+                );
+            }
+            return new AiServerJsonResponse(response.getStatusCode(), responseBody);
+        } catch (HttpClientErrorException | HttpServerErrorException exception) {
+            throw translateAiServerError(exception.getStatusCode(), exception.getResponseBodyAsString(), exception);
+        } catch (ResourceAccessException exception) {
+            if (isTimeout(exception)) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "AI_SERVER_TIMEOUT",
+                        "AI Server의 문서 처리 응답 시간이 초과되었습니다.",
+                        exception
+                );
+            }
+            throw new ApiException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "AI_SERVER_UNAVAILABLE",
+                    "AI Server에 연결할 수 없습니다.",
+                    exception
+            );
+        } catch (RestClientException exception) {
+            if (isTimeout(exception)) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "AI_SERVER_TIMEOUT",
+                        "AI Server의 문서 처리 응답 시간이 초과되었습니다.",
+                        exception
+                );
+            }
+            if (isConnectionFailure(exception)) {
+                throw new ApiException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "AI_SERVER_UNAVAILABLE",
+                        "AI Server에 연결할 수 없습니다.",
+                        exception
+                );
+            }
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_SERVER_INVALID_RESPONSE",
+                    "AI Server가 올바르지 않은 응답을 반환했습니다.",
+                    exception
+            );
+        }
+    }
+
+    // 저장 파일의 원본명과 MIME 유형을 보존한 multipart 파일 항목을 생성한다.
+    private HttpEntity<InputStreamResource> toFilePart(StoredDocumentFile file) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDispositionFormData("files", file.originalFileName());
+        if (file.contentType() != null && !file.contentType().isBlank()) {
+            headers.setContentType(MediaType.parseMediaType(file.contentType()));
+        }
+        return new HttpEntity<>(new StoredDocumentResource(file), headers);
+    }
+
+    // AI Server HTTP 상태와 본문을 백엔드 표준 ApiException으로 변환한다.
+    private ApiException translateAiServerError(HttpStatusCode status, String responseBody, Exception cause) {
+        String message = extractAiServerMessage(responseBody);
+        if (status.value() == HttpStatus.PAYLOAD_TOO_LARGE.value()) {
+            return new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "AI_SERVER_PAYLOAD_TOO_LARGE", message, cause);
+        }
+        if (status.value() == HttpStatus.UNPROCESSABLE_ENTITY.value()) {
+            return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "AI_SERVER_VALIDATION_FAILED", message, cause);
+        }
+        return new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVER_ERROR", message, cause);
+    }
+
+    // AI 오류 응답의 detail 값을 추출하며 파싱할 수 없으면 원문을 반환한다.
+    private String extractAiServerMessage(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return "AI Server 요청이 실패했습니다.";
+        }
+        try {
+            JsonNode body = objectMapper.readTree(responseBody);
+            JsonNode detail = body.get("detail");
+            if (detail == null || detail.isNull()) {
+                return responseBody;
+            }
+            if (detail.isTextual()) {
+                return detail.asText();
+            }
+            return detail.toString();
+        } catch (Exception ignored) {
+            return responseBody;
+        }
+    }
+
+    // 예외 원인 체인에 소켓 시간 초과가 포함되는지 검사해 반환한다.
+    private boolean isTimeout(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof SocketTimeoutException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    // 예외 원인 체인에서 접속·호스트·입출력 연결 실패 여부를 판별한다.
+    private boolean isConnectionFailure(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof ConnectException || current instanceof UnknownHostException) {
+                return true;
+            }
+            if (current instanceof IOException && !isTimeout(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static final class StoredDocumentResource extends InputStreamResource {
+        private final StoredDocumentFile file;
+
+        private StoredDocumentResource(StoredDocumentFile file) {
+            super(new ByteArrayInputStream(file.content()));
+            this.file = file;
+        }
+
+        @Override
+        public String getFilename() {
+            return file.originalFileName();
+        }
+
+        @Override
+        public long contentLength() {
+            return file.fileSize();
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return new ByteArrayInputStream(file.content());
+        }
+    }
+}
