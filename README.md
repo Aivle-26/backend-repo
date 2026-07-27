@@ -1,6 +1,6 @@
-# AI PM 백엔드
+# AI PM Backend
 
-## 개발 환경
+## Development Environment
 
 - Java 21
 - Spring Boot 3.5.16
@@ -8,54 +8,122 @@
 - MySQL 8.0
 - Docker
 
-## 로컬 테스트 환경
+## EC2 Operations
 
-`local` 프로필로 백엔드를 실행하면 메모리 H2 DB와 로컬 JWT 시크릿을 사용해 빠르게 테스트할 수 있습니다.
+Deployment and operations guidance lives in:
 
-```powershell
-.\gradlew.bat bootRun --args="--spring.profiles.active=local"
+- `docs/EC2_DEPLOYMENT.md`
+- `docs/OPERATIONS.md`
+
+Use `.env.example` as the shape for environment variables, but keep real secrets only on the server.
+
+## Document Relay Flow
+
+This repository now includes a document relay path for testing the upload flow:
+
+```text
+React frontend
+-> Spring Boot backend
+-> FastAPI AI Server
+-> Spring Boot backend
+-> React frontend
 ```
 
-애플리케이션 실행 후 아래 경로로 접속할 수 있습니다.
+The relay endpoint is:
 
-- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-- H2 콘솔: `http://localhost:8080/h2-console`
-- 인증 테스트 페이지: `http://localhost:8080/test-auth.html`
+```http
+POST /api/projects/{projectId}/documents/extract
+Content-Type: multipart/form-data
+```
 
-권장 로컬 검증 순서는 아래와 같습니다.
+Request field:
 
-1. `test-auth.html`에서 로컬 PM 또는 STAFF 계정으로 로그인해 액세스 토큰을 발급받습니다.
-2. Swagger UI에서 `Authorize`를 클릭합니다.
-3. 테스트 페이지에서 복사한 JWT 값만 입력합니다. `Bearer` 접두사는 Swagger가 자동으로 추가합니다.
-4. Swagger에서 프로젝트 및 WBS API를 호출합니다.
+```text
+files
+```
 
-WBS 생성까지 확인하려면 AI 서버도 로컬에서 함께 실행해야 합니다.
+### Configuration
+
+```yaml
+ai-server:
+  base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+  document-extract-path: /api/v1/planning/documents/extract
+  connect-timeout-seconds: 5
+  response-timeout-seconds: 120
+```
+
+For the actual new-project creation flow, the backend uses the planning-agent configuration below, not `ai-server.*`:
+
+```yaml
+agent:
+  planning:
+    base-url: ${PLANNING_AGENT_BASE_URL:http://localhost:8000}
+    extract-path: ${PLANNING_AGENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+```
+
+If you want to call the deployed document-extract API, set `PLANNING_AGENT_BASE_URL` to that server's base URL and keep the path as `/api/v1/planning/documents/extract`.
+
+### Manual Test Steps
+
+1. Start the FastAPI AI server.
 
 ```powershell
 cd ..\ai-server
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-그다음 백엔드를 실행합니다.
+2. Confirm the AI server health endpoint.
 
 ```powershell
-cd ..\backend-repo
-.\gradlew.bat bootRun --args="--spring.profiles.active=local"
+curl.exe http://localhost:8000/health
 ```
 
-WBS 관련 Swagger 테스트 순서는 아래와 같습니다.
+3. Start the Spring Boot backend.
 
-1. `POST /api/projects/{projectId}/wbs/generate`
-2. `GET /api/projects/{projectId}/wbs`
-3. `PUT /api/projects/{projectId}/wbs/final`
-4. `GET /api/projects/{projectId}/wbs`
+```powershell
+set AI_SERVER_BASE_URL=http://localhost:8000
+.\gradlew.bat bootRun
+```
 
-## EC2 운영
+4. Relay one file through the backend.
 
-배포 및 운영 방법은 다음 문서에서 확인할 수 있습니다.
+```powershell
+curl.exe -X POST "http://localhost:8080/api/projects/1/documents/extract" `
+  -H "Authorization: Bearer <access-token>" `
+  -F "files=@C:\test-files\project-rfp.pdf"
+```
 
-- `docs/EC2_DEPLOYMENT.md`
-- `docs/OPERATIONS.md`
+5. Relay multiple files through the backend.
 
-환경 변수 형식은 `.env.example`을 참고하되, 실제 비밀값은 서버에만 보관해야 합니다.
+```powershell
+curl.exe -X POST "http://localhost:8080/api/projects/1/documents/extract" `
+  -H "Authorization: Bearer <access-token>" `
+  -F "files=@C:\test-files\project-rfp.pdf" `
+  -F "files=@C:\test-files\project-proposal.docx"
+```
+
+### Frontend Check
+
+Run the Vite dev server:
+
+```powershell
+npm run dev
+```
+
+Open the PM upload screen, choose files, click `Upload`, and inspect the browser Network tab.
+
+### Automated Tests
+
+```powershell
+.\gradlew.bat test
+```
+
+### Test File Layout Example
+
+```text
+test-files/
+├── project-rfp.pdf
+├── project-proposal.docx
+├── sample.txt
+└── unsupported.exe
+```

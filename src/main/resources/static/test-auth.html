@@ -3,548 +3,386 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI PM 인증 테스트</title>
+    <title>Auth Test</title>
     <style>
-        :root {
-            color-scheme: light;
-            --bg: #f5f7fb;
-            --card: #fff;
-            --line: #dfe5ee;
-            --text: #172033;
-            --muted: #64748b;
-            --primary: #3157d5;
-            --success: #16805b;
-            --danger: #c23b4a;
-            --warning: #9a6512;
-        }
-        * { box-sizing: border-box; }
         body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--text);
-            font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif;
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            max-width: 720px;
         }
-        button, input, select, textarea { font: inherit; }
-        button, .button {
-            min-height: 40px;
-            border: 0;
-            border-radius: 9px;
-            padding: 0 15px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--primary);
-            color: #fff;
-            font-weight: 700;
-            text-decoration: none;
-            cursor: pointer;
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
         }
-        button:disabled { opacity: .5; cursor: wait; }
-        button.secondary, .button.secondary {
-            border: 1px solid var(--line);
-            background: #fff;
-            color: var(--text);
+
+        section {
+            border: 1px solid #ccc;
+            padding: 16px;
+            margin-bottom: 16px;
         }
-        button.danger { background: var(--danger); }
-        .page {
-            width: min(1160px, calc(100% - 32px));
-            margin: 0 auto;
-            padding: 34px 0 60px;
-        }
-        .hero {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 18px;
-            margin-bottom: 24px;
-        }
-        h1, h2, p { margin-top: 0; }
-        h1 { margin-bottom: 8px; font-size: clamp(26px, 4vw, 34px); letter-spacing: -.04em; }
-        h2 { margin-bottom: 6px; font-size: 19px; }
-        .description, .hint { color: var(--muted); line-height: 1.55; }
-        .description, .hint { margin-bottom: 0; }
-        .hint { font-size: 13px; }
-        .connection {
-            border: 1px solid var(--line);
-            border-radius: 999px;
-            padding: 8px 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: #fff;
-            color: var(--muted);
-            font-size: 13px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-        .dot { width: 9px; height: 9px; border-radius: 50%; background: #94a3b8; }
-        .connection.ok .dot { background: var(--success); }
-        .connection.error .dot { background: var(--danger); }
-        .grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 20px; }
-        .column { display: grid; align-content: start; gap: 20px; }
-        .card {
-            border: 1px solid var(--line);
-            border-radius: 15px;
-            padding: 20px;
-            background: var(--card);
-            box-shadow: 0 12px 30px rgba(31, 42, 68, .07);
-        }
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            gap: 14px;
-            margin-bottom: 17px;
-        }
-        .step {
-            width: 29px;
-            height: 29px;
-            border-radius: 9px;
+
+        form {
             display: grid;
-            place-items: center;
-            background: #e8edff;
-            color: var(--primary);
-            font-size: 13px;
-            font-weight: 800;
-            flex: 0 0 auto;
+            gap: 10px;
         }
-        form, .fields { display: grid; gap: 13px; }
+
         label {
             display: grid;
-            gap: 6px;
-            color: #334155;
+            gap: 4px;
+            font-size: 14px;
+        }
+
+        input, button, textarea {
+            font: inherit;
+            padding: 8px;
+        }
+
+        button {
+            width: fit-content;
+            cursor: pointer;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .status {
             font-size: 13px;
-            font-weight: 700;
+            color: #444;
+            min-height: 18px;
         }
-        input, select, textarea {
-            width: 100%;
-            border: 1px solid var(--line);
-            border-radius: 9px;
-            outline: none;
-            background: #fff;
-            color: var(--text);
+
+        .hint {
+            font-size: 13px;
+            color: #666;
+            margin: 0 0 8px;
         }
-        input, select { height: 42px; padding: 0 12px; }
-        textarea { min-height: 92px; padding: 11px 12px; resize: vertical; line-height: 1.5; }
-        input:focus, select:focus, textarea:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(49, 87, 213, .12);
-        }
-        .actions, .quick-accounts { display: flex; flex-wrap: wrap; gap: 8px; }
-        .quick-accounts { margin-bottom: 14px; }
-        .quick-accounts button { min-height: 34px; font-size: 12px; }
-        .status { min-height: 20px; margin-top: 12px; font-size: 13px; font-weight: 700; }
-        .status.success { color: var(--success); }
-        .status.error { color: var(--danger); }
-        .status.pending { color: var(--warning); }
-        .empty {
-            border: 1px dashed var(--line);
-            border-radius: 11px;
-            padding: 24px 14px;
-            background: #f8fafc;
-            color: var(--muted);
-            text-align: center;
-        }
-        .session-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-        .session-item { border-radius: 10px; padding: 11px 12px; background: #f8fafc; }
-        .session-label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
-        .session-value { overflow-wrap: anywhere; font-size: 13px; font-weight: 700; }
-        .token-box { margin: 13px 0; }
-        .token-box textarea, .result {
-            background: #101827;
-            color: #dbeafe;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 11px;
-        }
-        .method-path { display: grid; grid-template-columns: 108px 1fr; gap: 8px; }
-        .result {
-            min-height: 190px;
-            margin: 0;
-            border-radius: 10px;
-            padding: 13px;
-            overflow: auto;
-            line-height: 1.55;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .hidden { display: none !important; }
-        @media (max-width: 820px) {
-            .grid { grid-template-columns: 1fr; }
-            .hero { flex-direction: column; }
-        }
-        @media (max-width: 520px) {
-            .page { width: calc(100% - 20px); padding-top: 22px; }
-            .card { padding: 16px; }
-            .session-grid, .method-path { grid-template-columns: 1fr; }
+
+        textarea {
+            min-height: 140px;
+            resize: vertical;
         }
     </style>
 </head>
 <body>
-<main class="page">
-    <header class="hero">
-        <div>
-            <h1>인증 및 Swagger 테스트</h1>
-            <p class="description">현재 인증 API 기준으로 JWT를 발급받고 보호 API와 Swagger를 테스트합니다.</p>
+<h1>인증 테스트</h1>
+
+<section>
+    <h2>1. 관리자</h2>
+    <p class="hint">초기 비밀번호: <strong>PMagent123!</strong></p>
+    <form id="admin-form">
+        <label>
+            사원번호
+            <input id="admin-employee-number" type="text" required>
+        </label>
+        <label>
+            이름
+            <input id="admin-name" type="text" required>
+        </label>
+        <label>
+            역할
+            <input id="admin-role" type="text" value="PM" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="admin-button">사용자 생성</button>
         </div>
-        <div class="connection" id="connection">
-            <span class="dot"></span>
-            <span id="connection-text">서버 확인 중</span>
+        <div class="status" id="admin-status"></div>
+        <label>
+            응답
+            <textarea id="admin-response" readonly></textarea>
+        </label>
+    </form>
+</section>
+
+<section>
+    <h2>2. 로그인, 로그아웃</h2>
+    <form id="login-form">
+        <label>
+            사원번호
+            <input id="login-employee-number" type="text" required>
+        </label>
+        <label>
+            비밀번호
+            <input id="login-password" type="password" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="login-button">로그인</button>
+            <button type="button" id="logout-button">로그아웃</button>
         </div>
-    </header>
+        <div class="status" id="login-status"></div>
+        <label>
+            응답
+            <textarea id="login-response" readonly></textarea>
+        </label>
+    </form>
+</section>
 
-    <div class="grid">
-        <div class="column">
-            <section class="card">
-                <div class="card-header">
-                    <div>
-                        <h2>로컬 계정 로그인</h2>
-                        <p class="hint">`local` 프로필에서 생성되는 시드 계정입니다.</p>
-                    </div>
-                    <span class="step">1</span>
-                </div>
-                <div class="quick-accounts">
-                    <button class="secondary" type="button" data-account="PM">PM 계정 채우기</button>
-                    <button class="secondary" type="button" data-account="STAFF">STAFF 계정 채우기</button>
-                </div>
-                <form id="login-form">
-                    <label>이메일<input id="email" type="email" autocomplete="username" value="pm@local.test" required></label>
-                    <label>비밀번호<input id="password" type="password" autocomplete="current-password" value="local1234!" required></label>
-                    <label>역할
-                        <select id="role">
-                            <option value="PM">PM</option>
-                            <option value="STAFF">STAFF</option>
-                        </select>
-                    </label>
-                    <div class="actions">
-                        <button id="login-button" type="submit">로그인 및 토큰 발급</button>
-                    </div>
-                </form>
-                <div class="status" id="login-status" aria-live="polite"></div>
-            </section>
-
-            <section class="card">
-                <div class="card-header">
-                    <div>
-                        <h2>인증 API 확인</h2>
-                        <p class="hint">현재 토큰으로 전체 세션 수명주기를 확인합니다.</p>
-                    </div>
-                    <span class="step">2</span>
-                </div>
-                <div class="actions">
-                    <button type="button" id="session-button">세션 조회</button>
-                    <button class="secondary" type="button" id="activity-button">활동 기록</button>
-                    <button class="secondary" type="button" id="refresh-button">토큰 갱신</button>
-                    <button class="danger" type="button" id="logout-button">로그아웃</button>
-                </div>
-                <div class="status" id="action-status" aria-live="polite"></div>
-            </section>
-
-            <section class="card">
-                <div class="card-header">
-                    <div>
-                        <h2>보호 API 직접 호출</h2>
-                        <p class="hint">Authorization 헤더에 현재 액세스 토큰을 자동으로 넣습니다.</p>
-                    </div>
-                    <span class="step">3</span>
-                </div>
-                <form id="request-form">
-                    <div class="method-path">
-                        <label>메서드
-                            <select id="request-method">
-                                <option>GET</option><option>POST</option><option>PUT</option>
-                                <option>PATCH</option><option>DELETE</option>
-                            </select>
-                        </label>
-                        <label>API 경로<input id="request-path" value="/api/users/me" required></label>
-                    </div>
-                    <label id="request-body-label" class="hidden">JSON 요청 본문
-                        <textarea id="request-body" spellcheck="false">{}</textarea>
-                    </label>
-                    <div class="actions">
-                        <button type="submit" id="request-button">API 호출</button>
-                    </div>
-                </form>
-            </section>
+<section>
+    <h2>3. 이메일 인증 테스트</h2>
+    <form id="email-form">
+        <label>
+            사원번호
+            <input id="email-employee-number" type="text" required>
+        </label>
+        <label>
+            실제 이메일
+            <input id="email-address" type="email" required>
+        </label>
+        <div class="row">
+            <button type="button" id="send-code-button">인증번호 발송</button>
         </div>
-
-        <div class="column">
-            <section class="card">
-                <div class="card-header">
-                    <div>
-                        <h2>현재 인증 세션</h2>
-                        <p class="hint">토큰은 이 브라우저의 localStorage에만 저장됩니다.</p>
-                    </div>
-                    <button class="secondary" type="button" id="clear-button">토큰 삭제</button>
-                </div>
-                <div id="session-empty" class="empty">아직 발급된 토큰이 없습니다.</div>
-                <div id="session-content" class="hidden">
-                    <div class="session-grid">
-                        <div class="session-item"><span class="session-label">사원번호</span><span class="session-value" id="session-employee">-</span></div>
-                        <div class="session-item"><span class="session-label">이름 / 역할</span><span class="session-value" id="session-user">-</span></div>
-                        <div class="session-item"><span class="session-label">Access Token 만료</span><span class="session-value" id="access-expiry">-</span></div>
-                        <div class="session-item"><span class="session-label">절대 세션 만료</span><span class="session-value" id="absolute-expiry">-</span></div>
-                    </div>
-                    <label class="token-box">Access Token
-                        <textarea id="access-token" readonly spellcheck="false"></textarea>
-                    </label>
-                    <div class="actions">
-                        <button type="button" id="copy-token-button">Swagger용 토큰 복사</button>
-                        <a class="button secondary" href="/swagger-ui/index.html" target="_blank" rel="noopener">Swagger 열기</a>
-                    </div>
-                    <p class="hint" style="margin-top:10px">Authorize 창에는 `Bearer` 없이 복사한 JWT만 입력하세요.</p>
-                </div>
-            </section>
-
-            <section class="card">
-                <div class="card-header">
-                    <div><h2>최근 요청 결과</h2><p class="hint">HTTP 상태와 응답 본문을 함께 표시합니다.</p></div>
-                    <button class="secondary" type="button" id="clear-result-button">지우기</button>
-                </div>
-                <pre class="result" id="result">요청 결과가 여기에 표시됩니다.</pre>
-            </section>
+        <label>
+            인증번호
+            <input id="verification-code" type="text" inputmode="numeric" pattern="\d{6}" maxlength="6" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="check-code-button">인증번호 확인</button>
         </div>
-    </div>
-</main>
+        <div class="status" id="email-status"></div>
+        <label>
+            응답
+            <textarea id="email-response" readonly></textarea>
+        </label>
+    </form>
+</section>
+
+<section>
+    <h2>4. 비밀번호 변경</h2>
+    <form id="password-form">
+        <label>
+            사원번호
+            <input id="password-employee-number" type="text" required>
+        </label>
+        <label>
+            Reset Token
+            <input id="reset-token" type="text" required>
+        </label>
+        <label>
+            새 비밀번호
+            <input id="new-password" type="password" required>
+        </label>
+        <div class="row">
+            <button type="submit" id="password-button">비밀번호 변경</button>
+        </div>
+        <div class="status" id="password-status"></div>
+        <label>
+            응답
+            <textarea id="password-response" readonly></textarea>
+        </label>
+    </form>
+</section>
 
 <script>
-(() => {
-    "use strict";
-    const BASE = location.origin;
-    const STORAGE_KEY = "aipm.auth.session";
-    const accounts = {
-        PM: { email: "pm@local.test", password: "local1234!", role: "PM" },
-        STAFF: { email: "staff@local.test", password: "local1234!", role: "STAFF" }
-    };
-    const $ = (id) => document.getElementById(id);
-    const el = {
-        connection: $("connection"), connectionText: $("connection-text"),
-        loginForm: $("login-form"), loginButton: $("login-button"), loginStatus: $("login-status"),
-        email: $("email"), password: $("password"), role: $("role"),
-        sessionButton: $("session-button"), activityButton: $("activity-button"),
-        refreshButton: $("refresh-button"), logoutButton: $("logout-button"),
-        actionStatus: $("action-status"), clearButton: $("clear-button"),
-        sessionEmpty: $("session-empty"), sessionContent: $("session-content"),
-        sessionEmployee: $("session-employee"), sessionUser: $("session-user"),
-        accessExpiry: $("access-expiry"), absoluteExpiry: $("absolute-expiry"),
-        accessToken: $("access-token"), copyTokenButton: $("copy-token-button"),
-        requestForm: $("request-form"), requestButton: $("request-button"),
-        requestMethod: $("request-method"), requestPath: $("request-path"),
-        requestBodyLabel: $("request-body-label"), requestBody: $("request-body"),
-        result: $("result"), clearResultButton: $("clear-result-button")
-    };
-    let session = loadSession();
-    renderSession();
-    checkServer();
+    const API_BASE = "http://localhost:8080";
 
-    document.querySelectorAll("[data-account]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const account = accounts[button.dataset.account];
-            el.email.value = account.email;
-            el.password.value = account.password;
-            el.role.value = account.role;
-            setStatus(el.loginStatus, `${account.role} 계정을 입력했습니다.`, "success");
-        });
-    });
+    const adminForm = document.getElementById("admin-form");
+    const adminEmployeeNumber = document.getElementById("admin-employee-number");
+    const adminName = document.getElementById("admin-name");
+    const adminRole = document.getElementById("admin-role");
+    const adminButton = document.getElementById("admin-button");
+    const adminStatus = document.getElementById("admin-status");
+    const adminResponse = document.getElementById("admin-response");
 
-    el.loginForm.addEventListener("submit", async (event) => {
+    const loginForm = document.getElementById("login-form");
+    const loginEmployeeNumber = document.getElementById("login-employee-number");
+    const loginPassword = document.getElementById("login-password");
+    const loginButton = document.getElementById("login-button");
+    const logoutButton = document.getElementById("logout-button");
+    const loginStatus = document.getElementById("login-status");
+    const loginResponse = document.getElementById("login-response");
+
+    const emailForm = document.getElementById("email-form");
+    const emailEmployeeNumber = document.getElementById("email-employee-number");
+    const emailAddress = document.getElementById("email-address");
+    const verificationCode = document.getElementById("verification-code");
+    const sendCodeButton = document.getElementById("send-code-button");
+    const checkCodeButton = document.getElementById("check-code-button");
+    const emailStatus = document.getElementById("email-status");
+    const emailResponse = document.getElementById("email-response");
+
+    const passwordForm = document.getElementById("password-form");
+    const passwordEmployeeNumber = document.getElementById("password-employee-number");
+    const resetToken = document.getElementById("reset-token");
+    const newPassword = document.getElementById("new-password");
+    const passwordButton = document.getElementById("password-button");
+    const passwordStatus = document.getElementById("password-status");
+    const passwordResponse = document.getElementById("password-response");
+
+    adminForm.addEventListener("submit", async (event) => {
         event.preventDefault();
-        await withButton(el.loginButton, async () => {
-            setStatus(el.loginStatus, "로그인 요청 중입니다.", "pending");
-            const response = await request("/api/users/login", {
-                method: "POST", authenticated: false,
-                body: { email: el.email.value.trim(), password: el.password.value, role: el.role.value }
+        setLoading(adminButton, adminStatus, "사용자 생성 요청 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/admin/users`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: adminEmployeeNumber.value,
+                    name: adminName.value,
+                    role: adminRole.value
+                })
             });
-            if (!response.ok) {
-                setStatus(el.loginStatus, `로그인 실패 (HTTP ${response.status})`, "error");
-                return;
+
+            const data = await readJson(response);
+            adminResponse.value = JSON.stringify(data, null, 2);
+            adminStatus.textContent = response.ok ? "성공" : "실패";
+
+            if (response.ok) {
+                loginEmployeeNumber.value = adminEmployeeNumber.value;
+                emailEmployeeNumber.value = adminEmployeeNumber.value;
+                passwordEmployeeNumber.value = adminEmployeeNumber.value;
+                loginPassword.value = "PMagent123!";
             }
-            saveSession(response.data);
-            renderSession();
-            setStatus(el.loginStatus, `${response.data.name} 계정으로 로그인했습니다.`, "success");
-        }, el.loginStatus);
-    });
-
-    el.sessionButton.addEventListener("click", () => runAction(el.sessionButton, "세션 조회", () => request("/api/users/session")));
-    el.activityButton.addEventListener("click", () => runAction(el.activityButton, "활동 기록", () => request("/api/users/activity", { method: "POST" })));
-    el.refreshButton.addEventListener("click", () => runAction(el.refreshButton, "토큰 갱신", async () => {
-        requireRefreshToken();
-        const response = await request("/api/users/refresh", {
-            method: "POST", authenticated: false, body: { refreshToken: session.refreshToken }
-        });
-        if (response.ok) {
-            saveSession(response.data);
-            renderSession();
-        }
-        return response;
-    }));
-    el.logoutButton.addEventListener("click", () => runAction(el.logoutButton, "로그아웃", async () => {
-        requireRefreshToken();
-        const response = await request("/api/users/logout", {
-            method: "POST", body: { refreshToken: session.refreshToken }
-        });
-        if (response.ok) clearSession();
-        return response;
-    }));
-    el.clearButton.addEventListener("click", () => {
-        clearSession();
-        setStatus(el.actionStatus, "브라우저에 저장된 토큰을 삭제했습니다.", "success");
-    });
-    el.copyTokenButton.addEventListener("click", async () => {
-        try {
-            requireAccessToken();
-            await navigator.clipboard.writeText(session.accessToken);
-            setStatus(el.actionStatus, "JWT를 복사했습니다. Swagger에 그대로 붙여 넣으세요.", "success");
-        } catch (error) {
-            el.accessToken.focus();
-            el.accessToken.select();
-            document.execCommand("copy");
-            setStatus(el.actionStatus, error.message.includes("로그인") ? error.message : "JWT를 복사했습니다.", error.message.includes("로그인") ? "error" : "success");
-        }
-    });
-
-    el.requestMethod.addEventListener("change", toggleRequestBody);
-    toggleRequestBody();
-    el.requestForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        await withButton(el.requestButton, async () => {
-            requireAccessToken();
-            const method = el.requestMethod.value;
-            let body;
-            if (!["GET", "DELETE"].includes(method)) {
-                try { body = JSON.parse(el.requestBody.value || "{}"); }
-                catch { throw new Error("요청 본문이 올바른 JSON이 아닙니다."); }
-            }
-            await request(normalizePath(el.requestPath.value), { method, body });
-        }, el.actionStatus);
-    });
-    el.clearResultButton.addEventListener("click", () => {
-        el.result.textContent = "요청 결과가 여기에 표시됩니다.";
-    });
-
-    async function runAction(button, label, action) {
-        await withButton(button, async () => {
-            setStatus(el.actionStatus, `${label} 요청 중입니다.`, "pending");
-            const response = await action();
-            setStatus(el.actionStatus,
-                response.ok ? `${label}에 성공했습니다.` : `${label}에 실패했습니다. (HTTP ${response.status})`,
-                response.ok ? "success" : "error");
-        }, el.actionStatus);
-    }
-
-    async function request(path, options = {}) {
-        const method = options.method || "GET";
-        const headers = { Accept: "application/json" };
-        if (options.body !== undefined) headers["Content-Type"] = "application/json";
-        if (options.authenticated !== false) {
-            requireAccessToken();
-            headers.Authorization = `Bearer ${session.accessToken}`;
-        }
-        const normalizedPath = normalizePath(path);
-        const started = performance.now();
-        let response;
-        try {
-            response = await fetch(`${BASE}${normalizedPath}`, {
-                method, headers,
-                body: options.body === undefined ? undefined : JSON.stringify(options.body)
-            });
-        } catch (error) {
-            showClientError(error);
-            throw new Error(`서버에 연결할 수 없습니다: ${error.message}`);
-        }
-        const data = await readBody(response);
-        el.result.textContent = [
-            `${method} ${normalizedPath}`,
-            `HTTP ${response.status} ${response.statusText} · ${Math.round(performance.now() - started)}ms`,
-            "", JSON.stringify(data, null, 2)
-        ].join("\n");
-        return { ok: response.ok, status: response.status, data };
-    }
-
-    async function checkServer() {
-        try {
-            const response = await fetch(`${BASE}/v3/api-docs`, { headers: { Accept: "application/json" } });
-            if (!response.ok) throw new Error();
-            el.connection.classList.add("ok");
-            el.connectionText.textContent = "백엔드 연결됨";
         } catch {
-            el.connection.classList.add("error");
-            el.connectionText.textContent = "백엔드 연결 실패";
+            adminResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            adminStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(adminButton);
+        }
+    });
+
+    loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(loginButton, loginStatus, "로그인 요청 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: loginEmployeeNumber.value,
+                    password: loginPassword.value
+                })
+            });
+
+            const data = await readJson(response);
+            loginResponse.value = JSON.stringify(data, null, 2);
+            loginStatus.textContent = response.ok ? "성공" : "실패";
+        } catch {
+            loginResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            loginStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(loginButton);
+        }
+    });
+
+    logoutButton.addEventListener("click", () => {
+        loginPassword.value = "";
+        verificationCode.value = "";
+        resetToken.value = "";
+        newPassword.value = "";
+        loginResponse.value = "";
+        emailResponse.value = "";
+        passwordResponse.value = "";
+        loginStatus.textContent = "로그아웃됨";
+        emailStatus.textContent = "";
+        passwordStatus.textContent = "";
+    });
+
+    sendCodeButton.addEventListener("click", async () => {
+        setLoading(sendCodeButton, emailStatus, "인증번호 발송 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/password/email-send`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: emailEmployeeNumber.value,
+                    email: emailAddress.value
+                })
+            });
+
+            const data = await readJson(response);
+            emailResponse.value = JSON.stringify(data, null, 2);
+            emailStatus.textContent = response.ok ? "발송 성공" : "발송 실패";
+        } catch {
+            emailResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            emailStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(sendCodeButton);
+        }
+    });
+
+    emailForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(checkCodeButton, emailStatus, "인증번호 확인 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/password/email-check`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: emailEmployeeNumber.value,
+                    email: emailAddress.value,
+                    code: verificationCode.value
+                })
+            });
+
+            const data = await readJson(response);
+            emailResponse.value = JSON.stringify(data, null, 2);
+            emailStatus.textContent = response.ok ? "확인 성공" : "확인 실패";
+
+            if (response.ok && data.resetToken) {
+                resetToken.value = data.resetToken;
+                passwordEmployeeNumber.value = emailEmployeeNumber.value;
+            }
+        } catch {
+            emailResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            emailStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(checkCodeButton);
+        }
+    });
+
+    passwordForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setLoading(passwordButton, passwordStatus, "비밀번호 변경 중...");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/users/password`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    employeeNumber: passwordEmployeeNumber.value,
+                    resetToken: resetToken.value,
+                    newPassword: newPassword.value
+                })
+            });
+
+            const data = await readJson(response);
+            passwordResponse.value = JSON.stringify(data, null, 2);
+            passwordStatus.textContent = response.ok ? "성공" : "실패";
+        } catch {
+            passwordResponse.value = JSON.stringify({ message: "request failed" }, null, 2);
+            passwordStatus.textContent = "네트워크 오류";
+        } finally {
+            clearLoading(passwordButton);
+        }
+    });
+
+    function setLoading(button, statusElement, message) {
+        button.disabled = true;
+        statusElement.textContent = message;
+    }
+
+    function clearLoading(button) {
+        button.disabled = false;
+    }
+
+    async function readJson(response) {
+        const text = await response.text();
+        if (!text) {
+            return {};
+        }
+        try {
+            return JSON.parse(text);
+        } catch {
+            return { raw: text };
         }
     }
-    function saveSession(data) {
-        session = {
-            authenticated: data.authenticated ?? data.success ?? true,
-            employeeNumber: data.employeeNumber, name: data.name, role: data.role,
-            accessToken: data.accessToken, refreshToken: data.refreshToken,
-            accessTokenExpiresAt: data.accessTokenExpiresAt,
-            absoluteExpiresAt: data.absoluteExpiresAt,
-            lastActivityAt: data.lastActivityAt, serverTime: data.serverTime,
-            inactivityTimeoutMinutes: data.inactivityTimeoutMinutes
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    }
-    function loadSession() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
-        catch { localStorage.removeItem(STORAGE_KEY); return {}; }
-    }
-    function clearSession() {
-        session = {};
-        localStorage.removeItem(STORAGE_KEY);
-        renderSession();
-    }
-    function renderSession() {
-        const authenticated = Boolean(session.accessToken);
-        el.sessionEmpty.classList.toggle("hidden", authenticated);
-        el.sessionContent.classList.toggle("hidden", !authenticated);
-        [el.sessionButton, el.activityButton, el.refreshButton, el.logoutButton]
-            .forEach((button) => button.disabled = !authenticated);
-        if (!authenticated) return;
-        el.sessionEmployee.textContent = session.employeeNumber || "-";
-        el.sessionUser.textContent = `${session.name || "-"} / ${session.role || "-"}`;
-        el.accessExpiry.textContent = formatTimestamp(session.accessTokenExpiresAt);
-        el.absoluteExpiry.textContent = formatTimestamp(session.absoluteExpiresAt);
-        el.accessToken.value = session.accessToken;
-    }
-    function toggleRequestBody() {
-        el.requestBodyLabel.classList.toggle("hidden", ["GET", "DELETE"].includes(el.requestMethod.value));
-    }
-    function normalizePath(path) {
-        const value = String(path || "").trim();
-        if (!value || /^https?:\/\//i.test(value)) throw new Error("같은 서버의 /api/... 경로만 입력할 수 있습니다.");
-        return value.startsWith("/") ? value : `/${value}`;
-    }
-    function requireAccessToken() {
-        if (!session.accessToken) throw new Error("먼저 로그인해 액세스 토큰을 발급받으세요.");
-    }
-    function requireRefreshToken() {
-        if (!session.refreshToken) throw new Error("먼저 로그인해 리프레시 토큰을 발급받으세요.");
-    }
-    function formatTimestamp(value) {
-        const date = new Date(Number(value));
-        return !value || Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("ko-KR");
-    }
-    function setStatus(element, message, type) {
-        element.textContent = message;
-        element.className = `status ${type || ""}`;
-    }
-    async function withButton(button, action, statusElement) {
-        const disabled = button.disabled;
-        button.disabled = true;
-        try { await action(); }
-        catch (error) {
-            setStatus(statusElement, error.message, "error");
-            showClientError(error);
-        } finally { button.disabled = disabled; }
-    }
-    async function readBody(response) {
-        const text = await response.text();
-        if (!text) return {};
-        try { return JSON.parse(text); }
-        catch { return { raw: text }; }
-    }
-    function showClientError(error) {
-        el.result.textContent = `클라이언트 오류\n\n${error.message || String(error)}`;
-    }
-})();
 </script>
 </body>
 </html>
