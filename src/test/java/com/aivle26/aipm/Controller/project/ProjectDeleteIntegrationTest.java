@@ -15,7 +15,7 @@ import com.aivle26.aipm.Entity.project.ProjectScheduleResult;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
 import com.aivle26.aipm.Entity.project.ProjectWbsResult;
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
-import com.aivle26.aipm.Entity.project.RequiredArtifactType;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
@@ -37,6 +37,7 @@ import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthService;
+import com.aivle26.aipm.support.InMemoryS3Mock;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,12 +103,18 @@ class ProjectDeleteIntegrationTest {
     @Autowired
     private ProjectScheduleResultRepository projectScheduleResultRepository;
 
+    @MockitoBean
+    private S3Client s3Client;
+
+    private InMemoryS3Mock.Store s3Store;
+
     private String ownerAccessToken;
     private User owner;
     private User otherPm;
 
     @BeforeEach
     void setUp() throws Exception {
+        s3Store = InMemoryS3Mock.configure(s3Client);
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();
@@ -130,9 +139,7 @@ class ProjectDeleteIntegrationTest {
     void deleteProjectRemovesRelatedRowsAndStoredFiles() throws Exception {
         Project project = projectRepository.save(createProject(owner, "Delete Target"));
         ProjectDocument document = projectDocumentRepository.save(createProjectDocument(project, "delete-me.txt"));
-        Path storedFile = Path.of(document.getStoragePath());
-        Files.createDirectories(storedFile.getParent());
-        Files.writeString(storedFile, "delete me");
+        s3Store.put(document.getStoragePath(), "delete me".getBytes());
 
         ProjectDocumentAnalysisResult analysisResult = analysisResultRepository.save(createAnalysisResult(project));
         ProjectRequirement requirement = projectRequirementRepository.save(createRequirement(project, document, analysisResult));
@@ -167,7 +174,7 @@ class ProjectDeleteIntegrationTest {
         assertThat(projectScheduleRepository.count()).isZero();
         assertThat(projectScheduleResultRepository.count()).isZero();
         assertThat(analysisResultRepository.count()).isZero();
-        assertThat(Files.exists(storedFile)).isFalse();
+        assertThat(s3Store.contains(document.getStoragePath())).isFalse();
     }
 
     @Test
@@ -181,7 +188,7 @@ class ProjectDeleteIntegrationTest {
 
         assertThat(projectRepository.findById(project.getId())).isEmpty();
         assertThat(projectDocumentRepository.findByProjectId(project.getId())).isEmpty();
-        assertThat(Files.exists(Path.of(document.getStoragePath()))).isFalse();
+        assertThat(s3Store.contains(document.getStoragePath())).isFalse();
     }
 
     @Test
@@ -274,7 +281,7 @@ class ProjectDeleteIntegrationTest {
     private ProjectRequiredArtifact createRequiredArtifact(Project project) {
         ProjectRequiredArtifact artifact = new ProjectRequiredArtifact();
         artifact.setProject(project);
-        artifact.setArtifactType(RequiredArtifactType.REQUIREMENTS_DEFINITION);
+        artifact.setArtifactType(ProjectArtifactType.REQUIREMENTS_DEFINITION);
         artifact.setArtifactName("Requirements Definition");
         artifact.setRequiredVersion("1.0");
         return artifact;

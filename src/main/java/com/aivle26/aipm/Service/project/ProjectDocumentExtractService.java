@@ -18,17 +18,21 @@ public class ProjectDocumentExtractService {
 
     private final ProjectDocumentService projectDocumentService;
     private final AiServerDocumentExtractClient aiServerDocumentExtractClient;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     public ProjectDocumentExtractService(
             ProjectDocumentService projectDocumentService,
-            AiServerDocumentExtractClient aiServerDocumentExtractClient
+            AiServerDocumentExtractClient aiServerDocumentExtractClient,
+            ProjectAuthorizationService projectAuthorizationService
     ) {
         this.projectDocumentService = projectDocumentService;
         this.aiServerDocumentExtractClient = aiServerDocumentExtractClient;
+        this.projectAuthorizationService = projectAuthorizationService;
     }
 
     // 프로젝트의 저장 파일을 AI 추출 서버에 전달하고 상태 코드와 JSON 응답을 반환한다.
     public AiServerJsonResponse extractStoredDocuments(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         List<StoredDocumentFile> storedFiles = projectDocumentService.getStoredDocumentFiles(projectId);
         List<String> fileNames = storedFiles.stream()
                 .map(StoredDocumentFile::originalFileName)

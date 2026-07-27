@@ -18,6 +18,7 @@ import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthService;
+import com.aivle26.aipm.support.InMemoryS3Mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -31,6 +32,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
 import java.time.LocalDate;
@@ -91,11 +94,15 @@ class ProjectDocumentExtractControllerTest {
     @MockBean
     private AiServerDocumentExtractClient aiServerDocumentExtractClient;
 
+    @MockitoBean
+    private S3Client s3Client;
+
     private String accessToken;
     private Long projectId;
 
     @BeforeEach
     void setUp() {
+        InMemoryS3Mock.configure(s3Client);
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();

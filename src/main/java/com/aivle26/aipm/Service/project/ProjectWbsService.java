@@ -43,10 +43,12 @@ public class ProjectWbsService {
     private final ProjectWbsResultRepository projectWbsResultRepository;
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
     private final ProjectAgentClient projectAgentClient;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     // 프로젝트와 확정 요구사항 존재를 검증한 뒤 AI WBS 생성을 요청한다.
     @Transactional(readOnly = true)
     public AgentRequestResult requestWbsGeneration(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 
@@ -62,6 +64,7 @@ public class ProjectWbsService {
     // AI WBS 요청을 검증해 결과와 계층형 작업을 프로젝트에 저장하고 저장 결과를 반환한다.
     @Transactional
     public SaveWbsResultResponse saveWbsResult(Long projectId, SaveWbsResultRequest request) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

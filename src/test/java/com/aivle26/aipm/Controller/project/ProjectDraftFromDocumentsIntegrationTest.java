@@ -15,6 +15,7 @@ import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthService;
+import com.aivle26.aipm.support.InMemoryS3Mock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +35,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -94,6 +97,11 @@ class ProjectDraftFromDocumentsIntegrationTest {
     @Autowired
     private ProjectPlanningExtractionRepository extractionRepository;
 
+    @MockitoBean
+    private S3Client s3Client;
+
+    private InMemoryS3Mock.Store s3Store;
+
     @Value("${app.document.storage-path}")
     private String storagePath;
 
@@ -119,6 +127,7 @@ class ProjectDraftFromDocumentsIntegrationTest {
 
     @BeforeEach
     void setUp() throws IOException {
+        s3Store = InMemoryS3Mock.configure(s3Client);
         extractionRepository.deleteAll();
         keyFeatureRepository.deleteAll();
         requiredArtifactRepository.deleteAll();
@@ -181,7 +190,7 @@ class ProjectDraftFromDocumentsIntegrationTest {
                 .extracting(ProjectDocument::getOriginalFileName)
                 .containsExactlyInAnyOrder("한글-공고문.pdf", "요구사항-메모.txt");
         assertThat(documents)
-                .allSatisfy(document -> assertThat(Files.exists(Path.of(document.getStoragePath()))).isTrue());
+                .allSatisfy(document -> assertThat(s3Store.contains(document.getStoragePath())).isTrue());
 
         assertThat(projectRepository.findById(projectId).orElseThrow())
                 .satisfies(project -> {

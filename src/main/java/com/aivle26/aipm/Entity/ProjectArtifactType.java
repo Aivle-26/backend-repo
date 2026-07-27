@@ -1,6 +1,6 @@
-package com.aivle26.aipm.Entity.project;
+package com.aivle26.aipm.Entity;
 
-public enum RequiredArtifactType {
+public enum ProjectArtifactType {
     RFP,
     PROPOSAL,
     REQUIREMENTS_DEFINITION,

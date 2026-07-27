@@ -3,7 +3,7 @@ package com.aivle26.aipm.Dto.project;
 import com.aivle26.aipm.Entity.project.PlanningLlmStatus;
 import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
-import com.aivle26.aipm.Entity.project.RequiredArtifactType;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
@@ -95,7 +95,7 @@ public record ProjectDocumentAnalysisResultsResponse(
 
     public record RequiredArtifactDetail(
             Long requiredArtifactId,
-            RequiredArtifactType artifactType,
+            ProjectArtifactType artifactType,
             String artifactName,
             String requiredVersion,
             LocalDateTime createdAt,

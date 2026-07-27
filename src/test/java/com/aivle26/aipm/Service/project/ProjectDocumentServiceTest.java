@@ -1,229 +1,185 @@
 package com.aivle26.aipm.Service.project;
 
-import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
+import com.aivle26.aipm.Config.S3Properties;
+import com.aivle26.aipm.Config.storage.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
-import com.aivle26.aipm.Entity.user.User;
-import com.aivle26.aipm.Entity.user.UserStatus;
+import com.aivle26.aipm.Entity.project.ProjectStatus;
 import com.aivle26.aipm.Exception.ApiException;
-import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
-import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
-import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
-import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
-import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
-import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
-import com.aivle26.aipm.Repository.user.UserRepository;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.access.AccessDeniedException;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDate;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-@SpringBootTest
+@ExtendWith(MockitoExtension.class)
 class ProjectDocumentServiceTest {
+    private static final long PROJECT_ID = 42L;
+    private static final String BUCKET = "aipm-test-bucket";
 
-    @Autowired
-    private ProjectDocumentService projectDocumentService;
-
-    @Autowired
-    private ProjectCreationService projectCreationService;
-
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
+    @Mock
     private ProjectRepository projectRepository;
-
-    @Autowired
+    @Mock
     private ProjectDocumentRepository projectDocumentRepository;
+    @Mock
+    private ProjectAuthorizationService projectAuthorizationService;
+    @Mock
+    private S3Client s3Client;
 
-    @Autowired
-    private ProjectDocumentAnalysisResultRepository analysisResultRepository;
-
-    @Autowired
-    private ProjectRequirementRepository projectRequirementRepository;
-
-    @Autowired
-    private ProjectWbsTaskRepository projectWbsTaskRepository;
-
-    @Autowired
-    private ProjectWbsResultRepository projectWbsResultRepository;
-
-    @Autowired
-    private ProjectScheduleRepository projectScheduleRepository;
-
-    @Autowired
-    private ProjectScheduleResultRepository projectScheduleResultRepository;
-
-    @Value("${app.document.storage-path}")
-    private String storagePath;
+    private ProjectDocumentService service;
+    private Project project;
 
     @BeforeEach
-    void setUp() throws IOException {
-        projectScheduleRepository.deleteAll();
-        projectScheduleResultRepository.deleteAll();
-        projectWbsTaskRepository.deleteAll();
-        projectWbsResultRepository.deleteAll();
-        projectRequirementRepository.deleteAll();
-        analysisResultRepository.deleteAll();
-        projectDocumentRepository.deleteAll();
-        projectRepository.deleteAll();
-        userRepository.deleteAll();
-        deleteStorageDirectory();
-        userRepository.save(createPmUser("PM001"));
+    void setUp() {
+        DocumentStorageProperties documentProperties = new DocumentStorageProperties();
+        documentProperties.setMaxFileSize(10);
+        documentProperties.setAllowedExtensions(List.of("pdf", "docx", "xlsx", "pptx", "txt"));
+        documentProperties.setAllowedMimeTypes(List.of(
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "text/plain"
+        ));
+        S3Properties s3Properties = new S3Properties();
+        s3Properties.setBucket(BUCKET);
+
+        service = new ProjectDocumentService(
+                projectRepository,
+                projectDocumentRepository,
+                documentProperties,
+                projectAuthorizationService,
+                s3Client,
+                s3Properties
+        );
+
+        project = new Project();
+        project.setId(PROJECT_ID);
+        project.setStatus(ProjectStatus.DRAFT);
+        lenient().when(projectRepository.findById(PROJECT_ID)).thenReturn(Optional.of(project));
+        lenient().when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build());
+        lenient().when(projectDocumentRepository.saveAll(any())).thenAnswer(invocation -> {
+            Iterable<ProjectDocument> input = invocation.getArgument(0);
+            List<ProjectDocument> saved = new ArrayList<>();
+            input.forEach(saved::add);
+            AtomicLong ids = new AtomicLong(1);
+            saved.forEach(document -> document.setId(ids.getAndIncrement()));
+            return saved;
+        });
     }
 
     @Test
-    void uploadInitialDocumentsSuccess() {
-        Long projectId = createProjectId();
-        MockMultipartFile file = new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
+    void uploadStoresS3ObjectAndMetadata() {
+        ProjectDocumentUploadResponse response =
+                service.uploadInitialDocuments(PROJECT_ID, List.of(textFile()));
 
-        ProjectDocumentUploadResponse response = projectDocumentService.uploadInitialDocuments(projectId, List.of(file));
-
-        assertThat(response.projectId()).isEqualTo(projectId);
+        ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(captor.capture(), any(RequestBody.class));
+        assertThat(captor.getValue().bucket()).isEqualTo(BUCKET);
+        assertThat(captor.getValue().key())
+                .matches("projects/42/documents/[0-9a-f-]{36}/requirements\\.txt");
         assertThat(response.documents()).hasSize(1);
         assertThat(response.documents().getFirst().originalFileName()).isEqualTo("requirements.txt");
-        assertThat(projectDocumentRepository.count()).isEqualTo(1);
-        assertThat(projectDocumentService.getStoredDocumentFiles(projectId)).hasSize(1);
+        verify(projectAuthorizationService).requireProjectPm(PROJECT_ID);
     }
 
     @Test
-    void uploadInitialDocumentsFailWhenExtensionInvalid() {
-        Long projectId = createProjectId();
-        MockMultipartFile file = new MockMultipartFile("files", "bad.exe", "application/octet-stream", "abc".getBytes());
+    void storedDocumentIsLoadedFromS3ForAiTransmission() {
+        byte[] content = "hello".getBytes();
+        ProjectDocument document = new ProjectDocument();
+        document.setOriginalFileName("requirements.txt");
+        document.setContentType("text/plain");
+        document.setFileSize(content.length);
+        document.setStoragePath("projects/42/documents/id/requirements.txt");
+        when(projectDocumentRepository.findByProjectId(PROJECT_ID)).thenReturn(List.of(document));
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().contentLength((long) content.length).build(), content)
+        );
 
-        assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(file)))
-                .isInstanceOf(ApiException.class)
-                .extracting("code")
-                .isEqualTo("UNSUPPORTED_PROJECT_DOCUMENT");
+        var files = service.getStoredDocumentFiles(PROJECT_ID);
 
-        assertThat(projectDocumentRepository.count()).isZero();
+        assertThat(files).hasSize(1);
+        assertThat(files.getFirst().originalFileName()).isEqualTo("requirements.txt");
+        assertThat(files.getFirst().content()).isEqualTo(content);
     }
 
     @Test
-    void uploadInitialDocumentsFailWhenFileEmpty() {
-        Long projectId = createProjectId();
-        MockMultipartFile file = new MockMultipartFile("files", "empty.txt", "text/plain", new byte[0]);
+    void uploadRejectsMismatchedContentType() {
+        MockMultipartFile file = new MockMultipartFile("files", "requirements.pdf", "text/plain", "abc".getBytes());
 
-        assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(file)))
-                .isInstanceOf(ApiException.class)
-                .extracting("code")
-                .isEqualTo("PROJECT_DOCUMENT_EMPTY");
-
-        assertThat(projectDocumentRepository.count()).isZero();
+        assertThatThrownBy(() -> service.uploadInitialDocuments(PROJECT_ID, List.of(file)))
+                .isInstanceOf(ApiException.class);
+        verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 
     @Test
-    void uploadInitialDocumentsRollbackWhenAnyFileInvalid() throws IOException {
-        Long projectId = createProjectId();
-        MockMultipartFile validFile = new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
-        MockMultipartFile invalidFile = new MockMultipartFile("files", "empty.txt", "text/plain", new byte[0]);
+    void uploadRejectsUserWithoutProjectPermission() {
+        doThrow(new AccessDeniedException("Access is denied"))
+                .when(projectAuthorizationService).requireProjectPm(PROJECT_ID);
 
-        assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(validFile, invalidFile)))
-                .isInstanceOf(ApiException.class)
-                .extracting("code")
-                .isEqualTo("PROJECT_DOCUMENT_EMPTY");
-
-        assertThat(projectDocumentRepository.count()).isZero();
-        Path directory = Path.of(storagePath);
-        if (Files.exists(directory)) {
-            try (var files = Files.list(directory)) {
-                assertThat(files.count()).isZero();
-            }
-        }
+        assertThatThrownBy(() -> service.uploadInitialDocuments(PROJECT_ID, List.of(textFile())))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 
     @Test
-    void uploadInitialDocumentsFailWhenDuplicateFileNameInSingleRequest() throws IOException {
-        Long projectId = createProjectId();
-        MockMultipartFile first = new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
-        MockMultipartFile second = new MockMultipartFile("files", "requirements.txt", "text/plain", "world".getBytes());
+    void uploadFailureDoesNotSaveMetadata() {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(SdkClientException.create("S3 unavailable"));
 
-        assertThatThrownBy(() -> projectDocumentService.uploadInitialDocuments(projectId, List.of(first, second)))
-                .isInstanceOf(ApiException.class)
-                .extracting("code")
-                .isEqualTo("DUPLICATE_PROJECT_DOCUMENT_NAME");
-
-        assertThat(projectDocumentRepository.count()).isZero();
-        Path directory = Path.of(storagePath);
-        if (Files.exists(directory)) {
-            try (var files = Files.list(directory)) {
-                assertThat(files.count()).isZero();
-            }
-        }
+        assertThatThrownBy(() -> service.uploadInitialDocuments(PROJECT_ID, List.of(textFile())))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("DOCUMENT_STORAGE_ERROR"));
+        verify(projectDocumentRepository, never()).saveAll(any());
     }
 
     @Test
-    void uploadInitialDocumentsReplacesExistingDocumentWithSameFileName() throws IOException {
-        Long projectId = createProjectId();
-        MockMultipartFile first = new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
-        MockMultipartFile second = new MockMultipartFile("files", "requirements.txt", "text/plain", "updated".getBytes());
+    void databaseFailureDeletesUploadedS3Object() {
+        doThrow(new DataIntegrityViolationException("database unavailable"))
+                .when(projectDocumentRepository).saveAll(any());
 
-        projectDocumentService.uploadInitialDocuments(projectId, List.of(first));
-        ProjectDocument originalDocument = projectDocumentRepository.findByProjectId(projectId).getFirst();
-        Path originalPath = Path.of(originalDocument.getStoragePath());
-        assertThat(Files.exists(originalPath)).isTrue();
+        assertThatThrownBy(() -> service.uploadInitialDocuments(PROJECT_ID, List.of(textFile())))
+                .isInstanceOf(DataIntegrityViolationException.class);
 
-        projectDocumentService.uploadInitialDocuments(projectId, List.of(second));
-
-        List<ProjectDocument> documents = projectDocumentRepository.findByProjectId(projectId);
-        assertThat(documents).hasSize(1);
-        ProjectDocument replacedDocument = documents.getFirst();
-        assertThat(replacedDocument.getId()).isNotEqualTo(originalDocument.getId());
-        assertThat(replacedDocument.getOriginalFileName()).isEqualTo("requirements.txt");
-        assertThat(Files.exists(originalPath)).isFalse();
-        assertThat(Files.exists(Path.of(replacedDocument.getStoragePath()))).isTrue();
+        ArgumentCaptor<PutObjectRequest> put = ArgumentCaptor.forClass(PutObjectRequest.class);
+        ArgumentCaptor<DeleteObjectRequest> delete = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).putObject(put.capture(), any(RequestBody.class));
+        verify(s3Client).deleteObject(delete.capture());
+        assertThat(delete.getValue().key()).isEqualTo(put.getValue().key());
     }
 
-    private Long createProjectId() {
-        return projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
-                "New PM Project",
-                "draft description",
-                "PM001",
-                LocalDate.of(2026, 7, 13),
-                LocalDate.of(2026, 7, 31)
-        )).projectId();
-    }
-
-    private User createPmUser(String employeeNumber) {
-        User user = new User();
-        user.setEmployeeNumber(employeeNumber);
-        user.setName("Project Manager");
-        user.setEmail(employeeNumber.toLowerCase() + "@example.com");
-        user.setPassword("encoded-password");
-        user.setRole("PM");
-        user.setStatus(UserStatus.ACTIVE);
-        user.setEmailVerified(true);
-        return user;
-    }
-
-    private void deleteStorageDirectory() throws IOException {
-        Path directory = Path.of(storagePath);
-        if (!Files.exists(directory)) {
-            return;
-        }
-        try (var paths = Files.walk(directory)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                }
-            });
-        }
+    private MockMultipartFile textFile() {
+        return new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes());
     }
 }

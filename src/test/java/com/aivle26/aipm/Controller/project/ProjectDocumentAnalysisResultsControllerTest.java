@@ -10,7 +10,7 @@ import com.aivle26.aipm.Entity.project.ProjectPlanningExtraction;
 import com.aivle26.aipm.Entity.project.ProjectRequiredArtifact;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
-import com.aivle26.aipm.Entity.project.RequiredArtifactType;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
@@ -136,7 +136,7 @@ class ProjectDocumentAnalysisResultsControllerTest {
                 .andExpect(jsonPath("$.requirements.length()").value(1))
                 .andExpect(jsonPath("$.requirements[0].externalReferenceId").value(2))
                 .andExpect(jsonPath("$.requiredArtifacts.length()").value(1))
-                .andExpect(jsonPath("$.requiredArtifacts[0].artifactType").value(RequiredArtifactType.WBS.name()))
+                .andExpect(jsonPath("$.requiredArtifacts[0].artifactType").value(ProjectArtifactType.WBS.name()))
                 .andExpect(jsonPath("$.keyFeatures.length()").value(1))
                 .andExpect(jsonPath("$.planningExtraction.llmStatus").value(PlanningLlmStatus.SUCCEEDED.name()));
     }
@@ -266,7 +266,7 @@ class ProjectDocumentAnalysisResultsControllerTest {
     private ProjectRequiredArtifact createArtifact(Project project) {
         ProjectRequiredArtifact artifact = new ProjectRequiredArtifact();
         artifact.setProject(project);
-        artifact.setArtifactType(RequiredArtifactType.WBS);
+        artifact.setArtifactType(ProjectArtifactType.WBS);
         artifact.setArtifactName("WBS");
         artifact.setRequiredVersion("v1");
         return artifact;

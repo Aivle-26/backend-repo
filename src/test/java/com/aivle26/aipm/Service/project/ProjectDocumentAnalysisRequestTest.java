@@ -23,6 +23,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.test.context.support.WithMockUser;
+import software.amazon.awssdk.services.s3.S3Client;
+import com.aivle26.aipm.support.InMemoryS3Mock;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -32,6 +35,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
+@WithMockUser(username = "PM001", roles = "PM")
 class ProjectDocumentAnalysisRequestTest {
     @Autowired
     private ProjectDocumentAnalysisService projectDocumentAnalysisService;
@@ -72,8 +76,12 @@ class ProjectDocumentAnalysisRequestTest {
     @MockitoBean
     private ProjectAgentClient projectAgentClient;
 
+    @MockitoBean
+    private S3Client s3Client;
+
     @BeforeEach
     void setUp() {
+        InMemoryS3Mock.configure(s3Client);
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();

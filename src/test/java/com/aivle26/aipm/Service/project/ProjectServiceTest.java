@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.time.LocalDate;
 
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
+@WithMockUser(username = "PM001", roles = "PM")
 class ProjectServiceTest {
 
     @Autowired
@@ -95,6 +97,7 @@ class ProjectServiceTest {
     }
 
     @Test
+    @WithMockUser(username = "PM404", roles = "PM")
     void createProjectDraftFailWhenPmUserMissing() {
         assertThatThrownBy(() -> projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project",

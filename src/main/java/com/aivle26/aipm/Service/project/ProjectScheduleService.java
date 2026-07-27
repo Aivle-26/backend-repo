@@ -40,10 +40,12 @@ public class ProjectScheduleService {
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleRepository projectScheduleRepository;
     private final ProjectAgentClient projectAgentClient;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     // 프로젝트와 저장 WBS 존재를 검증한 뒤 AI 일정 생성을 요청한다.
     @Transactional(readOnly = true)
     public AgentRequestResult requestScheduleGeneration(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 
@@ -59,6 +61,7 @@ public class ProjectScheduleService {
     // AI 일정 요청의 기간과 선후행 관계를 검증해 일정 결과를 저장하고 반환한다.
     @Transactional
     public SaveScheduleResultResponse saveScheduleResult(Long projectId, SaveScheduleResultRequest request) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 

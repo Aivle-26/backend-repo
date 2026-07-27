@@ -24,6 +24,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -66,6 +67,7 @@ public class UserController {
 
     // 현재 인증 사용자의 유효한 세션 정보를 조회해 반환한다.
     @GetMapping("/session")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<AuthSessionResponse> session(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         return ResponseEntity.ok(authService.getCurrentSession(user.employeeNumber()));
@@ -73,6 +75,7 @@ public class UserController {
 
     // 현재 인증 사용자의 세션 기반 사용자 정보를 반환한다.
     @GetMapping("/me")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<AuthSessionResponse> me(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         return ResponseEntity.ok(authService.getCurrentSession(user.employeeNumber()));
@@ -86,6 +89,7 @@ public class UserController {
 
     // 현재 사용자의 최근 활동 시각을 갱신하고 처리 결과를 반환한다.
     @PostMapping("/activity")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<Map<String, String>> recordActivity(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         authService.recordActivity(user.employeeNumber());

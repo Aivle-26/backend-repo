@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.client.ai.StoredDocumentFile;
+import com.aivle26.aipm.Config.S3Properties;
 import com.aivle26.aipm.Config.storage.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadItemResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
@@ -13,16 +14,13 @@ import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -32,20 +30,42 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ProjectDocumentService {
     private static final int MAX_FILE_COUNT = 10;
+    private static final int MAX_ORIGINAL_FILE_NAME_LENGTH = 255;
+    private static final int MAX_SANITIZED_FILE_NAME_LENGTH = 200;
+    private static final Map<String, Set<String>> MIME_TYPES_BY_EXTENSION = Map.of(
+            "pdf", Set.of("application/pdf"),
+            "docx", Set.of("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            "xlsx", Set.of("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            "pptx", Set.of("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+            "txt", Set.of("text/plain")
+    );
 
     private final ProjectRepository projectRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final DocumentStorageProperties documentStorageProperties;
+    private final ProjectAuthorizationService projectAuthorizationService;
+    private final S3Client s3Client;
+    private final S3Properties s3Properties;
 
     // 초안 프로젝트의 업로드 파일을 검증·교체 저장하고 문서 메타데이터를 반환한다.
     @Transactional
     public ProjectDocumentUploadResponse uploadInitialDocuments(Long projectId, List<MultipartFile> files) {
         Project project = loadDraftProject(projectId);
+        projectAuthorizationService.requireProjectPm(projectId);
         List<ProjectDocument> savedDocuments = replaceProjectDocuments(project, validateUploadFiles(files), ProjectDocumentStatus.UPLOADED);
         return buildUploadResponse(project.getId(), savedDocuments);
     }
@@ -133,7 +153,7 @@ public class ProjectDocumentService {
 
         List<ProjectDocument> replacedDocuments = new ArrayList<>();
         List<ProjectDocument> createdDocuments = new ArrayList<>();
-        List<Path> createdPaths = new ArrayList<>();
+        List<String> createdObjectKeys = new ArrayList<>();
 
         try {
             for (ValidatedUploadFile validatedFile : validatedFiles) {
@@ -142,8 +162,8 @@ public class ProjectDocumentService {
             }
 
             for (ValidatedUploadFile validatedFile : validatedFiles) {
-                StoredFile storedFile = storeValidatedFile(validatedFile);
-                createdPaths.add(storedFile.path());
+                StoredFile storedFile = storeValidatedFile(project.getId(), validatedFile);
+                createdObjectKeys.add(storedFile.objectKey());
                 createdDocuments.add(toProjectDocument(project, status, storedFile));
             }
 
@@ -155,7 +175,7 @@ public class ProjectDocumentService {
 
             return projectDocumentRepository.saveAll(createdDocuments);
         } catch (RuntimeException exception) {
-            cleanupFiles(createdPaths);
+            cleanupObjects(createdObjectKeys);
             throw exception;
         }
     }
@@ -208,17 +228,20 @@ public class ProjectDocumentService {
             throw new ApiException(HttpStatus.NOT_FOUND, "document not found");
         }
 
-        Path path = Path.of(storagePath).toAbsolutePath().normalize();
-        if (!Files.exists(path) || !Files.isRegularFile(path)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "document not found");
+        try {
+            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(s3Properties.getBucket())
+                    .key(storagePath)
+                    .build());
+            return new StoredDocumentFile(
+                    projectDocument.getOriginalFileName(),
+                    projectDocument.getContentType(),
+                    projectDocument.getFileSize(),
+                    object.asByteArray()
+            );
+        } catch (SdkException exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "DOCUMENT_STORAGE_ERROR", "file download failed", exception);
         }
-
-        return new StoredDocumentFile(
-                projectDocument.getOriginalFileName(),
-                projectDocument.getContentType(),
-                projectDocument.getFileSize(),
-                path
-        );
     }
 
     // 저장된 파일 정보와 프로젝트를 문서 메타데이터 엔티티로 변환한다.
@@ -228,7 +251,7 @@ public class ProjectDocumentService {
         document.setStatus(status);
         document.setOriginalFileName(storedFile.originalFileName());
         document.setStoredFileName(storedFile.storedFileName());
-        document.setStoragePath(storedFile.path().toString());
+        document.setStoragePath(storedFile.objectKey());
         document.setExtension(storedFile.extension());
         document.setContentType(storedFile.contentType());
         document.setFileSize(storedFile.fileSize());
@@ -236,49 +259,55 @@ public class ProjectDocumentService {
     }
 
     // 검증된 업로드 파일에 안전한 UUID 이름을 부여해 최종 저장소에 기록한다.
-    private StoredFile storeValidatedFile(ValidatedUploadFile validatedFile) {
-        Path rootDirectory = Path.of(documentStorageProperties.getStoragePath()).toAbsolutePath().normalize();
-        String storedFileName = UUID.randomUUID() + "." + validatedFile.extension();
-        Path targetPath = rootDirectory.resolve(storedFileName).normalize();
-        if (!targetPath.startsWith(rootDirectory)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file path.");
-        }
+    private StoredFile storeValidatedFile(Long projectId, ValidatedUploadFile validatedFile) {
+        UUID uploadId = UUID.randomUUID();
+        String storedFileName = uploadId + "." + validatedFile.extension();
+        String objectKey = "projects/%d/documents/%s/%s".formatted(
+                projectId,
+                uploadId,
+                sanitizeFileName(validatedFile.originalFileName(), validatedFile.extension())
+        );
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(s3Properties.getBucket())
+                .key(objectKey)
+                .contentType(validatedFile.contentType())
+                .contentLength(validatedFile.fileSize())
+                .build();
 
-        try {
-            Files.createDirectories(rootDirectory);
-            try (InputStream inputStream = validatedFile.file().getInputStream()) {
-                Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            }
+        try (InputStream inputStream = validatedFile.file().getInputStream()) {
+            s3Client.putObject(request, RequestBody.fromInputStream(inputStream, validatedFile.fileSize()));
             return new StoredFile(
                     validatedFile.originalFileName(),
                     storedFileName,
                     validatedFile.extension(),
                     validatedFile.contentType(),
                     validatedFile.fileSize(),
-                    targetPath
+                    objectKey
             );
-        } catch (IOException exception) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PROJECT_DOCUMENT_SAVE_FAILED", "file upload failed", exception);
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "DOCUMENT_STORAGE_ERROR", "file upload failed", exception);
         }
     }
 
     // 문서 엔티티의 유효한 저장 경로를 추출해 실제 파일 정리로 전달한다.
     private void deleteStoredFiles(List<ProjectDocument> documents) {
-        List<Path> paths = documents.stream()
+        List<String> objectKeys = documents.stream()
                 .map(ProjectDocument::getStoragePath)
                 .filter(path -> path != null && !path.isBlank())
-                .map(path -> Path.of(path).toAbsolutePath().normalize())
                 .toList();
-        cleanupFiles(paths);
+        cleanupObjects(objectKeys);
     }
 
-    // 전달된 저장 경로의 파일을 삭제하고 예상하지 못한 실패를 예외로 전환한다.
-    private void cleanupFiles(List<Path> savedPaths) {
-        for (Path path : savedPaths) {
+    // 전달된 S3 객체 키를 삭제하고 정리 실패는 로그로 남긴다.
+    private void cleanupObjects(List<String> objectKeys) {
+        for (String objectKey : objectKeys) {
             try {
-                Files.deleteIfExists(path);
-            } catch (IOException exception) {
-                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PROJECT_DOCUMENT_CLEANUP_FAILED", "Failed to clean up stored file.", exception);
+                s3Client.deleteObject(DeleteObjectRequest.builder()
+                        .bucket(s3Properties.getBucket())
+                        .key(objectKey)
+                        .build());
+            } catch (RuntimeException exception) {
+                log.warn("Failed to delete S3 project document: objectKey={}", objectKey, exception);
             }
         }
     }
@@ -302,7 +331,11 @@ public class ProjectDocumentService {
 
         String normalized = Normalizer.normalize(fileName, Normalizer.Form.NFC).replace("\\", "/");
         String baseName = normalized.substring(normalized.lastIndexOf('/') + 1).trim();
-        if (baseName.isBlank() || ".".equals(baseName) || "..".equals(baseName) || baseName.contains("..")) {
+        if (baseName.isBlank()
+                || baseName.length() > MAX_ORIGINAL_FILE_NAME_LENGTH
+                || ".".equals(baseName)
+                || "..".equals(baseName)
+                || baseName.contains("..")) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
         }
         return baseName;
@@ -319,14 +352,18 @@ public class ProjectDocumentService {
 
     // 파일 확장자가 설정된 업로드 허용 목록에 포함되는지 검증한다.
     private void validateExtension(String extension, String fileName) {
-        if (!documentStorageProperties.getAllowedExtensions().contains(extension)) {
+        if (!documentStorageProperties.getAllowedExtensions().contains(extension)
+                || !MIME_TYPES_BY_EXTENSION.containsKey(extension)) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported file extension: " + fileName);
         }
     }
 
     // 파일 MIME 유형이 설정된 업로드 허용 목록에 포함되는지 검증한다.
     private void validateMimeType(String contentType, String fileName) {
-        if (contentType == null || !documentStorageProperties.getAllowedMimeTypes().contains(contentType)) {
+        String normalizedContentType = normalizeContentType(contentType);
+        String extension = extractExtension(fileName);
+        if (!documentStorageProperties.getAllowedMimeTypes().contains(normalizedContentType)
+                || !MIME_TYPES_BY_EXTENSION.get(extension).contains(normalizedContentType)) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported MIME type for file: " + fileName);
         }
     }
@@ -336,6 +373,29 @@ public class ProjectDocumentService {
         if (fileSize > documentStorageProperties.getMaxFileSize()) {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "PROJECT_DOCUMENT_TOO_LARGE", "File size exceeds limit: " + fileName);
         }
+    }
+
+    private String sanitizeFileName(String originalFileName, String extension) {
+        int dotIndex = originalFileName.lastIndexOf('.');
+        String sanitizedBaseName = originalFileName.substring(0, dotIndex)
+                .replaceAll("[^\\p{L}\\p{N}._-]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^[._-]+|[._-]+$", "");
+        if (sanitizedBaseName.isBlank()) {
+            sanitizedBaseName = "document";
+        }
+        int maxBaseNameLength = MAX_SANITIZED_FILE_NAME_LENGTH - extension.length() - 1;
+        if (sanitizedBaseName.length() > maxBaseNameLength) {
+            sanitizedBaseName = sanitizedBaseName.substring(0, maxBaseNameLength);
+        }
+        return sanitizedBaseName + "." + extension;
+    }
+
+    private String normalizeContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "UNSUPPORTED_PROJECT_DOCUMENT", "Unsupported MIME type.");
+        }
+        return contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
     }
 
     record ValidatedUploadFile(
@@ -353,7 +413,7 @@ public class ProjectDocumentService {
             String extension,
             String contentType,
             long fileSize,
-            Path path
+            String objectKey
     ) {
     }
 }

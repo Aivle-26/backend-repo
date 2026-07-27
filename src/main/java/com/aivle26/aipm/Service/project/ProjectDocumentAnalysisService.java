@@ -55,10 +55,12 @@ public class ProjectDocumentAnalysisService {
     private final ProjectAgentClient projectAgentClient;
     private final ProjectRequirementMapper projectRequirementMapper;
     private final ObjectMapper objectMapper;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     // 프로젝트와 저장 파일 존재를 검증한 뒤 AI Server에 문서 분석을 요청한다.
     @Transactional(readOnly = true)
     public AgentRequestResult requestAnalysis(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         if (!projectRepository.existsById(projectId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "project not found");
         }
@@ -69,6 +71,7 @@ public class ProjectDocumentAnalysisService {
     // AI Server 분석 응답을 프로젝트 분석 결과와 요구사항으로 저장하고 결과 ID를 반환한다.
     @Transactional
     public SaveDocumentAnalysisResultResponse saveAnalysisResult(Long projectId, SaveDocumentAnalysisResultRequest request) {
+        projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 
@@ -141,6 +144,7 @@ public class ProjectDocumentAnalysisService {
                         "PROJECT_NOT_FOUND",
                         "요청한 프로젝트를 찾을 수 없습니다. projectId=" + projectId
                 ));
+        projectAuthorizationService.requireProjectPm(projectId);
 
         List<ProjectDocument> documents = projectDocumentRepository.findByProjectIdOrderByCreatedAtAscIdAsc(projectId);
         if (documents.isEmpty()) {

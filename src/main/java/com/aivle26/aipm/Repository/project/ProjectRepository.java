@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ProjectRepository extends JpaRepository<Project, Long> {
+    boolean existsByIdAndPm_EmployeeNumber(Long id, String employeeNumber);
+
     // PM을 함께 로딩한 전체 프로젝트를 최근 생성 순으로 조회한다.
     @EntityGraph(attributePaths = "pm")
     List<Project> findAllByOrderByCreatedAtDesc();

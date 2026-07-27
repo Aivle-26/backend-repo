@@ -23,8 +23,8 @@ import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.net.SocketTimeoutException;
-import java.nio.file.Files;
 import java.util.List;
 
 @Component
@@ -83,16 +83,12 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
 
     // 저장 파일의 원본명과 MIME 유형을 보존한 multipart 파일 항목을 생성한다.
     private HttpEntity<InputStreamResource> toFilePart(StoredDocumentFile file) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentDispositionFormData("files", file.originalFileName());
-            if (file.contentType() != null && !file.contentType().isBlank()) {
-                headers.setContentType(MediaType.parseMediaType(file.contentType()));
-            }
-            return new HttpEntity<>(new StoredDocumentResource(file), headers);
-        } catch (IOException exception) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "파일을 읽을 수 없습니다: " + file.originalFileName(), exception);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentDispositionFormData("files", file.originalFileName());
+        if (file.contentType() != null && !file.contentType().isBlank()) {
+            headers.setContentType(MediaType.parseMediaType(file.contentType()));
         }
+        return new HttpEntity<>(new StoredDocumentResource(file), headers);
     }
 
     // 예외 원인 체인에 소켓 시간 초과가 포함되는지 검사해 반환한다.
@@ -120,8 +116,8 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
     private static final class StoredDocumentResource extends InputStreamResource {
         private final StoredDocumentFile file;
 
-        private StoredDocumentResource(StoredDocumentFile file) throws IOException {
-            super(Files.newInputStream(file.path()));
+        private StoredDocumentResource(StoredDocumentFile file) {
+            super(new ByteArrayInputStream(file.content()));
             this.file = file;
         }
 
@@ -137,7 +133,7 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
 
         @Override
         public InputStream getInputStream() throws IOException {
-            return Files.newInputStream(file.path());
+            return new ByteArrayInputStream(file.content());
         }
     }
 }

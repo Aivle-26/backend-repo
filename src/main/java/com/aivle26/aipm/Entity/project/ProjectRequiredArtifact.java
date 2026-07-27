@@ -1,5 +1,7 @@
 package com.aivle26.aipm.Entity.project;
 
+import com.aivle26.aipm.Entity.ProjectArtifactType;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -39,7 +41,7 @@ public class ProjectRequiredArtifact {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
-    private RequiredArtifactType artifactType;
+    private ProjectArtifactType artifactType;
 
     @Column(nullable = false, length = 255)
     private String artifactName;

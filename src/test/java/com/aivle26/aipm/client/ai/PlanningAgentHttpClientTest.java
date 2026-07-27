@@ -112,7 +112,7 @@ class PlanningAgentHttpClientTest {
                 "simple-learning-support-rfp.txt",
                 "text/plain",
                 Files.size(storedFilePath),
-                storedFilePath
+                Files.readAllBytes(storedFilePath)
         );
 
         PlanningDocumentExtractResponse response = client.extractDocuments(List.of(file), true);

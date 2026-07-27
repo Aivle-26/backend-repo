@@ -16,7 +16,7 @@ import com.aivle26.aipm.Entity.project.ProjectPlanningExtraction;
 import com.aivle26.aipm.Entity.project.ProjectRequiredArtifact;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
-import com.aivle26.aipm.Entity.project.RequiredArtifactType;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
@@ -66,10 +66,12 @@ public class ProjectCreationService {
     private final ProjectDocumentService projectDocumentService;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
     // 프로젝트 입력값과 PM을 검증해 DRAFT 프로젝트를 저장하고 생성 결과를 반환한다.
     @Transactional
     public CreateProjectDraftResponse createProjectDraft(CreateProjectDraftRequest request) {
+        projectAuthorizationService.requireCurrentPm(request.pmEmployeeNumber());
         LocalDate plannedStartDate = request.plannedStartDate();
         LocalDate plannedEndDate = request.plannedEndDate();
         if (plannedEndDate.isBefore(plannedStartDate)) {
@@ -100,6 +102,7 @@ public class ProjectCreationService {
 
     // 업로드 파일을 한 번 저장한 뒤 저장 파일의 AI 추출 결과로 프로젝트 초안을 완성한다.
     public CreateProjectDraftFromDocumentsResponse createDraftFromDocuments(List<MultipartFile> files, boolean enableLlm, String pmEmployeeNumber) {
+        projectAuthorizationService.requireCurrentPm(pmEmployeeNumber);
         List<ProjectDocumentService.ValidatedUploadFile> validatedFiles = projectDocumentService.validateUploadFiles(files);
         DraftProjectContext draftContext = transactionTemplate.execute(status -> createDraftWithStoredDocuments(validatedFiles, pmEmployeeNumber));
 
@@ -259,13 +262,13 @@ public class ProjectCreationService {
         PlanningLlmStatus llmStatus = parseEnum(normalizedResponse.llmStatus(), PlanningLlmStatus.class, "llm_status");
 
         List<PlanningDocumentExtractResponse.RequiredArtifact> artifacts = requireList(projectInfo.requiredArtifacts(), "required_artifacts");
-        List<RequiredArtifactType> artifactTypes = new ArrayList<>();
+        List<ProjectArtifactType> artifactTypes = new ArrayList<>();
         Set<String> artifactKeys = new HashSet<>();
         for (PlanningDocumentExtractResponse.RequiredArtifact artifact : artifacts) {
             requireText(artifact.artifactType(), "artifact_type");
             requireText(artifact.artifactName(), "artifact_name");
             requireText(artifact.requiredVersion(), "required_version");
-            RequiredArtifactType type = parseEnum(artifact.artifactType(), RequiredArtifactType.class, "artifact_type");
+            ProjectArtifactType type = parseEnum(artifact.artifactType(), ProjectArtifactType.class, "artifact_type");
             if (!artifactKeys.add(type.name() + "|" + artifact.artifactName().trim())) {
                 throw invalidAgentResponse("Duplicate required_artifact: " + artifact.artifactName());
             }
@@ -515,7 +518,7 @@ public class ProjectCreationService {
     private record ValidatedAgentResult(
             PlanningDocumentExtractResponse response,
             PlanningLlmStatus llmStatus,
-            List<RequiredArtifactType> artifactTypes,
+            List<ProjectArtifactType> artifactTypes,
             Map<String, PlanningDocumentExtractResponse.DocumentResult> documentByName,
             List<RequirementType> requirementTypes,
             List<RequirementPriority> requirementPriorities

@@ -10,6 +10,8 @@ public interface ProjectRequiredArtifactRepository extends JpaRepository<Project
     // 프로젝트의 필수 산출물을 ID 오름차순으로 조회한다.
     List<ProjectRequiredArtifact> findByProjectIdOrderByIdAsc(Long projectId);
 
+    List<ProjectRequiredArtifact> findByProjectIdOrderByArtifactTypeAsc(Long projectId);
+
     // 프로젝트에 연결된 모든 필수 산출물을 삭제한다.
     void deleteAllByProjectId(Long projectId);
 }

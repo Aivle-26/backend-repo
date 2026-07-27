@@ -189,7 +189,7 @@ class AiServerDocumentExtractClientTest {
     private StoredDocumentFile createStoredFile(String fileName, String contentType, String content) throws Exception {
         Path path = tempDirectory.resolve(fileName);
         Files.writeString(path, content);
-        return new StoredDocumentFile(fileName, contentType, Files.size(path), path);
+        return new StoredDocumentFile(fileName, contentType, Files.size(path), Files.readAllBytes(path));
     }
 
     private long countOccurrences(String body, String token) {

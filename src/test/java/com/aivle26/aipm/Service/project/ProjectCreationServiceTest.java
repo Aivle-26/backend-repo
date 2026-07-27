@@ -19,6 +19,7 @@ import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
+import com.aivle26.aipm.support.InMemoryS3Mock;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.test.context.support.WithMockUser;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,6 +52,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
+@WithMockUser(username = "PM001", roles = "PM")
 class ProjectCreationServiceTest {
 
     @Autowired
@@ -81,11 +88,15 @@ class ProjectCreationServiceTest {
     @MockitoBean
     private PlanningAgentClient planningAgentClient;
 
+    @MockitoBean
+    private S3Client s3Client;
+
     @Value("${app.document.storage-path}")
     private String storagePath;
 
     @BeforeEach
     void setUp() throws IOException {
+        InMemoryS3Mock.configure(s3Client);
         extractionRepository.deleteAll();
         keyFeatureRepository.deleteAll();
         requiredArtifactRepository.deleteAll();
@@ -222,15 +233,13 @@ class ProjectCreationServiceTest {
 
     @Test
     void rollbackWhenStorageFailsDuringSave() throws IOException {
-        Path blockedStoragePath = Files.createTempFile("aipm-storage", ".tmp");
-        documentStorageProperties.setStoragePath(blockedStoragePath.toString());
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(SdkClientException.create("S3 unavailable"));
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(successResponse());
-        try {
-            assertApiException(() -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"), "PROJECT_DOCUMENT_SAVE_FAILED");
-        } finally {
-            documentStorageProperties.setStoragePath(storagePath);
-            Files.deleteIfExists(blockedStoragePath);
-        }
+        assertApiException(
+                () -> service.createDraftFromDocuments(List.of(pdf("rfp.pdf"), txt("memo.txt")), true, "PM001"),
+                "DOCUMENT_STORAGE_ERROR"
+        );
     }
 
     private void assertApiException(ThrowingRunnable runnable, String code) {
