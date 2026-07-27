@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 /**
  * Slack 메시지 증분 수집.
  *
- * <p>채널마다 마지막으로 가져온 ts 이후 메시지만 조회한다.
+ * 채널마다 마지막으로 가져온 ts 이후 메시지만 조회한다.
  * 매번 전체를 다시 받으면 Slack rate limit에 걸리고 비용도 낭비된다.
  */
 @Slf4j
@@ -141,10 +141,6 @@ public class SlackMessageSyncService {
         return count;
     }
 
-    /**
-     * AI 서버는 reaction_summary에 확인 이모지(white_check_mark, eyes 등)가 있는지로
-     * "응답됨"을 판단한다. 이름만 이어붙이면 충분하다.
-     */
     static String summarizeReactions(Message message) {
         if (message.getReactions() == null || message.getReactions().isEmpty()) {
             return "";

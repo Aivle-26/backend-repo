@@ -64,7 +64,7 @@ public class CommunicationRiskService {
     /**
      * Slack 새 메시지를 수집하고 재분석한다.
      *
-     * <p>새 메시지가 없으면 AI 서버를 호출하지 않고 기존 결과를 그대로 반환한다.
+     * 새 메시지가 없으면 AI 서버를 호출하지 않고 기존 결과를 그대로 반환한다.
      * LLM은 비용과 지연이 있어 같은 입력으로 다시 부를 이유가 없다.
      */
     @Transactional

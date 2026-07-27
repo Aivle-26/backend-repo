@@ -34,6 +34,10 @@ public class LocalDataSeeder implements CommandLineRunner {
     private static final String PM_EMAIL = "pm@local.test";
     private static final String PM_PASSWORD = "local1234!";
 
+    private static final String STAFF_EMPLOYEE_NUMBER = "ST-0001";
+    private static final String STAFF_EMAIL = "staff@local.test";
+    private static final String STAFF_PASSWORD = "local1234!";
+
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final PasswordEncoder passwordEncoder;
@@ -54,6 +58,16 @@ public class LocalDataSeeder implements CommandLineRunner {
         pm.setEmailVerified(true);
         userRepository.save(pm);
 
+        User staff = new User();
+        staff.setEmployeeNumber(STAFF_EMPLOYEE_NUMBER);
+        staff.setName("로컬 직원");
+        staff.setEmail(STAFF_EMAIL);
+        staff.setPassword(passwordEncoder.encode(STAFF_PASSWORD));
+        staff.setRole("STAFF");
+        staff.setStatus(UserStatus.ACTIVE);
+        staff.setEmailVerified(true);
+        userRepository.save(staff);
+
         Project project = new Project();
         project.setName("로컬 테스트 프로젝트");
         project.setDescription("Slack 커뮤니케이션 리스크 연동 확인용");
@@ -65,6 +79,7 @@ public class LocalDataSeeder implements CommandLineRunner {
 
         log.info("=== local 시드 생성 ===");
         log.info("  PM 계정   : {} / {}", PM_EMAIL, PM_PASSWORD);
+        log.info("  직원 계정 : {} / {}", STAFF_EMAIL, STAFF_PASSWORD);
         log.info("  프로젝트 ID: {}", saved.getId());
     }
 }
