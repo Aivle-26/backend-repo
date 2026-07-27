@@ -2,6 +2,7 @@ package com.aivle26.aipm.Repository.project;
 
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,6 +16,10 @@ public interface ProjectWbsTaskRepository extends JpaRepository<ProjectWbsTask, 
 
     // 프로젝트에 확정된 모든 WBS 작업을 조회한다.
     List<ProjectWbsTask> findByProjectIdAndConfirmedTrue(Long projectId);
+
+    // 프로젝트의 최종 WBS 작업을 화면 순서대로 요구사항과 함께 조회한다.
+    @EntityGraph(attributePaths = {"requirements"})
+    List<ProjectWbsTask> findByProjectIdOrderByOrderIndexAscIdAsc(Long projectId);
 
     // 요구사항이 연결된 WBS 작업 수를 조회해 삭제 가능 여부 판단에 사용한다.
     @Query("select count(task) from ProjectWbsTask task join task.requirements requirement where requirement.id = :requirementId")

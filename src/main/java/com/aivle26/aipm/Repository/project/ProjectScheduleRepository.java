@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ProjectScheduleRepository extends JpaRepository<ProjectSchedule, Long> {
+    // 프로젝트에 이미 저장된 일정이 있는지 반환한다.
+    boolean existsByProjectId(Long projectId);
+
     // 프로젝트 일정 삭제 전에 선행 일정 연결 테이블의 관련 행을 제거한다.
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
