@@ -64,6 +64,12 @@ jobs:
             exit 1
           fi
 
+          jar_listing="$RUNNER_TEMP/aipm-backend-jar-contents.txt"
+          jar tf "${jars[0]}" > "$jar_listing"
+          grep -Fxq "BOOT-INF/classes/" "$jar_listing"
+          grep -Fxq "BOOT-INF/lib/" "$jar_listing"
+          rm -f "$jar_listing"
+
           echo "path=${jars[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare SSH files
@@ -109,9 +115,13 @@ jobs:
 
           remote_artifact="/tmp/aipm-backend-${GITHUB_SHA}.jar"
           remote_deploy_script="/tmp/deploy-backend-${GITHUB_SHA}.sh"
+          remote_health_script="/tmp/aipm-backend-health-${GITHUB_SHA}.sh"
+          remote_systemd_unit="/tmp/aipm-backend-service-${GITHUB_SHA}.service"
 
           echo "REMOTE_ARTIFACT=${remote_artifact}" >> "$GITHUB_ENV"
           echo "REMOTE_DEPLOY_SCRIPT=${remote_deploy_script}" >> "$GITHUB_ENV"
+          echo "REMOTE_HEALTH_SCRIPT=${remote_health_script}" >> "$GITHUB_ENV"
+          echo "REMOTE_SYSTEMD_UNIT=${remote_systemd_unit}" >> "$GITHUB_ENV"
 
           scp \
             -i "$SSH_KEY_FILE" \
@@ -126,6 +136,20 @@ jobs:
             -o StrictHostKeyChecking=yes \
             scripts/deploy-backend.sh \
             "${EC2_USER}@${EC2_HOST}:${remote_deploy_script}"
+
+          scp \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            scripts/health-check.sh \
+            "${EC2_USER}@${EC2_HOST}:${remote_health_script}"
+
+          scp \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            deploy/systemd/aipm-backend.service \
+            "${EC2_USER}@${EC2_HOST}:${remote_systemd_unit}"
 
       - name: Deploy on EC2
         shell: bash
@@ -142,21 +166,32 @@ jobs:
             -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
             -o StrictHostKeyChecking=yes \
             "${EC2_USER}@${EC2_HOST}" \
-            "REMOTE_ARTIFACT='${REMOTE_ARTIFACT}' REMOTE_DEPLOY_SCRIPT='${REMOTE_DEPLOY_SCRIPT}' REVISION='${GITHUB_SHA}' bash -s" <<'REMOTE_DEPLOY'
+            "REMOTE_ARTIFACT='${REMOTE_ARTIFACT}' REMOTE_DEPLOY_SCRIPT='${REMOTE_DEPLOY_SCRIPT}' REMOTE_HEALTH_SCRIPT='${REMOTE_HEALTH_SCRIPT}' REMOTE_SYSTEMD_UNIT='${REMOTE_SYSTEMD_UNIT}' REVISION='${GITHUB_SHA}' bash -s" <<'REMOTE_DEPLOY'
           set -euo pipefail
 
           cleanup() {
-            rm -f "$REMOTE_ARTIFACT" "$REMOTE_DEPLOY_SCRIPT"
+            rm -f \
+              "$REMOTE_ARTIFACT" \
+              "$REMOTE_DEPLOY_SCRIPT" \
+              "$REMOTE_HEALTH_SCRIPT" \
+              "$REMOTE_SYSTEMD_UNIT"
           }
           trap cleanup EXIT
 
           test -f "$REMOTE_ARTIFACT"
           test -f "$REMOTE_DEPLOY_SCRIPT"
-          chmod 700 "$REMOTE_DEPLOY_SCRIPT"
+          test -f "$REMOTE_HEALTH_SCRIPT"
+          test -f "$REMOTE_SYSTEMD_UNIT"
+          chmod 700 "$REMOTE_DEPLOY_SCRIPT" "$REMOTE_HEALTH_SCRIPT"
+          chmod 600 "$REMOTE_SYSTEMD_UNIT"
 
           sudo -n true
 
-          "$REMOTE_DEPLOY_SCRIPT" --artifact "$REMOTE_ARTIFACT" --revision "$REVISION"
+          "$REMOTE_DEPLOY_SCRIPT" \
+            --artifact "$REMOTE_ARTIFACT" \
+            --revision "$REVISION" \
+            --health-script "$REMOTE_HEALTH_SCRIPT" \
+            --systemd-unit "$REMOTE_SYSTEMD_UNIT"
           REMOTE_DEPLOY
 
       - name: Cleanup remote deployment files
@@ -176,13 +211,15 @@ jobs:
 
           remote_artifact="${REMOTE_ARTIFACT:-/tmp/aipm-backend-${GITHUB_SHA}.jar}"
           remote_deploy_script="${REMOTE_DEPLOY_SCRIPT:-/tmp/deploy-backend-${GITHUB_SHA}.sh}"
+          remote_health_script="${REMOTE_HEALTH_SCRIPT:-/tmp/aipm-backend-health-${GITHUB_SHA}.sh}"
+          remote_systemd_unit="${REMOTE_SYSTEMD_UNIT:-/tmp/aipm-backend-service-${GITHUB_SHA}.service}"
 
           ssh \
             -i "$SSH_KEY_FILE" \
             -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
             -o StrictHostKeyChecking=yes \
             "${EC2_USER}@${EC2_HOST}" \
-            "rm -f '${remote_artifact}' '${remote_deploy_script}'" || true
+            "rm -f '${remote_artifact}' '${remote_deploy_script}' '${remote_health_script}' '${remote_systemd_unit}'" || true
 
       - name: Remove SSH files
         if: always()
