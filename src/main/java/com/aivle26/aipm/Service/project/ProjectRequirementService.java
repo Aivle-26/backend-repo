@@ -2,6 +2,8 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Dto.project.CreateProjectRequirementRequest;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
+import com.aivle26.aipm.Dto.project.ProjectRequirementsResponse;
+import com.aivle26.aipm.Dto.project.SaveFinalRequirementsRequest;
 import com.aivle26.aipm.Dto.project.UpdateProjectRequirementRequest;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
@@ -22,7 +24,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -33,66 +41,218 @@ public class ProjectRequirementService {
     private final ProjectDocumentAnalysisResultRepository analysisResultRepository;
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
     private final ProjectRequirementMapper projectRequirementMapper;
+    private final ProjectAuthorizationService projectAuthorizationService;
 
-    // 프로젝트와 연관 문서를 검증해 기본 미확정 요구사항을 저장하고 상세 응답을 반환한다.
     @Transactional
     public ProjectDocumentAnalysisResultsResponse.RequirementDetail create(
             Long projectId,
             CreateProjectRequirementRequest request
     ) {
-        Project project = getProject(projectId);
-        ProjectRequirement requirement = new ProjectRequirement();
-        requirement.setProject(project);
-        requirement.setAnalysisResult(resolveAnalysisResult(projectId, request.analysisResultId()));
-        requirement.setSourceDocument(resolveSourceDocument(projectId, request.sourceDocumentId()));
-        requirement.setExternalReferenceId(requirePositiveId(request.externalReferenceId(), "externalReferenceId"));
-        requirement.setType(request.type());
-        requirement.setTitle(requireText(request.title(), "title"));
-        requirement.setDescription(requireText(request.description(), "description"));
-        requirement.setAcceptanceCriteria(trimToNull(request.acceptanceCriteria()));
-        requirement.setDueDate(request.dueDate());
-        requirement.setDeliverableName(trimToNull(request.deliverableName()));
-        requirement.setSecurityCondition(trimToNull(request.securityCondition()));
-        requirement.setSourceDocumentName(trimToNull(request.sourceDocumentName()));
-        requirement.setSourceExcerpt(trimToNull(request.sourceExcerpt()));
-        requirement.setPriority(request.priority());
-        requirement.setStatus(RequirementStatus.UNCONFIRMED);
-        requirement.setConfirmed(false);
+        Project project = requireAccessibleProject(projectId);
+        ProjectRequirement requirement = createRequirement(project, toValues(request));
         return projectRequirementMapper.toDetail(projectRequirementRepository.save(requirement));
     }
 
-    // 프로젝트 존재를 확인하고 선택 조건에 맞는 요구사항 목록을 상세 응답으로 반환한다.
+    // 왼쪽 AI 최초 제안과 오른쪽 사용자 편집본을 한 번에 반환한다.
     @Transactional(readOnly = true)
-    public List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> findAll(
+    public ProjectRequirementsResponse findAll(
             Long projectId,
             RequirementType type,
             RequirementPriority priority,
             RequirementStatus status,
             Boolean confirmed
     ) {
-        getProject(projectId);
-        return projectRequirementRepository.findAllByFilters(projectId, type, priority, status, confirmed).stream()
-                .map(projectRequirementMapper::toDetail)
-                .toList();
+        requireAccessibleProject(projectId);
+        List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> aiSuggestions =
+                projectRequirementRepository.findByProjectIdAndAiSuggestionJsonIsNotNullOrderByIdAsc(projectId).stream()
+                        .map(projectRequirementMapper::toAiSuggestion)
+                        .toList();
+        List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> finalRequirements =
+                projectRequirementRepository.findAllByFilters(projectId, type, priority, status, confirmed).stream()
+                        .map(projectRequirementMapper::toDetail)
+                        .toList();
+        return new ProjectRequirementsResponse(projectId, aiSuggestions, finalRequirements);
     }
 
-    // 프로젝트 소속 관계를 검증해 요구사항 한 건의 상세 정보를 반환한다.
     @Transactional(readOnly = true)
     public ProjectDocumentAnalysisResultsResponse.RequirementDetail findOne(Long projectId, Long requirementId) {
-        getProject(projectId);
-        return projectRequirementMapper.toDetail(getRequirement(projectId, requirementId));
+        requireAccessibleProject(projectId);
+        return projectRequirementMapper.toDetail(getFinalRequirement(projectId, requirementId));
     }
 
-    // 프로젝트 요구사항의 요청된 필드와 연관 정보를 검증·갱신해 상세 응답을 반환한다.
     @Transactional
     public ProjectDocumentAnalysisResultsResponse.RequirementDetail update(
             Long projectId,
             Long requirementId,
             UpdateProjectRequirementRequest request
     ) {
-        getProject(projectId);
-        ProjectRequirement requirement = getRequirement(projectId, requirementId);
+        requireAccessibleProject(projectId);
+        ProjectRequirement requirement = getFinalRequirement(projectId, requirementId);
+        applyPartialUpdate(projectId, requirement, request);
+        return projectRequirementMapper.toDetail(projectRequirementRepository.saveAndFlush(requirement));
+    }
 
+    // AI 제안 요구사항은 왼쪽 원본 보존을 위해 편집본에서만 제외하고, 직접 추가한 항목은 실제 삭제한다.
+    @Transactional
+    public void delete(Long projectId, Long requirementId) {
+        requireAccessibleProject(projectId);
+        ProjectRequirement requirement = getFinalRequirement(projectId, requirementId);
+        if (requirement.getAiSuggestionJson() != null) {
+            excludeFromFinal(requirement);
+            projectRequirementRepository.save(requirement);
+            return;
+        }
+        if (requirement.isConfirmed() || requirement.getStatus() == RequirementStatus.CONFIRMED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "REQUIREMENT_DELETE_CONFIRMED",
+                    "확정된 요구사항은 삭제할 수 없습니다."
+            );
+        }
+        if (projectWbsTaskRepository.countByRequirementId(requirementId) > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "REQUIREMENT_DELETE_WBS_LINKED",
+                    "WBS에 연결된 요구사항은 삭제할 수 없습니다."
+            );
+        }
+        projectRequirementRepository.delete(requirement);
+    }
+
+    @Transactional
+    public ProjectDocumentAnalysisResultsResponse.RequirementDetail confirm(Long projectId, Long requirementId) {
+        return changeState(projectId, requirementId, RequirementStatus.CONFIRMED, true);
+    }
+
+    @Transactional
+    public ProjectDocumentAnalysisResultsResponse.RequirementDetail unconfirm(Long projectId, Long requirementId) {
+        return changeState(projectId, requirementId, RequirementStatus.UNCONFIRMED, false);
+    }
+
+    @Transactional
+    public ProjectDocumentAnalysisResultsResponse.RequirementDetail reject(Long projectId, Long requirementId) {
+        return changeState(projectId, requirementId, RequirementStatus.REJECTED, false);
+    }
+
+    @Transactional
+    public List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> confirmAll(Long projectId) {
+        requireAccessibleProject(projectId);
+        List<ProjectRequirement> requirements = projectRequirementRepository.findByProjectIdOrderByIdAsc(projectId)
+                .stream()
+                .filter(ProjectRequirement::isIncludedInFinal)
+                .toList();
+        requirements.forEach(requirement -> {
+            requirement.setStatus(RequirementStatus.CONFIRMED);
+            requirement.setConfirmed(true);
+        });
+        projectRequirementRepository.flush();
+        return requirements.stream().map(projectRequirementMapper::toDetail).toList();
+    }
+
+    // 저장 버튼에서 전달한 전체 편집본을 ID 기준으로 추가·수정·제외하고 한 트랜잭션으로 반영한다.
+    @Transactional
+    public ProjectRequirementsResponse saveFinal(Long projectId, SaveFinalRequirementsRequest request) {
+        Project project = requireAccessibleProject(projectId);
+        List<ProjectRequirement> existingRequirements =
+                projectRequirementRepository.findByProjectIdOrderByIdAsc(projectId);
+        Map<Long, ProjectRequirement> existingById = new LinkedHashMap<>();
+        existingRequirements.forEach(requirement -> existingById.put(requirement.getId(), requirement));
+
+        Set<Long> requestedIds = new HashSet<>();
+        Set<Long> externalReferenceIds = new HashSet<>();
+        List<ProjectRequirement> requirementsToSave = new ArrayList<>();
+
+        for (SaveFinalRequirementsRequest.RequirementItem item : request.requirements()) {
+            if (!externalReferenceIds.add(item.externalReferenceId())) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "DUPLICATE_REQUIREMENT_REFERENCE",
+                        "중복된 externalReferenceId가 있습니다."
+                );
+            }
+
+            ProjectRequirement requirement;
+            if (item.requirementId() == null) {
+                requirement = createRequirement(project, toValues(item));
+            } else {
+                if (!requestedIds.add(item.requirementId())) {
+                    throw new ApiException(
+                            HttpStatus.BAD_REQUEST,
+                            "DUPLICATE_REQUIREMENT_ID",
+                            "중복된 requirementId가 있습니다."
+                    );
+                }
+                requirement = existingById.get(item.requirementId());
+                if (requirement == null || !requirement.isIncludedInFinal()) {
+                    throw requirementNotFound(item.requirementId());
+                }
+                applyValues(requirement, projectId, toValues(item));
+            }
+            requirement.setIncludedInFinal(true);
+            requirementsToSave.add(requirement);
+        }
+
+        for (ProjectRequirement existing : existingRequirements) {
+            if (!existing.isIncludedInFinal() || requestedIds.contains(existing.getId())) {
+                continue;
+            }
+            if (mustPreserveRow(existing)) {
+                excludeFromFinal(existing);
+                requirementsToSave.add(existing);
+            } else {
+                projectRequirementRepository.delete(existing);
+            }
+        }
+
+        projectRequirementRepository.saveAll(requirementsToSave);
+        projectRequirementRepository.flush();
+        return findAll(projectId, null, null, null, null);
+    }
+
+    private ProjectDocumentAnalysisResultsResponse.RequirementDetail changeState(
+            Long projectId,
+            Long requirementId,
+            RequirementStatus status,
+            boolean confirmed
+    ) {
+        requireAccessibleProject(projectId);
+        ProjectRequirement requirement = getFinalRequirement(projectId, requirementId);
+        requirement.setStatus(status);
+        requirement.setConfirmed(confirmed);
+        return projectRequirementMapper.toDetail(projectRequirementRepository.saveAndFlush(requirement));
+    }
+
+    private ProjectRequirement createRequirement(Project project, RequirementValues values) {
+        ProjectRequirement requirement = new ProjectRequirement();
+        requirement.setProject(project);
+        requirement.setStatus(RequirementStatus.UNCONFIRMED);
+        requirement.setConfirmed(false);
+        requirement.setIncludedInFinal(true);
+        applyValues(requirement, project.getId(), values);
+        return requirement;
+    }
+
+    private void applyValues(ProjectRequirement requirement, Long projectId, RequirementValues values) {
+        requirement.setAnalysisResult(resolveAnalysisResult(projectId, values.analysisResultId()));
+        requirement.setSourceDocument(resolveSourceDocument(projectId, values.sourceDocumentId()));
+        requirement.setExternalReferenceId(requirePositiveId(values.externalReferenceId(), "externalReferenceId"));
+        requirement.setType(values.type());
+        requirement.setTitle(requireText(values.title(), "title"));
+        requirement.setDescription(requireText(values.description(), "description"));
+        requirement.setAcceptanceCriteria(trimToNull(values.acceptanceCriteria()));
+        requirement.setDueDate(values.dueDate());
+        requirement.setDeliverableName(trimToNull(values.deliverableName()));
+        requirement.setSecurityCondition(trimToNull(values.securityCondition()));
+        requirement.setSourceDocumentName(trimToNull(values.sourceDocumentName()));
+        requirement.setSourceExcerpt(trimToNull(values.sourceExcerpt()));
+        requirement.setPriority(values.priority());
+    }
+
+    private void applyPartialUpdate(
+            Long projectId,
+            ProjectRequirement requirement,
+            UpdateProjectRequirementRequest request
+    ) {
         if (request.analysisResultId() != null) {
             requirement.setAnalysisResult(resolveAnalysisResult(projectId, request.analysisResultId()));
         }
@@ -132,78 +292,22 @@ public class ProjectRequirementService {
         if (request.priority() != null) {
             requirement.setPriority(request.priority());
         }
-        return projectRequirementMapper.toDetail(projectRequirementRepository.saveAndFlush(requirement));
     }
 
-    // 확정 또는 WBS 연결 여부를 확인한 뒤 삭제 가능한 프로젝트 요구사항을 제거한다.
-    @Transactional
-    public void delete(Long projectId, Long requirementId) {
-        getProject(projectId);
-        ProjectRequirement requirement = getRequirement(projectId, requirementId);
-        if (requirement.isConfirmed() || requirement.getStatus() == RequirementStatus.CONFIRMED) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "REQUIREMENT_DELETE_CONFIRMED",
-                    "확정된 요구사항은 삭제할 수 없습니다."
-            );
-        }
-        if (projectWbsTaskRepository.countByRequirementId(requirementId) > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "REQUIREMENT_DELETE_WBS_LINKED",
-                    "WBS에 연결된 요구사항은 삭제할 수 없습니다."
-            );
-        }
-        projectRequirementRepository.delete(requirement);
+    private boolean mustPreserveRow(ProjectRequirement requirement) {
+        return requirement.getAiSuggestionJson() != null
+                || requirement.isConfirmed()
+                || projectWbsTaskRepository.countByRequirementId(requirement.getId()) > 0;
     }
 
-    // 프로젝트 요구사항을 CONFIRMED 상태와 confirmed=true로 변경해 반환한다.
-    @Transactional
-    public ProjectDocumentAnalysisResultsResponse.RequirementDetail confirm(Long projectId, Long requirementId) {
-        return changeState(projectId, requirementId, RequirementStatus.CONFIRMED, true);
+    private void excludeFromFinal(ProjectRequirement requirement) {
+        requirement.setIncludedInFinal(false);
+        requirement.setStatus(RequirementStatus.REJECTED);
+        requirement.setConfirmed(false);
     }
 
-    // 프로젝트 요구사항을 UNCONFIRMED 상태와 confirmed=false로 변경해 반환한다.
-    @Transactional
-    public ProjectDocumentAnalysisResultsResponse.RequirementDetail unconfirm(Long projectId, Long requirementId) {
-        return changeState(projectId, requirementId, RequirementStatus.UNCONFIRMED, false);
-    }
-
-    // 프로젝트 요구사항을 REJECTED 상태와 confirmed=false로 변경해 반환한다.
-    @Transactional
-    public ProjectDocumentAnalysisResultsResponse.RequirementDetail reject(Long projectId, Long requirementId) {
-        return changeState(projectId, requirementId, RequirementStatus.REJECTED, false);
-    }
-
-    // 프로젝트의 모든 요구사항을 확정 상태로 갱신하고 변경된 목록을 반환한다.
-    @Transactional
-    public List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> confirmAll(Long projectId) {
-        getProject(projectId);
-        List<ProjectRequirement> requirements = projectRequirementRepository.findByProjectIdOrderByIdAsc(projectId);
-        requirements.forEach(requirement -> {
-            requirement.setStatus(RequirementStatus.CONFIRMED);
-            requirement.setConfirmed(true);
-        });
-        projectRequirementRepository.flush();
-        return requirements.stream().map(projectRequirementMapper::toDetail).toList();
-    }
-
-    // 프로젝트 소속 요구사항의 상태와 확정 여부를 함께 변경해 상세 응답으로 반환한다.
-    private ProjectDocumentAnalysisResultsResponse.RequirementDetail changeState(
-            Long projectId,
-            Long requirementId,
-            RequirementStatus status,
-            boolean confirmed
-    ) {
-        getProject(projectId);
-        ProjectRequirement requirement = getRequirement(projectId, requirementId);
-        requirement.setStatus(status);
-        requirement.setConfirmed(confirmed);
-        return projectRequirementMapper.toDetail(projectRequirementRepository.saveAndFlush(requirement));
-    }
-
-    // 프로젝트 ID로 프로젝트를 조회하고 없으면 기존 NOT_FOUND 예외를 발생시킨다.
-    private Project getProject(Long projectId) {
+    private Project requireAccessibleProject(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND,
@@ -212,27 +316,32 @@ public class ProjectRequirementService {
                 ));
     }
 
-    // 프로젝트와 요구사항 ID를 함께 조회해 소속이 일치하는 요구사항을 반환한다.
-    private ProjectRequirement getRequirement(Long projectId, Long requirementId) {
-        return projectRequirementRepository.findByIdAndProjectId(requirementId, projectId)
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND,
-                        "PROJECT_REQUIREMENT_NOT_FOUND",
-                        "프로젝트에 속한 요구사항을 찾을 수 없습니다. requirementId=" + requirementId
-                ));
+    private ProjectRequirement getFinalRequirement(Long projectId, Long requirementId) {
+        ProjectRequirement requirement = projectRequirementRepository.findByIdAndProjectId(requirementId, projectId)
+                .orElseThrow(() -> requirementNotFound(requirementId));
+        if (!requirement.isIncludedInFinal()) {
+            throw requirementNotFound(requirementId);
+        }
+        return requirement;
     }
 
-    // 프로젝트에 속한 원본 문서를 조회하고 소속 관계를 검증해 반환한다.
+    private ApiException requirementNotFound(Long requirementId) {
+        return new ApiException(
+                HttpStatus.NOT_FOUND,
+                "PROJECT_REQUIREMENT_NOT_FOUND",
+                "프로젝트의 요구사항을 찾을 수 없습니다. requirementId=" + requirementId
+        );
+    }
+
     private ProjectDocument resolveSourceDocument(Long projectId, Long documentId) {
         return projectDocumentRepository.findByIdAndProjectId(documentId, projectId)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.BAD_REQUEST,
                         "INVALID_REQUIREMENT_SOURCE_DOCUMENT",
-                        "프로젝트에 속한 출처 문서를 찾을 수 없습니다. documentId=" + documentId
+                        "프로젝트의 출처 문서를 찾을 수 없습니다. documentId=" + documentId
                 ));
     }
 
-    // 선택 분석 결과 ID가 프로젝트에 속하는지 검증하며 미지정 시 null을 반환한다.
     private ProjectDocumentAnalysisResult resolveAnalysisResult(Long projectId, Long analysisResultId) {
         if (analysisResultId == null) {
             return null;
@@ -241,33 +350,91 @@ public class ProjectRequirementService {
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.BAD_REQUEST,
                         "INVALID_REQUIREMENT_ANALYSIS_RESULT",
-                        "프로젝트에 속한 분석 결과를 찾을 수 없습니다. analysisResultId=" + analysisResultId
+                        "프로젝트의 분석 결과를 찾을 수 없습니다. analysisResultId=" + analysisResultId
                 ));
     }
 
-    // 필수 문자열을 검증하고 앞뒤 공백이 제거된 값을 반환한다.
+    private RequirementValues toValues(CreateProjectRequirementRequest request) {
+        return new RequirementValues(
+                request.analysisResultId(),
+                request.sourceDocumentId(),
+                request.externalReferenceId(),
+                request.type(),
+                request.title(),
+                request.description(),
+                request.acceptanceCriteria(),
+                request.dueDate(),
+                request.deliverableName(),
+                request.securityCondition(),
+                request.sourceDocumentName(),
+                request.sourceExcerpt(),
+                request.priority()
+        );
+    }
+
+    private RequirementValues toValues(SaveFinalRequirementsRequest.RequirementItem item) {
+        return new RequirementValues(
+                item.analysisResultId(),
+                item.sourceDocumentId(),
+                item.externalReferenceId(),
+                item.type(),
+                item.title(),
+                item.description(),
+                item.acceptanceCriteria(),
+                item.dueDate(),
+                item.deliverableName(),
+                item.securityCondition(),
+                item.sourceDocumentName(),
+                item.sourceExcerpt(),
+                item.priority()
+        );
+    }
+
     private String requireText(String value, String field) {
         String normalized = trimToNull(value);
         if (normalized == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUIREMENT", field + " 값이 필요합니다.");
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_REQUIREMENT",
+                    field + " 값이 필요합니다."
+            );
         }
         return normalized;
     }
 
-    // 필수 외부 식별자가 양수인지 검증하고 원본 값을 반환한다.
     private Long requirePositiveId(Long value, String field) {
         if (value == null || value <= 0) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUIREMENT", field + " 값은 양의 정수여야 합니다.");
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_REQUIREMENT",
+                    field + " 값은 양의 정수여야 합니다."
+            );
         }
         return value;
     }
 
-    // 선택 문자열의 공백을 제거하고 빈 값은 null로 반환한다.
     private String trimToNull(String value) {
         if (value == null) {
             return null;
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private record RequirementValues(
+            Long analysisResultId,
+            Long sourceDocumentId,
+            Long externalReferenceId,
+            RequirementType type,
+            String title,
+            String description,
+            String acceptanceCriteria,
+            LocalDate dueDate,
+            String deliverableName,
+            String securityCondition,
+            String sourceDocumentName,
+            String sourceExcerpt,
+            RequirementPriority priority
+    ) {
     }
 }

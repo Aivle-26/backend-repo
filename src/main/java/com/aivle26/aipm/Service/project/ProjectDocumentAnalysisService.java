@@ -119,6 +119,9 @@ public class ProjectDocumentAnalysisService {
             requirement.setDescription(requirementRequest.description().trim());
             requirement.setPriority(parseRequirementPriority(requirementRequest.priority()));
             requirement.setStatus(RequirementStatus.UNCONFIRMED);
+            requirement.setConfirmed(false);
+            requirement.setIncludedInFinal(true);
+            projectRequirementMapper.captureAiSuggestion(requirement);
             requirements.add(requirement);
         }
 
@@ -164,7 +167,9 @@ public class ProjectDocumentAnalysisService {
                 ));
 
         List<ProjectRequirement> requirements = projectRequirementRepository
-                .findByProjectIdAndAnalysisResultIdOrderByIdAsc(projectId, analysisResult.getId());
+                .findByProjectIdAndAnalysisResultIdOrderByIdAsc(projectId, analysisResult.getId()).stream()
+                .filter(ProjectRequirement::isIncludedInFinal)
+                .toList();
         List<ProjectRequiredArtifact> requiredArtifacts = projectRequiredArtifactRepository
                 .findByProjectIdOrderByIdAsc(projectId);
         List<ProjectKeyFeature> keyFeatures = projectKeyFeatureRepository

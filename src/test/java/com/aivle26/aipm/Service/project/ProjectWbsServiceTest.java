@@ -8,6 +8,7 @@ import com.aivle26.aipm.Dto.project.SaveWbsResultResponse;
 import com.aivle26.aipm.Dto.project.WbsTaskResultRequest;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
+import com.aivle26.aipm.Entity.project.ProjectWbsResult;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
@@ -212,7 +213,7 @@ class ProjectWbsServiceTest {
     }
 
     @Test
-    void saveWbsResultFailWhenWbsAlreadyExists() {
+    void saveWbsResultRegeneratesSuggestionAndPreservesFinalTasks() {
         ProjectRequirement requirement = createConfirmedRequirement("analysis-001");
         SaveWbsResultRequest request = new SaveWbsResultRequest(
                 "wbs-20260713-001",
@@ -234,16 +235,22 @@ class ProjectWbsServiceTest {
 
         projectWbsService.saveWbsResult(requirement.getProject().getId(), request);
 
-        assertThatThrownBy(() -> projectWbsService.saveWbsResult(
+        projectWbsService.saveWbsResult(
                 requirement.getProject().getId(),
                 new SaveWbsResultRequest(
                         "wbs-20260713-002",
                         "wbs-agent-v1",
                         request.tasks()
                 )
-        ))
-                .isInstanceOf(ApiException.class)
-                .hasMessage("wbs already exists");
+        );
+
+        assertThat(projectWbsResultRepository.findByProjectId(requirement.getProject().getId()))
+                .get()
+                .extracting(ProjectWbsResult::getAgentExecutionId)
+                .isEqualTo("wbs-20260713-002");
+        assertThat(projectWbsTaskRepository.findByProjectIdOrderByOrderIndexAscIdAsc(
+                requirement.getProject().getId()
+        )).hasSize(1);
     }
 
     @Test
