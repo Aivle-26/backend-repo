@@ -128,8 +128,9 @@ class ProjectRequirementControllerTest {
         mockMvc.perform(get("/api/projects/{projectId}/requirements", project.getId())
                         .header("Authorization", bearerToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].requirementId").value(requirementId));
+                .andExpect(jsonPath("$.aiSuggestions.length()").value(0))
+                .andExpect(jsonPath("$.finalRequirements.length()").value(1))
+                .andExpect(jsonPath("$.finalRequirements[0].requirementId").value(requirementId));
 
         mockMvc.perform(get("/api/projects/{projectId}/requirements/{requirementId}", project.getId(), requirementId)
                         .header("Authorization", bearerToken()))
@@ -190,8 +191,8 @@ class ProjectRequirementControllerTest {
                         .param("status", "UNCONFIRMED")
                         .param("confirmed", "false"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].externalReferenceId").value(1));
+                .andExpect(jsonPath("$.finalRequirements.length()").value(1))
+                .andExpect(jsonPath("$.finalRequirements[0].externalReferenceId").value(1));
 
         mockMvc.perform(patch("/api/projects/{projectId}/requirements/confirm", project.getId())
                         .header("Authorization", bearerToken()))

@@ -54,31 +54,22 @@ public class ProjectWbsService {
     private final ProjectAuthorizationService projectAuthorizationService;
     private final ObjectMapper objectMapper;
 
-    // DB의 확정 요구사항만 AI Server에 전달하고 반환된 WBS를 원본과 편집본으로 저장한다.
+    // 확정 요구사항으로 WBS를 생성한다. 재생성 시 AI 제안만 교체하고 사용자의 최종 WBS는 유지한다.
     @Transactional
     public ProjectWbsResponse generateWbs(Long projectId) {
-        projectAuthorizationService.requireProjectPm(projectId);
-        Project project = getDraftProject(projectId);
-        if (projectWbsResultRepository.existsByProjectId(projectId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "wbs already exists");
-        }
-
+        Project project = requireAuthorizedDraftProject(projectId);
         List<ProjectRequirement> requirements = getConfirmedRequirements(projectId);
         SaveWbsResultRequest aiResult = planningWbsClient.generateWbs(toGenerationRequest(requirements));
-        ProjectWbsResult savedResult = saveNewWbsResult(project, aiResult, toRequirementMap(requirements));
+        ProjectWbsResult savedResult = saveWbsSuggestion(project, aiResult, toRequirementMap(requirements));
         return toResponse(savedResult);
     }
 
-    // AI Server가 전달한 WBS 결과를 검증해 최초 제안 스냅샷과 편집용 작업으로 저장한다.
+    // AI Server가 전달한 WBS만 저장한다. 기존 결과가 있으면 AI 제안만 교체하고 최종 WBS는 보존한다.
     @Transactional
     public SaveWbsResultResponse saveWbsResult(Long projectId, SaveWbsResultRequest request) {
-        projectAuthorizationService.requireProjectPm(projectId);
-        Project project = getDraftProject(projectId);
-        if (projectWbsResultRepository.existsByProjectId(projectId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "wbs already exists");
-        }
+        Project project = requireAuthorizedDraftProject(projectId);
 
-        ProjectWbsResult savedResult = saveNewWbsResult(
+        ProjectWbsResult savedResult = saveWbsSuggestion(
                 project,
                 request,
                 toRequirementMap(getConfirmedRequirements(projectId))
@@ -114,14 +105,14 @@ public class ProjectWbsService {
         }
 
         Map<Long, ProjectRequirement> requirementById = toRequirementMap(getConfirmedRequirements(projectId));
-        validateTasks(request.tasks(), requirementById);
+        List<PreparedWbsTask> preparedTasks = prepareTasks(request.tasks(), requirementById);
         deleteFinalTasks(projectId);
-        saveTasks(project, result, request.tasks(), requirementById, true);
+        saveTasks(project, result, preparedTasks, true);
         projectWbsTaskRepository.flush();
         return toResponse(result);
     }
 
-    private ProjectWbsResult saveNewWbsResult(
+    private ProjectWbsResult saveWbsSuggestion(
             Project project,
             SaveWbsResultRequest request,
             Map<Long, ProjectRequirement> requirementById
@@ -132,8 +123,19 @@ public class ProjectWbsService {
             throw new ApiException(HttpStatus.CONFLICT, "duplicate agent execution id");
         }
 
-        validateTasks(request.tasks(), requirementById);
+        List<PreparedWbsTask> preparedTasks = prepareTasks(request.tasks(), requirementById);
 
+        ProjectWbsResult existingResult = projectWbsResultRepository.findByProjectId(project.getId())
+                .orElse(null);
+        if (existingResult != null) {
+            // 재생성 결과는 왼쪽 AI 제안에만 반영한다. 오른쪽 최종 WBS 작업 행은 수정하지 않는다.
+            existingResult.setAgentExecutionId(agentExecutionId);
+            existingResult.setAgentVersion(agentVersion);
+            existingResult.setInitialTasksJson(writeInitialTasks(request.tasks()));
+            return projectWbsResultRepository.save(existingResult);
+        }
+
+        // 최초 생성에서만 AI 제안을 오른쪽 편집용 WBS의 초깃값으로 함께 저장한다.
         ProjectWbsResult result = new ProjectWbsResult();
         result.setProject(project);
         result.setAgentExecutionId(agentExecutionId);
@@ -141,7 +143,7 @@ public class ProjectWbsService {
         result.setInitialTasksJson(writeInitialTasks(request.tasks()));
         ProjectWbsResult savedResult = projectWbsResultRepository.save(result);
 
-        saveTasks(project, savedResult, request.tasks(), requirementById, false);
+        saveTasks(project, savedResult, preparedTasks, false);
         projectWbsTaskRepository.flush();
         return savedResult;
     }
@@ -149,27 +151,26 @@ public class ProjectWbsService {
     private void saveTasks(
             Project project,
             ProjectWbsResult result,
-            List<WbsTaskResultRequest> taskRequests,
-            Map<Long, ProjectRequirement> requirementById,
+            List<PreparedWbsTask> preparedTasks,
             boolean confirmed
     ) {
         Map<String, ProjectWbsTask> taskByExternalId = new LinkedHashMap<>();
-        for (WbsTaskResultRequest taskRequest : taskRequests) {
+        for (PreparedWbsTask preparedTask : preparedTasks) {
             ProjectWbsTask task = new ProjectWbsTask();
             task.setProject(project);
             task.setWbsResult(result);
-            task.setExternalTaskId(taskRequest.externalTaskId().trim());
-            task.setParentExternalTaskId(normalizeNullable(taskRequest.parentExternalTaskId()));
-            task.setTaskCode(taskRequest.taskCode().trim());
-            task.setTaskName(taskRequest.taskName().trim());
-            task.setDescription(taskRequest.description().trim());
-            task.setPhase(parseEnum(taskRequest.phase(), WbsPhase.class));
-            task.setRequiredSkills(parseSkills(taskRequest.requiredSkills()));
-            task.setDifficulty(parseEnum(taskRequest.difficulty(), WbsDifficulty.class));
-            task.setEstimatedHours(taskRequest.estimatedHours());
-            task.setOrderIndex(taskRequest.orderIndex());
+            task.setExternalTaskId(preparedTask.externalTaskId());
+            task.setParentExternalTaskId(preparedTask.parentExternalTaskId());
+            task.setTaskCode(preparedTask.taskCode());
+            task.setTaskName(preparedTask.taskName());
+            task.setDescription(preparedTask.description());
+            task.setPhase(preparedTask.phase());
+            task.setRequiredSkills(new LinkedHashSet<>(preparedTask.requiredSkills()));
+            task.setDifficulty(preparedTask.difficulty());
+            task.setEstimatedHours(preparedTask.estimatedHours());
+            task.setOrderIndex(preparedTask.orderIndex());
             task.setConfirmed(confirmed);
-            task.setRequirements(resolveRequirements(taskRequest.requirementIds(), requirementById));
+            task.setRequirements(new LinkedHashSet<>(preparedTask.requirements()));
             taskByExternalId.put(task.getExternalTaskId(), task);
         }
 
@@ -286,6 +287,11 @@ public class ProjectWbsService {
         return project;
     }
 
+    private Project requireAuthorizedDraftProject(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
+        return getDraftProject(projectId);
+    }
+
     private List<ProjectRequirement> getConfirmedRequirements(Long projectId) {
         List<ProjectRequirement> requirements = projectRequirementRepository
                 .findByProjectIdAndStatus(projectId, RequirementStatus.CONFIRMED);
@@ -351,11 +357,12 @@ public class ProjectWbsService {
     }
 
     // WBS 작업의 필수값·외부 ID·부모·순서·요구사항 참조가 유효한지 검증한다.
-    private void validateTasks(List<WbsTaskResultRequest> tasks, Map<Long, ProjectRequirement> requirementById) {
+    private List<PreparedWbsTask> prepareTasks(List<WbsTaskResultRequest> tasks, Map<Long, ProjectRequirement> requirementById) {
         if (tasks == null || tasks.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "wbs task not found");
         }
 
+        List<PreparedWbsTask> preparedTasks = new ArrayList<>();
         Map<String, String> parentByExternalId = new LinkedHashMap<>();
         Set<String> taskCodes = new LinkedHashSet<>();
         Set<Integer> orderIndexes = new LinkedHashSet<>();
@@ -367,8 +374,8 @@ public class ProjectWbsService {
             String externalTaskId = requireText(task.externalTaskId(), "externalTaskId");
             String parentExternalTaskId = normalizeNullable(task.parentExternalTaskId());
             String taskCode = requireText(task.taskCode(), "taskCode");
-            requireText(task.taskName(), "taskName");
-            requireText(task.description(), "description");
+            String taskName = requireText(task.taskName(), "taskName");
+            String description = requireText(task.description(), "description");
 
             if (parentByExternalId.putIfAbsent(externalTaskId, parentExternalTaskId) != null) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "duplicate task external id");
@@ -386,10 +393,19 @@ public class ProjectWbsService {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "invalid parent task");
             }
 
-            parseEnum(task.phase(), WbsPhase.class);
-            parseEnum(task.difficulty(), WbsDifficulty.class);
-            parseSkills(task.requiredSkills());
-            resolveRequirements(task.requirementIds(), requirementById);
+            preparedTasks.add(new PreparedWbsTask(
+                    externalTaskId,
+                    parentExternalTaskId,
+                    taskCode,
+                    taskName,
+                    description,
+                    parseEnum(task.phase(), WbsPhase.class),
+                    parseSkills(task.requiredSkills()),
+                    parseEnum(task.difficulty(), WbsDifficulty.class),
+                    task.estimatedHours(),
+                    task.orderIndex(),
+                    resolveRequirements(task.requirementIds(), requirementById)
+            ));
         }
 
         for (String parentExternalTaskId : parentByExternalId.values()) {
@@ -398,6 +414,7 @@ public class ProjectWbsService {
             }
         }
         validateNoCycle(parentByExternalId);
+        return preparedTasks;
     }
 
     private void validateNoCycle(Map<String, String> parentByExternalId) {
@@ -482,5 +499,20 @@ public class ProjectWbsService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private record PreparedWbsTask(
+            String externalTaskId,
+            String parentExternalTaskId,
+            String taskCode,
+            String taskName,
+            String description,
+            WbsPhase phase,
+            Set<WbsSkill> requiredSkills,
+            WbsDifficulty difficulty,
+            int estimatedHours,
+            int orderIndex,
+            Set<ProjectRequirement> requirements
+    ) {
     }
 }

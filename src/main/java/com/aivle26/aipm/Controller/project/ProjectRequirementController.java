@@ -2,6 +2,8 @@ package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.CreateProjectRequirementRequest;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
+import com.aivle26.aipm.Dto.project.ProjectRequirementsResponse;
+import com.aivle26.aipm.Dto.project.SaveFinalRequirementsRequest;
 import com.aivle26.aipm.Dto.project.UpdateProjectRequirementRequest;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
@@ -11,11 +13,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -26,6 +30,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/projects/{projectId}/requirements")
+@PreAuthorize("hasRole('PM')")
 public class ProjectRequirementController {
     private final ProjectRequirementService projectRequirementService;
 
@@ -40,7 +45,7 @@ public class ProjectRequirementController {
 
     // 프로젝트 요구사항을 선택 조건으로 필터링해 목록으로 반환한다.
     @GetMapping
-    public ResponseEntity<List<ProjectDocumentAnalysisResultsResponse.RequirementDetail>> findAll(
+    public ResponseEntity<ProjectRequirementsResponse> findAll(
             @PathVariable Long projectId,
             @RequestParam(required = false) RequirementType type,
             @RequestParam(required = false) RequirementPriority priority,
@@ -48,6 +53,15 @@ public class ProjectRequirementController {
             @RequestParam(required = false) Boolean confirmed
     ) {
         return ResponseEntity.ok(projectRequirementService.findAll(projectId, type, priority, status, confirmed));
+    }
+
+    // 화면 오른쪽의 전체 요구사항 편집본을 한 번에 저장한다.
+    @PutMapping("/final")
+    public ResponseEntity<ProjectRequirementsResponse> saveFinal(
+            @PathVariable Long projectId,
+            @Valid @RequestBody SaveFinalRequirementsRequest request
+    ) {
+        return ResponseEntity.ok(projectRequirementService.saveFinal(projectId, request));
     }
 
     // 프로젝트에 속한 요구사항 한 건을 검증해 상세 정보로 반환한다.

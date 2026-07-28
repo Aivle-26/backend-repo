@@ -84,6 +84,12 @@ public class ProjectRequirement {
     @Column(nullable = false)
     private boolean confirmed;
 
+    @Column(columnDefinition = "TEXT")
+    private String aiSuggestionJson;
+
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean includedInFinal = true;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

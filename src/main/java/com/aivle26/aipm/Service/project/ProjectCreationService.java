@@ -22,6 +22,7 @@ import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Exception.ApiException;
+import com.aivle26.aipm.Mapper.project.ProjectRequirementMapper;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectKeyFeatureRepository;
@@ -67,6 +68,7 @@ public class ProjectCreationService {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final ProjectAuthorizationService projectAuthorizationService;
+    private final ProjectRequirementMapper projectRequirementMapper;
 
     // 프로젝트 입력값과 PM을 검증해 DRAFT 프로젝트를 저장하고 생성 결과를 반환한다.
     @Transactional
@@ -214,6 +216,8 @@ public class ProjectCreationService {
             requirement.setSecurityCondition(trimToNull(candidate.securityCondition()));
             requirement.setSourceDocumentName(candidate.sourceDocument().trim());
             requirement.setSourceExcerpt(trimToNull(candidate.sourceExcerpt()));
+            requirement.setIncludedInFinal(true);
+            projectRequirementMapper.captureAiSuggestion(requirement);
             requirements.add(requirement);
         }
         projectRequirementRepository.saveAll(requirements);
