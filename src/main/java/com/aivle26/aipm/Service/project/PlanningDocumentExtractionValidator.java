@@ -23,6 +23,44 @@ import java.util.Set;
 @Component
 public class PlanningDocumentExtractionValidator {
 
+    public ValidatedResult validateForRequirementAnalysis(
+            PlanningDocumentExtractResponse response,
+            List<String> originalFileNames,
+            String existingProjectName,
+            String existingProjectGoal
+    ) {
+        if (response == null || response.projectInfo() == null) {
+            throw invalidResponse();
+        }
+
+        PlanningDocumentExtractResponse.ProjectInfo projectInfo = response.projectInfo();
+        String projectName = defaultText(projectInfo.projectName(), existingProjectName);
+        String projectGoal = defaultText(
+                projectInfo.projectGoal(),
+                defaultText(existingProjectGoal, projectName)
+        );
+        PlanningDocumentExtractResponse normalizedResponse =
+                new PlanningDocumentExtractResponse(
+                        new PlanningDocumentExtractResponse.ProjectInfo(
+                                projectName,
+                                projectGoal,
+                                projectInfo.clientOrganization(),
+                                projectInfo.periodStart(),
+                                projectInfo.periodEnd(),
+                                projectInfo.keyFeatures(),
+                                projectInfo.requiredArtifacts(),
+                                projectInfo.acceptanceConditions(),
+                                projectInfo.budgetContractConditions(),
+                                projectInfo.securityPrivacyConditions()
+                        ),
+                        response.requirementCandidates(),
+                        response.documents(),
+                        response.llmStatus()
+                );
+
+        return validate(normalizedResponse, originalFileNames);
+    }
+
     public ValidatedResult validate(
             PlanningDocumentExtractResponse response,
             List<String> originalFileNames
@@ -233,6 +271,10 @@ public class PlanningDocumentExtractionValidator {
         if (value == null || value.isBlank()) {
             throw invalidResponse(fieldName + " is missing.");
         }
+    }
+
+    private String defaultText(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     private void requirePositiveId(Long value, String fieldName) {
