@@ -258,6 +258,99 @@ class ProjectDocumentAnalysisServiceTest {
     }
 
     @Test
+    void analyzeRequirementsAcceptsOptionalProjectMetadataFromAiContract() throws Exception {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        PlanningDocumentExtractResponse response;
+        try (var fixture = getClass().getResourceAsStream(
+                "/fixtures/planning/optional-project-metadata-response.json"
+        )) {
+            assertThat(fixture).isNotNull();
+            response = objectMapper.readValue(
+                    fixture,
+                    PlanningDocumentExtractResponse.class
+            );
+        }
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(response);
+
+        ProjectRequirementsResponse result =
+                projectDocumentAnalysisService.analyzeRequirements(
+                        document.getProject().getId(),
+                        List.of(document.getId())
+                );
+
+        assertThat(result.finalRequirements()).hasSize(1);
+        ProjectDocumentAnalysisResult analysisResult =
+                analysisResultRepository.findAll().getFirst();
+        assertThat(analysisResult.getProjectGoal()).isEqualTo("draft description");
+        ProjectRequirement requirement = projectRequirementRepository.findAll().getFirst();
+        assertThat(requirement.getSourceDocument().getId()).isEqualTo(document.getId());
+    }
+
+    @Test
+    void analyzeRequirementsRollsBackInvalidRequirementEnum() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        PlanningDocumentExtractResponse valid =
+                successResponse(List.of(document.getOriginalFileName()));
+        PlanningDocumentExtractResponse.RequirementCandidate requirement =
+                valid.requirementCandidates().getFirst();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(new PlanningDocumentExtractResponse(
+                        valid.projectInfo(),
+                        List.of(new PlanningDocumentExtractResponse.RequirementCandidate(
+                                requirement.requirementId(),
+                                requirement.functionName(),
+                                requirement.requirementText(),
+                                "UNKNOWN",
+                                requirement.priority(),
+                                requirement.acceptanceCriteria(),
+                                requirement.dueDate(),
+                                requirement.deliverableName(),
+                                requirement.securityCondition(),
+                                requirement.sourceDocument(),
+                                requirement.sourceExcerpt()
+                        )),
+                        valid.documents(),
+                        valid.llmStatus()
+                ));
+
+        assertInvalidAnalysisRollsBack(document);
+    }
+
+    @Test
+    void analyzeRequirementsRollsBackMissingRequiredRequirementText() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        PlanningDocumentExtractResponse valid =
+                successResponse(List.of(document.getOriginalFileName()));
+        PlanningDocumentExtractResponse.RequirementCandidate requirement =
+                valid.requirementCandidates().getFirst();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(new PlanningDocumentExtractResponse(
+                        valid.projectInfo(),
+                        List.of(new PlanningDocumentExtractResponse.RequirementCandidate(
+                                requirement.requirementId(),
+                                requirement.functionName(),
+                                null,
+                                requirement.category(),
+                                requirement.priority(),
+                                requirement.acceptanceCriteria(),
+                                requirement.dueDate(),
+                                requirement.deliverableName(),
+                                requirement.securityCondition(),
+                                requirement.sourceDocument(),
+                                requirement.sourceExcerpt()
+                        )),
+                        valid.documents(),
+                        valid.llmStatus()
+                ));
+
+        assertInvalidAnalysisRollsBack(document);
+    }
+
+    @Test
     void analyzeRequirementsSortsAndDeduplicatesDocumentIds() {
         Long projectId = createProject("PM001");
         projectDocumentService.uploadInitialDocuments(
@@ -384,6 +477,26 @@ class ProjectDocumentAnalysisServiceTest {
         prepareStoredContent();
         when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(null);
 
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> {
+                            assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                            assertThat(exception.getCode())
+                                    .isEqualTo("INVALID_PLANNING_AGENT_RESPONSE");
+                        }
+                );
+
+        assertThat(analysisResultRepository.count()).isZero();
+        assertThat(projectRequirementRepository.count()).isZero();
+        assertThat(projectDocumentRepository.findById(document.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.UPLOADED);
+    }
+
+    private void assertInvalidAnalysisRollsBack(ProjectDocument document) {
         assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
                 document.getProject().getId(),
                 List.of(document.getId())
