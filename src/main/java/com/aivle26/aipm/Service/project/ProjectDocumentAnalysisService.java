@@ -1,9 +1,11 @@
 package com.aivle26.aipm.Service.project;
 
-import com.aivle26.aipm.client.ai.ProjectAgentClient;
-import com.aivle26.aipm.Dto.project.AgentRequestResult;
+import com.aivle26.aipm.client.ai.PlanningAgentClient;
+import com.aivle26.aipm.client.ai.StoredDocumentFile;
 import com.aivle26.aipm.Dto.project.DocumentAnalysisRequirementRequest;
+import com.aivle26.aipm.Dto.project.PlanningDocumentExtractResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
+import com.aivle26.aipm.Dto.project.ProjectRequirementsResponse;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultResponse;
 import com.aivle26.aipm.Entity.project.Project;
@@ -31,11 +33,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,6 +51,8 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ProjectDocumentAnalysisService {
+    private static final String ANALYSIS_CONTRACT_VERSION = "requirements-analysis-v1";
+
     private final ProjectRepository projectRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final ProjectDocumentAnalysisResultRepository analysisResultRepository;
@@ -52,20 +61,83 @@ public class ProjectDocumentAnalysisService {
     private final ProjectKeyFeatureRepository projectKeyFeatureRepository;
     private final ProjectPlanningExtractionRepository projectPlanningExtractionRepository;
     private final ProjectDocumentService projectDocumentService;
-    private final ProjectAgentClient projectAgentClient;
+    private final PlanningAgentClient planningAgentClient;
     private final ProjectRequirementMapper projectRequirementMapper;
     private final ObjectMapper objectMapper;
     private final ProjectAuthorizationService projectAuthorizationService;
+    private final PlanningDocumentExtractionValidator extractionValidator;
+    private final ProjectRequirementImportService requirementImportService;
 
-    // 프로젝트와 저장 파일 존재를 검증한 뒤 AI Server에 문서 분석을 요청한다.
-    @Transactional(readOnly = true)
-    public AgentRequestResult requestAnalysis(Long projectId) {
+    // Runs planning extraction synchronously and stores the validated requirements atomically.
+    @Transactional
+    public ProjectRequirementsResponse analyzeRequirements(
+            Long projectId,
+            List<Long> requestedDocumentIds
+    ) {
         projectAuthorizationService.requireProjectPm(projectId);
-        if (!projectRepository.existsById(projectId)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "project not found");
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "프로젝트를 찾을 수 없습니다. projectId=" + projectId
+                ));
+        List<Long> documentIds = requestedDocumentIds.stream()
+                .distinct()
+                .sorted()
+                .toList();
+        List<ProjectDocument> documents =
+                projectDocumentService.getAnalyzableProjectDocuments(projectId, documentIds);
+
+        String fingerprint = createFingerprint(projectId, documentIds);
+        if (analysisResultRepository.existsByAgentExecutionId(fingerprint)) {
+            throw duplicateAnalysis();
         }
-        projectDocumentService.getStoredDocumentFiles(projectId);
-        return projectAgentClient.requestDocumentAnalysis(projectId);
+        ProjectDocumentAnalysisResult analysisResult =
+                reserveAnalysisResult(project, fingerprint, documentIds);
+
+        documents.forEach(document -> document.setStatus(ProjectDocumentStatus.ANALYZING));
+        List<StoredDocumentFile> files =
+                projectDocumentService.getStoredDocumentFiles(documents);
+        PlanningDocumentExtractResponse response =
+                planningAgentClient.extractDocuments(files, true);
+        PlanningDocumentExtractionValidator.ValidatedResult validatedResult =
+                extractionValidator.validate(
+                        response,
+                        documents.stream()
+                                .map(ProjectDocument::getOriginalFileName)
+                                .toList()
+                );
+
+        applyAnalysisResult(analysisResult, validatedResult.response().projectInfo());
+        Map<String, ProjectDocument> documentByName = new LinkedHashMap<>();
+        for (ProjectDocument document : documents) {
+            PlanningDocumentExtractResponse.DocumentResult documentResult =
+                    validatedResult.documentByName().get(document.getOriginalFileName());
+            document.setStatus(ProjectDocumentStatus.ANALYZED);
+            document.setFileType(documentResult.fileType().trim());
+            document.setCharacterCount(documentResult.characterCount());
+            document.setProcessingMode(documentResult.processingMode().trim());
+            documentByName.put(document.getOriginalFileName(), document);
+        }
+
+        List<ProjectRequirement> requirements =
+                requirementImportService.importRequirements(
+                        project,
+                        analysisResult,
+                        documentByName,
+                        validatedResult
+                );
+        projectRequirementRepository.flush();
+
+        return new ProjectRequirementsResponse(
+                projectId,
+                requirements.stream()
+                        .map(projectRequirementMapper::toAiSuggestion)
+                        .toList(),
+                requirements.stream()
+                        .map(projectRequirementMapper::toDetail)
+                        .toList()
+        );
     }
 
     // AI Server 분석 응답을 프로젝트 분석 결과와 요구사항으로 저장하고 결과 ID를 반환한다.
@@ -186,6 +258,107 @@ public class ProjectDocumentAnalysisService {
                 requiredArtifacts.stream().map(this::toRequiredArtifactDetail).toList(),
                 keyFeatures.stream().map(this::toKeyFeatureDetail).toList(),
                 toPlanningExtractionDetail(planningExtraction)
+        );
+    }
+
+    private ProjectDocumentAnalysisResult reserveAnalysisResult(
+            Project project,
+            String fingerprint,
+            List<Long> documentIds
+    ) {
+        ProjectDocumentAnalysisResult analysisResult = new ProjectDocumentAnalysisResult();
+        analysisResult.setProject(project);
+        analysisResult.setAgentExecutionId(fingerprint);
+        analysisResult.setAgentVersion("planning-agent:" + ANALYSIS_CONTRACT_VERSION);
+        analysisResult.setProjectGoal("Planning document analysis pending.");
+        analysisResult.setScope("documentIds=" + documentIds);
+        analysisResult.setDeliverablesJson("[]");
+        analysisResult.setMilestonesJson("[]");
+        analysisResult.setTechnologyStacksJson("[]");
+        analysisResult.setConstraintsJson("[]");
+        analysisResult.setRisksJson("[]");
+        try {
+            return analysisResultRepository.saveAndFlush(analysisResult);
+        } catch (DataIntegrityViolationException exception) {
+            throw duplicateAnalysis(exception);
+        }
+    }
+
+    private void applyAnalysisResult(
+            ProjectDocumentAnalysisResult analysisResult,
+            PlanningDocumentExtractResponse.ProjectInfo projectInfo
+    ) {
+        analysisResult.setProjectGoal(projectInfo.projectGoal().trim());
+        analysisResult.setScope(buildScope(projectInfo));
+        analysisResult.setDeliverablesJson(toStringListJson(
+                projectInfo.requiredArtifacts().stream()
+                        .map(PlanningDocumentExtractResponse.RequiredArtifact::artifactName)
+                        .map(String::trim)
+                        .toList()
+        ));
+        analysisResult.setMilestonesJson("[]");
+        analysisResult.setTechnologyStacksJson("[]");
+        analysisResult.setConstraintsJson(toStringListJson(defaultIfNull(
+                projectInfo.budgetContractConditions()
+        )));
+        analysisResult.setRisksJson(toStringListJson(defaultIfNull(
+                projectInfo.securityPrivacyConditions()
+        )));
+    }
+
+    private String buildScope(PlanningDocumentExtractResponse.ProjectInfo projectInfo) {
+        List<String> keyFeatures = defaultIfNull(projectInfo.keyFeatures()).stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+        return keyFeatures.isEmpty()
+                ? projectInfo.projectGoal().trim()
+                : String.join(", ", keyFeatures);
+    }
+
+    private String toStringListJson(List<String> values) {
+        try {
+            return objectMapper.writeValueAsString(values);
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "INVALID_PLANNING_AGENT_RESPONSE",
+                    "문서 분석 결과 형식이 올바르지 않습니다.",
+                    exception
+            );
+        }
+    }
+
+    private <T> List<T> defaultIfNull(List<T> values) {
+        return values == null ? List.of() : values;
+    }
+
+    private String createFingerprint(Long projectId, List<Long> documentIds) {
+        String input = projectId
+                + ":"
+                + String.join(",", documentIds.stream().map(String::valueOf).toList())
+                + ":"
+                + ANALYSIS_CONTRACT_VERSION;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(
+                    digest.digest(input.getBytes(StandardCharsets.UTF_8))
+            );
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available.", exception);
+        }
+    }
+
+    private ApiException duplicateAnalysis() {
+        return duplicateAnalysis(null);
+    }
+
+    private ApiException duplicateAnalysis(Throwable cause) {
+        return new ApiException(
+                HttpStatus.CONFLICT,
+                "PROJECT_REQUIREMENT_ANALYSIS_DUPLICATE",
+                "The selected project documents have already been analyzed.",
+                cause
         );
     }
 

@@ -6,7 +6,6 @@ import com.aivle26.aipm.Dto.project.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.project.PlanningDocumentExtractResponse;
-import com.aivle26.aipm.Entity.project.PlanningLlmStatus;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
 import com.aivle26.aipm.Entity.project.ProjectDocumentAnalysisResult;
@@ -16,20 +15,14 @@ import com.aivle26.aipm.Entity.project.ProjectPlanningExtraction;
 import com.aivle26.aipm.Entity.project.ProjectRequiredArtifact;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
-import com.aivle26.aipm.Entity.ProjectArtifactType;
-import com.aivle26.aipm.Entity.project.RequirementPriority;
-import com.aivle26.aipm.Entity.project.RequirementStatus;
-import com.aivle26.aipm.Entity.project.RequirementType;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Exception.ApiException;
-import com.aivle26.aipm.Mapper.project.ProjectRequirementMapper;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectKeyFeatureRepository;
 import com.aivle26.aipm.Repository.project.ProjectPlanningExtractionRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
-import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -44,12 +37,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -59,7 +48,6 @@ public class ProjectCreationService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
-    private final ProjectRequirementRepository projectRequirementRepository;
     private final ProjectRequiredArtifactRepository requiredArtifactRepository;
     private final ProjectKeyFeatureRepository keyFeatureRepository;
     private final ProjectPlanningExtractionRepository extractionRepository;
@@ -68,7 +56,8 @@ public class ProjectCreationService {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final ProjectAuthorizationService projectAuthorizationService;
-    private final ProjectRequirementMapper projectRequirementMapper;
+    private final PlanningDocumentExtractionValidator extractionValidator;
+    private final ProjectRequirementImportService requirementImportService;
 
     // 프로젝트 입력값과 PM을 검증해 DRAFT 프로젝트를 저장하고 생성 결과를 반환한다.
     @Transactional
@@ -111,7 +100,13 @@ public class ProjectCreationService {
         try {
             List<StoredDocumentFile> storedFiles = projectDocumentService.getStoredDocumentFiles(draftContext.projectId());
             PlanningDocumentExtractResponse agentResponse = planningAgentClient.extractDocuments(storedFiles, enableLlm);
-            ValidatedAgentResult validatedAgentResult = validateAgentResponse(agentResponse, validatedFiles);
+            PlanningDocumentExtractionValidator.ValidatedResult validatedAgentResult =
+                    extractionValidator.validate(
+                            agentResponse,
+                            validatedFiles.stream()
+                                    .map(ProjectDocumentService.ValidatedUploadFile::originalFileName)
+                                    .toList()
+                    );
             return transactionTemplate.execute(status -> finalizeDraft(draftContext.projectId(), validatedAgentResult));
         } catch (RuntimeException exception) {
             transactionTemplate.executeWithoutResult(status -> cleanupFailedDraft(draftContext.projectId()));
@@ -142,7 +137,10 @@ public class ProjectCreationService {
     }
 
     // 검증된 AI 결과를 프로젝트·문서·요구사항·산출물에 저장하고 생성 응답을 조립한다.
-    private CreateProjectDraftFromDocumentsResponse finalizeDraft(Long projectId, ValidatedAgentResult result) {
+    private CreateProjectDraftFromDocumentsResponse finalizeDraft(
+            Long projectId,
+            PlanningDocumentExtractionValidator.ValidatedResult result
+    ) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
         List<ProjectDocument> savedDocuments = projectDocumentRepository.findByProjectId(projectId);
@@ -175,8 +173,7 @@ public class ProjectCreationService {
         }
 
         List<ProjectKeyFeature> features = new ArrayList<>();
-        for (String feature : requireList(projectInfo.keyFeatures(), "key_features")) {
-            requireText(feature, "key_features");
+        for (String feature : projectInfo.keyFeatures()) {
             ProjectKeyFeature keyFeature = new ProjectKeyFeature();
             keyFeature.setProject(project);
             keyFeature.setFeatureName(feature.trim());
@@ -196,31 +193,12 @@ public class ProjectCreationService {
         }
         requiredArtifactRepository.saveAll(artifacts);
 
-        List<ProjectRequirement> requirements = new ArrayList<>();
-        for (int i = 0; i < result.response().requirementCandidates().size(); i++) {
-            PlanningDocumentExtractResponse.RequirementCandidate candidate = result.response().requirementCandidates().get(i);
-            ProjectRequirement requirement = new ProjectRequirement();
-            requirement.setProject(project);
-            requirement.setAnalysisResult(savedAnalysisResult);
-            requirement.setSourceDocument(savedDocumentByName.get(candidate.sourceDocument()));
-            requirement.setExternalReferenceId(candidate.requirementId());
-            requirement.setType(result.requirementTypes().get(i));
-            requirement.setTitle(candidate.functionName().trim());
-            requirement.setDescription(candidate.requirementText().trim());
-            requirement.setPriority(result.requirementPriorities().get(i));
-            requirement.setStatus(RequirementStatus.UNCONFIRMED);
-            requirement.setConfirmed(false);
-            requirement.setAcceptanceCriteria(trimToNull(candidate.acceptanceCriteria()));
-            requirement.setDueDate(candidate.dueDate());
-            requirement.setDeliverableName(trimToNull(candidate.deliverableName()));
-            requirement.setSecurityCondition(trimToNull(candidate.securityCondition()));
-            requirement.setSourceDocumentName(candidate.sourceDocument().trim());
-            requirement.setSourceExcerpt(trimToNull(candidate.sourceExcerpt()));
-            requirement.setIncludedInFinal(true);
-            projectRequirementMapper.captureAiSuggestion(requirement);
-            requirements.add(requirement);
-        }
-        projectRequirementRepository.saveAll(requirements);
+        List<ProjectRequirement> requirements = requirementImportService.importRequirements(
+                project,
+                savedAnalysisResult,
+                savedDocumentByName,
+                result
+        );
 
         ProjectPlanningExtraction extraction = new ProjectPlanningExtraction();
         extraction.setProject(project);
@@ -249,135 +227,6 @@ public class ProjectCreationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "pm user not found"));
     }
 
-    // AI 응답의 필수값과 업로드 문서 대응 관계를 검증해 타입 변환 결과를 반환한다.
-    private ValidatedAgentResult validateAgentResponse(
-            PlanningDocumentExtractResponse response,
-            List<ProjectDocumentService.ValidatedUploadFile> files
-    ) {
-        if (response == null || response.projectInfo() == null) {
-            throw invalidAgentResponse();
-        }
-
-        PlanningDocumentExtractResponse normalizedResponse = normalizeResponseFileNames(response, files);
-        PlanningDocumentExtractResponse.ProjectInfo projectInfo = normalizedResponse.projectInfo();
-        requireText(projectInfo.projectName(), "project_name");
-        requireText(projectInfo.projectGoal(), "project_goal");
-        validateDateRange(projectInfo.periodStart(), projectInfo.periodEnd());
-        PlanningLlmStatus llmStatus = parseEnum(normalizedResponse.llmStatus(), PlanningLlmStatus.class, "llm_status");
-
-        List<PlanningDocumentExtractResponse.RequiredArtifact> artifacts = requireList(projectInfo.requiredArtifacts(), "required_artifacts");
-        List<ProjectArtifactType> artifactTypes = new ArrayList<>();
-        Set<String> artifactKeys = new HashSet<>();
-        for (PlanningDocumentExtractResponse.RequiredArtifact artifact : artifacts) {
-            requireText(artifact.artifactType(), "artifact_type");
-            requireText(artifact.artifactName(), "artifact_name");
-            requireText(artifact.requiredVersion(), "required_version");
-            ProjectArtifactType type = parseEnum(artifact.artifactType(), ProjectArtifactType.class, "artifact_type");
-            if (!artifactKeys.add(type.name() + "|" + artifact.artifactName().trim())) {
-                throw invalidAgentResponse("Duplicate required_artifact: " + artifact.artifactName());
-            }
-            artifactTypes.add(type);
-        }
-
-        Map<String, ProjectDocumentService.ValidatedUploadFile> uploadByName = new LinkedHashMap<>();
-        for (ProjectDocumentService.ValidatedUploadFile file : files) {
-            uploadByName.put(file.originalFileName(), file);
-        }
-
-        Map<String, PlanningDocumentExtractResponse.DocumentResult> documentByName = new HashMap<>();
-        for (PlanningDocumentExtractResponse.DocumentResult document : requireList(normalizedResponse.documents(), "documents")) {
-            requireText(document.fileName(), "file_name");
-            requireText(document.fileType(), "file_type");
-            requireText(document.processingMode(), "processing_mode");
-            if (document.characterCount() == null || document.characterCount() < 0) {
-                throw invalidAgentResponse("character_count is invalid.");
-            }
-            documentByName.put(document.fileName(), document);
-        }
-        if (!documentByName.keySet().equals(uploadByName.keySet())) {
-            throw invalidAgentResponse("AI response document list does not match uploaded files.");
-        }
-
-        List<PlanningDocumentExtractResponse.RequirementCandidate> requirements = requireList(normalizedResponse.requirementCandidates(), "requirement_candidates");
-        Set<Long> requirementIds = new HashSet<>();
-        List<RequirementType> requirementTypes = new ArrayList<>();
-        List<RequirementPriority> requirementPriorities = new ArrayList<>();
-        for (PlanningDocumentExtractResponse.RequirementCandidate requirement : requirements) {
-            requirePositiveId(requirement.requirementId(), "requirement_id");
-            requireText(requirement.functionName(), "function_name");
-            requireText(requirement.requirementText(), "requirement_text");
-            requireText(requirement.category(), "category");
-            requireText(requirement.priority(), "priority");
-            requireText(requirement.sourceDocument(), "source_document");
-            if (!requirementIds.add(requirement.requirementId())) {
-                throw invalidAgentResponse("Duplicate requirement_id: " + requirement.requirementId());
-            }
-            requirementTypes.add(parseEnum(requirement.category(), RequirementType.class, "category"));
-            requirementPriorities.add(parseEnum(requirement.priority(), RequirementPriority.class, "priority"));
-        }
-
-        return new ValidatedAgentResult(normalizedResponse, llmStatus, artifactTypes, documentByName, requirementTypes, requirementPriorities);
-    }
-
-    // AI 파일명을 업로드 원본명과 순서대로 대응시켜 문서 및 요구사항 출처명을 정규화한다.
-    private PlanningDocumentExtractResponse normalizeResponseFileNames(
-            PlanningDocumentExtractResponse response,
-            List<ProjectDocumentService.ValidatedUploadFile> files
-    ) {
-        List<PlanningDocumentExtractResponse.DocumentResult> responseDocuments = requireList(response.documents(), "documents");
-        if (responseDocuments.size() != files.size()) {
-            throw invalidAgentResponse("AI response document count does not match uploaded files.");
-        }
-
-        Map<String, String> responseToUploadNames = new LinkedHashMap<>();
-        List<PlanningDocumentExtractResponse.DocumentResult> normalizedDocuments = new ArrayList<>();
-        for (int i = 0; i < files.size(); i++) {
-            PlanningDocumentExtractResponse.DocumentResult document = responseDocuments.get(i);
-            requireText(document.fileName(), "file_name");
-            String responseFileName = normalizeFileName(document.fileName());
-            String uploadFileName = files.get(i).originalFileName();
-            if (responseToUploadNames.putIfAbsent(responseFileName, uploadFileName) != null) {
-                throw invalidAgentResponse("Duplicate AI document file_name: " + responseFileName);
-            }
-            normalizedDocuments.add(new PlanningDocumentExtractResponse.DocumentResult(
-                    uploadFileName,
-                    document.fileType(),
-                    document.characterCount(),
-                    document.processingMode()
-            ));
-        }
-
-        List<PlanningDocumentExtractResponse.RequirementCandidate> normalizedRequirements = new ArrayList<>();
-        for (PlanningDocumentExtractResponse.RequirementCandidate requirement : requireList(response.requirementCandidates(), "requirement_candidates")) {
-            requireText(requirement.sourceDocument(), "source_document");
-            String sourceDocument = normalizeFileName(requirement.sourceDocument());
-            String uploadFileName = responseToUploadNames.get(sourceDocument);
-            if (uploadFileName == null) {
-                throw invalidAgentResponse("Requirement source_document is not mapped to an uploaded file: " + requirement.sourceDocument());
-            }
-            normalizedRequirements.add(new PlanningDocumentExtractResponse.RequirementCandidate(
-                    requirement.requirementId(),
-                    requirement.functionName(),
-                    requirement.requirementText(),
-                    requirement.category(),
-                    requirement.priority(),
-                    requirement.acceptanceCriteria(),
-                    requirement.dueDate(),
-                    requirement.deliverableName(),
-                    requirement.securityCondition(),
-                    uploadFileName,
-                    requirement.sourceExcerpt()
-            ));
-        }
-
-        return new PlanningDocumentExtractResponse(
-                response.projectInfo(),
-                normalizedRequirements,
-                normalizedDocuments,
-                response.llmStatus()
-        );
-    }
-
     // 프로젝트 정보와 AI 추출 항목을 분석 결과 엔티티로 변환해 반환한다.
     private ProjectDocumentAnalysisResult createAnalysisResult(Project project, PlanningDocumentExtractResponse.ProjectInfo projectInfo) {
         ProjectDocumentAnalysisResult analysisResult = new ProjectDocumentAnalysisResult();
@@ -392,58 +241,6 @@ public class ProjectCreationService {
         analysisResult.setConstraintsJson(toStringListJson(defaultIfNull(projectInfo.budgetContractConditions())));
         analysisResult.setRisksJson(toStringListJson(defaultIfNull(projectInfo.securityPrivacyConditions())));
         return analysisResult;
-    }
-
-    // AI 응답 파일명에서 경로를 제거하고 NFC 형식의 안전한 기본 파일명을 반환한다.
-    private String normalizeFileName(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
-        }
-        String normalized = java.text.Normalizer.normalize(fileName, java.text.Normalizer.Form.NFC).replace("\\", "/");
-        String baseName = normalized.substring(normalized.lastIndexOf('/') + 1).trim();
-        if (baseName.isBlank() || ".".equals(baseName) || "..".equals(baseName) || baseName.contains("..")) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_DOCUMENT", "Invalid file name.");
-        }
-        return baseName;
-    }
-
-    // AI가 반환한 시작일과 종료일의 존재 여부 및 시간 순서를 검증한다.
-    private void validateDateRange(LocalDate start, LocalDate end) {
-        if (start != null && end != null && end.isBefore(start)) {
-            throw invalidAgentResponse("period_end is before period_start.");
-        }
-    }
-
-    // AI 응답 목록 필드가 null이 아닌지 검증하고 원본 목록을 반환한다.
-    private <T> List<T> requireList(List<T> value, String fieldName) {
-        if (value == null) {
-            throw invalidAgentResponse(fieldName + " is missing.");
-        }
-        return value;
-    }
-
-    // AI 응답 문자열 필드가 공백이 아닌 필수값인지 검증한다.
-    private void requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw invalidAgentResponse(fieldName + " is missing.");
-        }
-    }
-
-    // AI 응답 식별자가 null이 아닌 양수인지 검증한다.
-    private void requirePositiveId(Long value, String fieldName) {
-        if (value == null || value <= 0) {
-            throw invalidAgentResponse(fieldName + " must be a positive integer.");
-        }
-    }
-
-    // AI 문자열 값을 지정 Enum으로 변환하고 허용되지 않은 값은 분석 오류로 처리한다.
-    private <T extends Enum<T>> T parseEnum(String value, Class<T> enumType, String fieldName) {
-        requireText(value, fieldName);
-        try {
-            return Enum.valueOf(enumType, value.trim().toUpperCase(Locale.ROOT));
-        } catch (RuntimeException exception) {
-            throw invalidAgentResponse(fieldName + " is invalid: " + value);
-        }
     }
 
     // 선택 문자열의 앞뒤 공백을 제거하고 빈 값은 null로 반환한다.
@@ -519,13 +316,4 @@ public class ProjectCreationService {
     private record DraftProjectContext(Long projectId) {
     }
 
-    private record ValidatedAgentResult(
-            PlanningDocumentExtractResponse response,
-            PlanningLlmStatus llmStatus,
-            List<ProjectArtifactType> artifactTypes,
-            Map<String, PlanningDocumentExtractResponse.DocumentResult> documentByName,
-            List<RequirementType> requirementTypes,
-            List<RequirementPriority> requirementPriorities
-    ) {
-    }
 }

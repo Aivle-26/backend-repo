@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -61,6 +62,18 @@ public class GlobalExceptionHandler {
     })
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception exception, HttpServletRequest request) {
         return buildBadRequest("invalid request");
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(NoResourceFoundException exception) {
+        HttpStatus status = HttpStatus.NOT_FOUND;
+        return ResponseEntity.status(status).body(new ErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                "RESOURCE_NOT_FOUND",
+                status.getReasonPhrase(),
+                "resource not found"
+        ));
     }
 
     // 처리되지 않은 예외의 내부 정보를 숨기고 공통 500 응답을 반환한다.
