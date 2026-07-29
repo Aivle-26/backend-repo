@@ -1,7 +1,11 @@
 package com.aivle26.aipm.Service.project;
 
+import com.aivle26.aipm.client.ai.PlanningAgentClient;
+import com.aivle26.aipm.client.ai.StoredDocumentFile;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.DocumentAnalysisRequirementRequest;
+import com.aivle26.aipm.Dto.project.PlanningDocumentExtractResponse;
+import com.aivle26.aipm.Dto.project.ProjectRequirementsResponse;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultResponse;
 import com.aivle26.aipm.Entity.project.Project;
@@ -27,18 +31,28 @@ import com.aivle26.aipm.Repository.user.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 
 import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @WithMockUser(username = "PM001", roles = "PM")
@@ -46,6 +60,9 @@ class ProjectDocumentAnalysisServiceTest {
 
     @MockitoBean
     private S3Client s3Client;
+
+    @MockitoBean
+    private PlanningAgentClient planningAgentClient;
 
     @Autowired
     private ProjectDocumentAnalysisService projectDocumentAnalysisService;
@@ -213,21 +230,254 @@ class ProjectDocumentAnalysisServiceTest {
         assertThat(refreshedDocument.getStatus()).isEqualTo(ProjectDocumentStatus.UPLOADED);
     }
 
+    @Test
+    void analyzeRequirementsStoresUnconfirmedRequirementsAndSourceDocument() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(successResponse(List.of(document.getOriginalFileName())));
+
+        ProjectRequirementsResponse response =
+                projectDocumentAnalysisService.analyzeRequirements(
+                        document.getProject().getId(),
+                        List.of(document.getId())
+                );
+
+        assertThat(response.projectId()).isEqualTo(document.getProject().getId());
+        assertThat(response.aiSuggestions()).hasSize(1);
+        assertThat(response.finalRequirements()).hasSize(1);
+        ProjectRequirement requirement = projectRequirementRepository.findAll().getFirst();
+        assertThat(requirement.getStatus()).isEqualTo(RequirementStatus.UNCONFIRMED);
+        assertThat(requirement.isConfirmed()).isFalse();
+        assertThat(requirement.getSourceDocument().getId()).isEqualTo(document.getId());
+        assertThat(requirement.getExternalReferenceId()).isEqualTo(91001L);
+        assertThat(requirement.getAiSuggestionJson()).isNotBlank();
+        assertThat(analysisResultRepository.count()).isEqualTo(1);
+        assertThat(projectDocumentRepository.findById(document.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.ANALYZED);
+    }
+
+    @Test
+    void analyzeRequirementsSortsAndDeduplicatesDocumentIds() {
+        Long projectId = createProject("PM001");
+        projectDocumentService.uploadInitialDocuments(
+                projectId,
+                List.of(
+                        new MockMultipartFile(
+                                "files",
+                                "first.txt",
+                                "text/plain",
+                                "first".getBytes()
+                        ),
+                        new MockMultipartFile(
+                                "files",
+                                "second.txt",
+                                "text/plain",
+                                "second".getBytes()
+                        )
+                )
+        );
+        List<ProjectDocument> documents =
+                projectDocumentRepository.findByProjectIdOrderByCreatedAtAscIdAsc(projectId);
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(successResponse(
+                        documents.stream().map(ProjectDocument::getOriginalFileName).toList()
+                ));
+
+        projectDocumentAnalysisService.analyzeRequirements(
+                projectId,
+                List.of(
+                        documents.get(1).getId(),
+                        documents.get(0).getId(),
+                        documents.get(1).getId()
+                )
+        );
+
+        ArgumentCaptor<List<StoredDocumentFile>> filesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(planningAgentClient).extractDocuments(filesCaptor.capture(), anyBoolean());
+        assertThat(filesCaptor.getValue())
+                .extracting(StoredDocumentFile::originalFileName)
+                .containsExactly("first.txt", "second.txt");
+    }
+
+    @Test
+    void analyzeRequirementsRejectsMixedProjectDocumentIds() {
+        ProjectDocument firstProjectDocument = uploadDocument();
+        Long otherProjectId = createProject("PM001");
+        projectDocumentService.uploadInitialDocuments(
+                otherProjectId,
+                List.of(new MockMultipartFile(
+                        "files",
+                        "other.txt",
+                        "text/plain",
+                        "other".getBytes()
+                ))
+        );
+        ProjectDocument otherProjectDocument =
+                projectDocumentRepository.findByProjectId(otherProjectId).getFirst();
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                firstProjectDocument.getProject().getId(),
+                List.of(firstProjectDocument.getId(), otherProjectDocument.getId())
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> {
+                            assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                            assertThat(exception.getCode())
+                                    .isEqualTo("INVALID_PROJECT_DOCUMENT_SELECTION");
+                        }
+                );
+
+        verify(planningAgentClient, times(0)).extractDocuments(any(), anyBoolean());
+        assertThat(analysisResultRepository.count()).isZero();
+    }
+
+    @Test
+    void analyzeRequirementsRejectsEmptyDocumentIds() {
+        Long projectId = createProject("PM001");
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                projectId,
+                List.of()
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> assertThat(exception.getStatus())
+                                .isEqualTo(HttpStatus.BAD_REQUEST)
+                );
+    }
+
+    @Test
+    void analyzeRequirementsRejectsDuplicateFingerprint() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(successResponse(List.of(document.getOriginalFileName())));
+
+        projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        );
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> {
+                            assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                            assertThat(exception.getCode())
+                                    .isEqualTo("PROJECT_REQUIREMENT_ANALYSIS_DUPLICATE");
+                        }
+                );
+        verify(planningAgentClient).extractDocuments(any(), anyBoolean());
+        assertThat(projectRequirementRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void analyzeRequirementsRollsBackInvalidAgentResponse() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean())).thenReturn(null);
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> {
+                            assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                            assertThat(exception.getCode())
+                                    .isEqualTo("INVALID_PLANNING_AGENT_RESPONSE");
+                        }
+                );
+
+        assertThat(analysisResultRepository.count()).isZero();
+        assertThat(projectRequirementRepository.count()).isZero();
+        assertThat(projectDocumentRepository.findById(document.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.UPLOADED);
+    }
+
     private ProjectDocument uploadDocument() {
-        Long projectId = projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
-                "New PM Project",
-                "draft description",
-                "PM001",
-                LocalDate.of(2026, 7, 13),
-                LocalDate.of(2026, 7, 31)
-        )).projectId();
+        Long projectId = createProject("PM001");
 
         projectDocumentService.uploadInitialDocuments(
                 projectId,
                 List.of(new MockMultipartFile("files", "requirements.txt", "text/plain", "hello".getBytes()))
         );
 
-        return projectDocumentRepository.findAll().getFirst();
+        return projectDocumentRepository.findByProjectId(projectId).getFirst();
+    }
+
+    private Long createProject(String employeeNumber) {
+        return projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
+                "New PM Project",
+                "draft description",
+                employeeNumber,
+                LocalDate.of(2026, 7, 13),
+                LocalDate.of(2026, 7, 31)
+        )).projectId();
+    }
+
+    private void prepareStoredContent() {
+        byte[] content = "E2E source content".getBytes();
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(
+                ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder()
+                                .contentLength((long) content.length)
+                                .build(),
+                        content
+                )
+        );
+    }
+
+    private PlanningDocumentExtractResponse successResponse(List<String> fileNames) {
+        String sourceFileName = fileNames.getFirst();
+        return new PlanningDocumentExtractResponse(
+                new PlanningDocumentExtractResponse.ProjectInfo(
+                        "E2E Project",
+                        "Validate requirement analysis.",
+                        "AIPM",
+                        LocalDate.of(2026, 7, 1),
+                        LocalDate.of(2026, 12, 31),
+                        List.of("Login", "Document Upload"),
+                        List.of(new PlanningDocumentExtractResponse.RequiredArtifact(
+                                "REQUIREMENTS_DEFINITION",
+                                "Requirements Definition",
+                                "1.0"
+                        )),
+                        List.of("Requirements are persisted."),
+                        List.of(),
+                        List.of()
+                ),
+                List.of(new PlanningDocumentExtractResponse.RequirementCandidate(
+                        91001L,
+                        "User Login",
+                        "A registered user can sign in.",
+                        "FUNCTIONAL",
+                        "HIGH",
+                        "A session is issued.",
+                        null,
+                        "Requirements Definition",
+                        null,
+                        sourceFileName,
+                        "User login"
+                )),
+                fileNames.stream()
+                        .map(fileName -> new PlanningDocumentExtractResponse.DocumentResult(
+                                fileName,
+                                "TXT",
+                                18L,
+                                "TEXT"
+                        ))
+                        .toList(),
+                "SUCCEEDED"
+        );
     }
 
     private User createPmUser(String employeeNumber) {

@@ -24,6 +24,7 @@ import org.springframework.web.client.RestClientException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
+import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.util.List;
 
@@ -56,6 +57,14 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             }
             return response;
         } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode().value() == 422) {
+                throw new ApiException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "PLANNING_AGENT_INVALID_REQUEST",
+                        "문서 분석 서버가 파일 요청을 처리할 수 없습니다.",
+                        exception
+                );
+            }
             throw new ApiException(HttpStatus.BAD_GATEWAY, "PLANNING_AGENT_CLIENT_ERROR", "문서 분석 서버가 요청을 처리할 수 없습니다.", exception);
         } catch (HttpServerErrorException exception) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "PLANNING_AGENT_SERVER_ERROR", "문서 분석 서버에서 오류가 발생했습니다.", exception);
@@ -65,6 +74,9 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             }
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "PLANNING_AGENT_UNAVAILABLE", "문서 분석 서버에 연결할 수 없습니다.", exception);
         } catch (RestClientException exception) {
+            if (isTimeout(exception)) {
+                throw new ApiException(HttpStatus.GATEWAY_TIMEOUT, "PLANNING_AGENT_TIMEOUT", "문서 분석 처리 시간이 초과되었습니다.", exception);
+            }
             throw invalidResponse(exception);
         }
     }
@@ -95,7 +107,13 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
     private boolean isTimeout(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
-            if (current instanceof SocketTimeoutException) {
+            if (current instanceof SocketTimeoutException
+                    || current instanceof InterruptedIOException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null
+                    && message.toLowerCase(java.util.Locale.ROOT).contains("timed out")) {
                 return true;
             }
             current = current.getCause();

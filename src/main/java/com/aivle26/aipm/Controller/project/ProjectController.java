@@ -65,15 +65,17 @@ public class ProjectController {
     // 저장된 프로젝트를 조회해 화면용 요약 목록으로 반환한다.
     @GetMapping
     @PreAuthorize("hasAnyRole('PM', 'STAFF')")
-    public ResponseEntity<List<ProjectSummaryResponse>> listProjects() {
-        return ResponseEntity.ok(projectService.listProjects());
+    public ResponseEntity<List<ProjectSummaryResponse>> listProjects(Authentication authentication) {
+        return ResponseEntity.ok(projectService.listProjects(requireAuthenticatedUser(authentication)));
     }
 
-    // 전체 프로젝트의 저장 문서 메타데이터를 프로젝트별 목록으로 반환한다.
-    @GetMapping("/documents")
+    // 접근 가능한 한 프로젝트의 저장 문서 메타데이터만 반환한다.
+    @GetMapping("/{projectId}/documents")
     @PreAuthorize("hasAnyRole('PM', 'STAFF')")
-    public ResponseEntity<List<ProjectDocumentUploadResponse>> listProjectDocuments() {
-        return ResponseEntity.ok(projectDocumentService.listProjectDocuments());
+    public ResponseEntity<ProjectDocumentUploadResponse> listProjectDocuments(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(projectDocumentService.listProjectDocuments(projectId));
     }
 
     // 인증된 PM의 프로젝트와 연결 문서 및 저장 파일을 함께 삭제한다.
@@ -122,14 +124,6 @@ public class ProjectController {
     public ResponseEntity<JsonNode> extractDocuments(@PathVariable Long projectId) {
         var response = projectDocumentExtractService.extractStoredDocuments(projectId);
         return ResponseEntity.status(response.status()).body(response.body());
-    }
-
-    // 기존 프로젝트 문서로 AI 분석을 요청하고 접수 결과를 반환한다.
-    @PostMapping("/{projectId}/documents/analyze")
-    @PreAuthorize("hasRole('PM')")
-    public ResponseEntity<AgentRequestResult> requestDocumentAnalysis(@PathVariable Long projectId) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(projectDocumentAnalysisService.requestAnalysis(projectId));
     }
 
     // 프로젝트·문서·최신 분석 데이터를 한 번에 조회해 화면용 DTO로 반환한다.

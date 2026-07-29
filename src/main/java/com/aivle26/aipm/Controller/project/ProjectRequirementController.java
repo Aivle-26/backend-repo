@@ -1,5 +1,6 @@
 package com.aivle26.aipm.Controller.project;
 
+import com.aivle26.aipm.Dto.project.AnalyzeProjectRequirementsRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectRequirementRequest;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Dto.project.ProjectRequirementsResponse;
@@ -8,6 +9,7 @@ import com.aivle26.aipm.Dto.project.UpdateProjectRequirementRequest;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
+import com.aivle26.aipm.Service.project.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.project.ProjectRequirementService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,21 @@ import java.util.List;
 @PreAuthorize("hasRole('PM')")
 public class ProjectRequirementController {
     private final ProjectRequirementService projectRequirementService;
+    private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
+
+    // Analyzes the selected project documents and returns the persisted requirements.
+    @PostMapping("/analyze")
+    public ResponseEntity<ProjectRequirementsResponse> analyze(
+            @PathVariable Long projectId,
+            @Valid @RequestBody AnalyzeProjectRequirementsRequest request
+    ) {
+        return ResponseEntity.ok(
+                projectDocumentAnalysisService.analyzeRequirements(
+                        projectId,
+                        request.documentIds()
+                )
+        );
+    }
 
     // 프로젝트와 원본 문서를 검증해 미확정 요구사항을 생성하고 반환한다.
     @PostMapping

@@ -24,7 +24,6 @@ import java.io.InputStream;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -76,25 +75,60 @@ public class ProjectDocumentService {
         return loadStoredDocumentFiles(loadProjectDocuments(projectId, true));
     }
 
+    // Selects only the requested documents after validating project ownership and scope.
+    @Transactional(readOnly = true)
+    public List<ProjectDocument> getAnalyzableProjectDocuments(
+            Long projectId,
+            List<Long> documentIds
+    ) {
+        projectAuthorizationService.requireProjectPm(projectId);
+        if (documentIds == null || documentIds.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "PROJECT_DOCUMENT_REQUIRED",
+                    "At least one project document is required."
+            );
+        }
+
+        List<ProjectDocument> documents =
+                projectDocumentRepository.findByProjectIdAndIdInOrderByIdAsc(projectId, documentIds);
+        if (documents.size() != documentIds.size()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_PROJECT_DOCUMENT_SELECTION",
+                    "Every document must belong to the requested project."
+            );
+        }
+        if (documents.stream()
+                .anyMatch(document -> document.getStatus() == ProjectDocumentStatus.ANALYZING)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "PROJECT_DOCUMENT_ANALYSIS_IN_PROGRESS",
+                    "One or more selected documents are already being analyzed."
+            );
+        }
+        return documents;
+    }
+
+    // Downloads exactly the validated document set for a planning-agent request.
+    public List<StoredDocumentFile> getStoredDocumentFiles(List<ProjectDocument> documents) {
+        return loadStoredDocumentFiles(documents);
+    }
+
     // 프로젝트에 연결된 문서 메타데이터를 조회해 엔티티 목록으로 반환한다.
     @Transactional(readOnly = true)
     public List<ProjectDocument> getProjectDocuments(Long projectId) {
         return loadProjectDocuments(projectId, false);
     }
 
-    // 전체 문서를 프로젝트별로 묶어 업로드 복원용 응답 목록으로 반환한다.
+    // 접근 가능한 프로젝트의 문서 메타데이터를 업로드 복원용 응답으로 반환한다.
     @Transactional(readOnly = true)
-    public List<ProjectDocumentUploadResponse> listProjectDocuments() {
-        Map<Long, List<ProjectDocument>> documentsByProject = new LinkedHashMap<>();
-        for (ProjectDocument document : projectDocumentRepository.findAllWithProjectOrderByProjectIdAndCreatedAt()) {
-            documentsByProject
-                    .computeIfAbsent(document.getProject().getId(), ignored -> new ArrayList<>())
-                    .add(document);
-        }
-
-        return documentsByProject.entrySet().stream()
-                .map(entry -> buildUploadResponse(entry.getKey(), entry.getValue()))
-                .toList();
+    public ProjectDocumentUploadResponse listProjectDocuments(Long projectId) {
+        projectAuthorizationService.requireProjectAccess(projectId);
+        return buildUploadResponse(
+                projectId,
+                projectDocumentRepository.findByProjectIdOrderByCreatedAtAscIdAsc(projectId)
+        );
     }
 
     // 프로젝트에 연결된 문서 DB 레코드를 일괄 삭제한다.

@@ -9,11 +9,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class UnavailableProjectAgentClient implements ProjectAgentClient {
     @Override
-    public AgentRequestResult requestDocumentAnalysis(Long projectId) {
-        throw unavailable();
-    }
-
-    @Override
     public AgentRequestResult requestWbsGeneration(Long projectId) {
         throw unavailable();
     }

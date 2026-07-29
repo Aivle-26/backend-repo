@@ -13,6 +13,8 @@ import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
+import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
+import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -35,11 +37,27 @@ public class ProjectService {
     private final ProjectWbsResultRepository projectWbsResultRepository;
     private final ProjectScheduleRepository projectScheduleRepository;
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
+    private final RiskTeamMemberRepository riskTeamMemberRepository;
 
-    // 프로젝트와 문서 수를 조회해 최초 화면용 프로젝트 요약 목록을 반환한다.
+    // 현재 PM 소유 또는 STAFF 참여 범위의 프로젝트 요약만 반환한다.
     @Transactional(readOnly = true)
-    public List<ProjectSummaryResponse> listProjects() {
-        return projectRepository.findAllByOrderByCreatedAtDesc().stream()
+    public List<ProjectSummaryResponse> listProjects(AuthenticatedUser user) {
+        List<Project> projects;
+        if ("PM".equals(user.role())) {
+            projects = projectRepository.findAllByPm_EmployeeNumberOrderByCreatedAtDesc(
+                    user.employeeNumber()
+            );
+        } else if ("STAFF".equals(user.role())) {
+            List<Long> participatingProjectIds =
+                    riskTeamMemberRepository.findParticipatingProjectIds(user.employeeNumber());
+            projects = participatingProjectIds.isEmpty()
+                    ? List.of()
+                    : projectRepository.findAllByIdInOrderByCreatedAtDesc(participatingProjectIds);
+        } else {
+            projects = List.of();
+        }
+
+        return projects.stream()
                 .map(project -> new ProjectSummaryResponse(
                         project.getId(),
                         project.getName(),

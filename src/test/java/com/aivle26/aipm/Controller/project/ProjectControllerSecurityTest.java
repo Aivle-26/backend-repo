@@ -5,6 +5,7 @@ import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
 import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
+import com.aivle26.aipm.Entity.risk.RiskTeamMember;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
@@ -15,6 +16,7 @@ import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
+import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthCodes;
 import com.aivle26.aipm.Service.auth.AuthService;
@@ -89,8 +91,12 @@ class ProjectControllerSecurityTest {
     @Autowired
     private ProjectScheduleResultRepository projectScheduleResultRepository;
 
+    @Autowired
+    private RiskTeamMemberRepository riskTeamMemberRepository;
+
     @BeforeEach
     void setUp() {
+        riskTeamMemberRepository.deleteAll();
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();
@@ -111,7 +117,7 @@ class ProjectControllerSecurityTest {
 
     @Test
     void listProjectDocumentsRequiresAuthentication() throws Exception {
-        mockMvc.perform(get("/api/projects/documents"))
+        mockMvc.perform(get("/api/projects/1/documents"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
     }
@@ -133,12 +139,15 @@ class ProjectControllerSecurityTest {
     @Test
     void listProjectsReturnsProjectSummariesWithBearerToken() throws Exception {
         User pm = userRepository.save(createPmUser("PM001"));
+        User otherPm = userRepository.save(createPmUser("PM999"));
         Project project = projectRepository.saveAndFlush(createProject(pm));
+        projectRepository.saveAndFlush(createProject(otherPm));
         AuthSessionResponse session = authService.issueSession(pm);
 
         mockMvc.perform(get("/api/projects")
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].projectId").value(project.getId().intValue()))
                 .andExpect(jsonPath("$[0].name").value("New PM Project"))
                 .andExpect(jsonPath("$[0].pmEmployeeNumber").value("PM001"))
@@ -148,41 +157,84 @@ class ProjectControllerSecurityTest {
     @Test
     void listProjectDocumentsReturnsStoredMetadataWithBearerToken() throws Exception {
         User pm = userRepository.save(createPmUser("PM002"));
+        User otherPm = userRepository.save(createPmUser("PM999"));
         Project project = projectRepository.saveAndFlush(createProject(pm));
         ProjectDocument document = projectDocumentRepository.saveAndFlush(createDocument(project));
+        Project hiddenProject = projectRepository.saveAndFlush(createProject(otherPm));
+        projectDocumentRepository.saveAndFlush(createDocument(hiddenProject));
         AuthSessionResponse session = authService.issueSession(pm);
 
-        mockMvc.perform(get("/api/projects/documents")
+        mockMvc.perform(get("/api/projects/{projectId}/documents", project.getId())
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].projectId").value(project.getId().intValue()))
-                .andExpect(jsonPath("$[0].documents.length()").value(1))
-                .andExpect(jsonPath("$[0].documents[0].documentId").value(document.getId().intValue()))
-                .andExpect(jsonPath("$[0].documents[0].originalFileName").value("저장된-공고문.pdf"))
-                .andExpect(jsonPath("$[0].documents[0].fileSize").value(2048));
+                .andExpect(jsonPath("$.projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$.documents.length()").value(1))
+                .andExpect(jsonPath("$.documents[0].documentId").value(document.getId().intValue()))
+                .andExpect(jsonPath("$.documents[0].originalFileName").value("저장된-공고문.pdf"))
+                .andExpect(jsonPath("$.documents[0].fileSize").value(2048));
     }
 
     @Test
     void listProjectDocumentsReturnsEmptyListWhenNoDocumentsExist() throws Exception {
         User pm = userRepository.save(createPmUser("PM003"));
-        projectRepository.saveAndFlush(createProject(pm));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
         AuthSessionResponse session = authService.issueSession(pm);
 
-        mockMvc.perform(get("/api/projects/documents")
+        mockMvc.perform(get("/api/projects/{projectId}/documents", project.getId())
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$.documents.length()").value(0));
+    }
+
+    @Test
+    void listProjectDocumentsRejectsDifferentProjectOwner() throws Exception {
+        User owner = userRepository.save(createPmUser("PM001"));
+        User otherPm = userRepository.save(createPmUser("PM002"));
+        Project project = projectRepository.saveAndFlush(createProject(owner));
+        projectDocumentRepository.saveAndFlush(createDocument(project));
+        AuthSessionResponse session = authService.issueSession(otherPm);
+
+        mockMvc.perform(get("/api/projects/{projectId}/documents", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void listProjectDocumentsAllowsParticipatingStaff() throws Exception {
+        User owner = userRepository.save(createPmUser("PM001"));
+        User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        Project project = projectRepository.saveAndFlush(createProject(owner));
+        ProjectDocument document =
+                projectDocumentRepository.saveAndFlush(createDocument(project));
+        riskTeamMemberRepository.save(createMembership(
+                project.getId(),
+                staff.getEmployeeNumber()
+        ));
+        AuthSessionResponse session = authService.issueSession(staff);
+
+        mockMvc.perform(get("/api/projects/{projectId}/documents", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documents.length()").value(1))
+                .andExpect(jsonPath("$.documents[0].documentId")
+                        .value(document.getId().intValue()));
     }
 
     @Test
     void listProjectsAllowsStaff() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
         User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        riskTeamMemberRepository.save(createMembership(project.getId(), staff.getEmployeeNumber()));
         AuthSessionResponse session = authService.issueSession(staff);
 
         mockMvc.perform(get("/api/projects")
                         .header("Authorization", "Bearer " + session.accessToken()))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].projectId").value(project.getId().intValue()));
     }
 
     @Test
@@ -303,10 +355,64 @@ class ProjectControllerSecurityTest {
         Project project = projectRepository.saveAndFlush(createProject(owner));
         AuthSessionResponse session = authService.issueSession(otherPm);
 
-        mockMvc.perform(post("/api/projects/{projectId}/documents/analyze", project.getId())
-                        .header("Authorization", "Bearer " + session.accessToken()))
+        mockMvc.perform(post("/api/projects/{projectId}/requirements/analyze", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentIds\":[1]}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void staffCannotAnalyzeProjectRequirements() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(staff);
+
+        mockMvc.perform(post("/api/projects/{projectId}/requirements/analyze", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentIds\":[1]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void analyzeProjectRequirementsRejectsEmptyDocumentIds() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(post("/api/projects/{projectId}/requirements/analyze", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentIds\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void analyzeProjectRequirementsReturnsNotFoundForMissingProject() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(post("/api/projects/{projectId}/requirements/analyze", 999999)
+                        .header("Authorization", "Bearer " + session.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentIds\":[1]}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
+    }
+
+    @Test
+    void removedDocumentAnalyzePlaceholderIsNotAvailable() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(post("/api/projects/{projectId}/documents/analyze", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -377,6 +483,18 @@ class ProjectControllerSecurityTest {
         document.setContentType("application/pdf");
         document.setFileSize(2048L);
         return document;
+    }
+
+    private RiskTeamMember createMembership(Long projectId, String employeeNumber) {
+        RiskTeamMember membership = new RiskTeamMember();
+        membership.setProjectId(projectId);
+        membership.setMemberName(employeeNumber);
+        membership.setRole("STAFF");
+        membership.setSkills("");
+        membership.setWorkloadRate(0);
+        membership.setOverdueTaskCount(0);
+        membership.setCurrentAssignee(true);
+        return membership;
     }
 
     private User createPmUser(String employeeNumber) {
