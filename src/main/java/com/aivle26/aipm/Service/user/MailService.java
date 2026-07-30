@@ -139,6 +139,7 @@ public class MailService {
                 PM Agent
                 대표: 홍길동
                 주소: 부산광역시 동구 초량중로 29, 3층
+                이메일: aivleschool1@gmail.com
 
                 본 메일은 발신 전용으로 회신되지 않습니다.
                 """.formatted(subject, description, verificationCode, expiresInMinutes);
@@ -207,7 +208,8 @@ public class MailService {
                                         <td align="left" style="padding:20px 0 0;font-size:12px;line-height:1.6;color:#64748b">
                                           <strong style="color:#475569">PM Agent</strong><br>
                                           대표: 홍길동<br>
-                                          주소: 부산광역시 동구 초량중로 29, 3층<br><br>
+                                          주소: 부산광역시 동구 초량중로 29, 3층<br>
+                                          이메일: <a href="mailto:aivleschool1@gmail.com" style="color:#64748b;text-decoration:none">aivleschool1@gmail.com</a><br><br>
                                           본 메일은 발신 전용으로 회신되지 않습니다.
                                         </td>
                                       </tr>

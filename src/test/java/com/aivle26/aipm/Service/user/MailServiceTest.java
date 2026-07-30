@@ -122,6 +122,7 @@ class MailServiceTest {
                 .contains("PM Agent")
                 .contains("대표: 홍길동")
                 .contains("주소: 부산광역시 동구 초량중로 29, 3층")
+                .contains("이메일: aivleschool1@gmail.com")
                 .doesNotContain("test-password");
 
         assertThat(htmlText)
@@ -134,6 +135,8 @@ class MailServiceTest {
                 .contains("PM Agent")
                 .contains("대표: 홍길동")
                 .contains("주소: 부산광역시 동구 초량중로 29, 3층")
+                .contains("mailto:aivleschool1@gmail.com")
+                .contains("aivleschool1@gmail.com")
                 .doesNotContain("test-password")
                 .doesNotContain("쿠팡")
                 .doesNotContain("gmail_quote")
@@ -142,6 +145,7 @@ class MailServiceTest {
 
         assertThat(countOccurrences(htmlText, "대표: 홍길동")).isOne();
         assertThat(countOccurrences(htmlText, "부산광역시 동구 초량중로 29, 3층")).isOne();
+        assertThat(countOccurrences(htmlText, "mailto:aivleschool1@gmail.com")).isOne();
         assertThat(countOccurrences(htmlText, "본 메일은 발신 전용으로 회신되지 않습니다.")).isOne();
     }
 
