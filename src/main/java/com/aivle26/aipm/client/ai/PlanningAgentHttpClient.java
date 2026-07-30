@@ -2,6 +2,7 @@ package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.PlanningDocumentExtractResponse;
+import com.aivle26.aipm.Dto.project.PlanningRequirementReadjustResponse;
 import com.aivle26.aipm.Exception.ApiException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.util.List;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -42,6 +44,7 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
         for (StoredDocumentFile file : files) {
             body.add("files", toFilePart(file));
         }
+        addDocumentManifest(body, files);
         body.add("enable_llm", String.valueOf(enableLlm));
 
         try {
@@ -67,6 +70,14 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             }
             throw new ApiException(HttpStatus.BAD_GATEWAY, "PLANNING_AGENT_CLIENT_ERROR", "문서 분석 서버가 요청을 처리할 수 없습니다.", exception);
         } catch (HttpServerErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.GATEWAY_TIMEOUT) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "PLANNING_AGENT_TIMEOUT",
+                        "문서 분석 처리 시간이 초과되었습니다.",
+                        exception
+                );
+            }
             throw new ApiException(HttpStatus.BAD_GATEWAY, "PLANNING_AGENT_SERVER_ERROR", "문서 분석 서버에서 오류가 발생했습니다.", exception);
         } catch (ResourceAccessException exception) {
             if (isTimeout(exception)) {
@@ -77,6 +88,83 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             if (isTimeout(exception)) {
                 throw new ApiException(HttpStatus.GATEWAY_TIMEOUT, "PLANNING_AGENT_TIMEOUT", "문서 분석 처리 시간이 초과되었습니다.", exception);
             }
+            throw invalidResponse(exception);
+        }
+    }
+
+    @Override
+    public PlanningRequirementReadjustResponse readjustRequirements(
+            List<StoredDocumentFile> files,
+            List<PlanningRequirementReadjustResponse.ExistingRequirement> existingRequirements
+    ) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        for (StoredDocumentFile file : files) {
+            body.add("files", toFilePart(file));
+        }
+        addDocumentManifest(body, files);
+        try {
+            body.add(
+                    "existing_requirements",
+                    objectMapper.writeValueAsString(existingRequirements)
+            );
+            ResponseEntity<byte[]> responseEntity = planningAgentRestClient.post()
+                    .uri(properties.getReadjustPath())
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(byte[].class);
+            PlanningRequirementReadjustResponse response =
+                    decodeReadjustResponse(responseEntity.getBody());
+            if (response == null) {
+                throw invalidResponse();
+            }
+            return response;
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode().value() == 422) {
+                throw new ApiException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "PLANNING_AGENT_INVALID_REQUEST",
+                        "The planning agent rejected the readjustment request.",
+                        exception
+                );
+            }
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "PLANNING_AGENT_CLIENT_ERROR",
+                    "The planning agent could not process the readjustment request.",
+                    exception
+            );
+        } catch (HttpServerErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.GATEWAY_TIMEOUT) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "PLANNING_AGENT_TIMEOUT",
+                        "The planning agent readjustment timed out.",
+                        exception
+                );
+            }
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "PLANNING_AGENT_SERVER_ERROR",
+                    "The planning agent failed while readjusting requirements.",
+                    exception
+            );
+        } catch (ResourceAccessException exception) {
+            if (isTimeout(exception)) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "PLANNING_AGENT_TIMEOUT",
+                        "The planning agent readjustment timed out.",
+                        exception
+                );
+            }
+            throw new ApiException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PLANNING_AGENT_UNAVAILABLE",
+                    "The planning agent is unavailable.",
+                    exception
+            );
+        } catch (RestClientException | IOException exception) {
             throw invalidResponse(exception);
         }
     }
@@ -93,6 +181,22 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
         }
     }
 
+    private PlanningRequirementReadjustResponse decodeReadjustResponse(
+            byte[] responseBody
+    ) {
+        if (responseBody == null || responseBody.length == 0) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(
+                    responseBody,
+                    PlanningRequirementReadjustResponse.class
+            );
+        } catch (IOException exception) {
+            throw invalidResponse(exception);
+        }
+    }
+
     // 저장 파일의 원본명과 MIME 유형을 보존한 multipart 파일 항목을 생성한다.
     private HttpEntity<InputStreamResource> toFilePart(StoredDocumentFile file) {
         HttpHeaders headers = new HttpHeaders();
@@ -101,6 +205,26 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             headers.setContentType(MediaType.parseMediaType(file.contentType()));
         }
         return new HttpEntity<>(new StoredDocumentResource(file), headers);
+    }
+
+    private void addDocumentManifest(
+            MultiValueMap<String, Object> body,
+            List<StoredDocumentFile> files
+    ) {
+        if (files.isEmpty() || files.stream().anyMatch(file -> file.documentId() == null)) {
+            return;
+        }
+        List<Map<String, Object>> manifest = files.stream()
+                .map(file -> Map.<String, Object>of(
+                        "document_id", file.documentId(),
+                        "file_name", file.originalFileName()
+                ))
+                .toList();
+        try {
+            body.add("document_manifest", objectMapper.writeValueAsString(manifest));
+        } catch (IOException exception) {
+            throw invalidResponse(exception);
+        }
     }
 
     // 예외 원인 체인에 소켓 시간 초과가 포함되는지 검사해 반환한다.

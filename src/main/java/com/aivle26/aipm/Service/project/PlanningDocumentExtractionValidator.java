@@ -215,6 +215,37 @@ public class PlanningDocumentExtractionValidator {
                                 + requirement.sourceDocument()
                 );
             }
+            List<PlanningDocumentExtractResponse.RequirementEvidence> normalizedEvidences =
+                    new ArrayList<>();
+            for (PlanningDocumentExtractResponse.RequirementEvidence evidence :
+                    requirement.evidences() == null
+                            ? List.<PlanningDocumentExtractResponse.RequirementEvidence>of()
+                            : requirement.evidences()) {
+                if (evidence == null) {
+                    throw invalidResponse("requirement evidence is invalid.");
+                }
+                String evidenceSource = normalizeFileName(evidence.sourceDocument());
+                String evidenceOriginalFileName =
+                        responseToOriginalNames.get(evidenceSource);
+                if (evidenceOriginalFileName == null) {
+                    throw invalidResponse(
+                            "Requirement evidence source_document is not mapped to an uploaded file: "
+                                    + evidence.sourceDocument()
+                    );
+                }
+                normalizedEvidences.add(
+                        new PlanningDocumentExtractResponse.RequirementEvidence(
+                                evidence.documentId(),
+                                evidenceOriginalFileName,
+                                evidence.pageNumber(),
+                                evidence.chunkId(),
+                                evidence.quoteText(),
+                                evidence.startOffset(),
+                                evidence.endOffset(),
+                                evidence.boundingBoxes()
+                        )
+                );
+            }
             normalizedRequirements.add(new PlanningDocumentExtractResponse.RequirementCandidate(
                     requirement.requirementId(),
                     requirement.functionName(),
@@ -226,7 +257,8 @@ public class PlanningDocumentExtractionValidator {
                     requirement.deliverableName(),
                     requirement.securityCondition(),
                     originalFileName,
-                    requirement.sourceExcerpt()
+                    requirement.sourceExcerpt(),
+                    normalizedEvidences
             ));
         }
 

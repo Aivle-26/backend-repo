@@ -36,17 +36,22 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -67,12 +72,45 @@ public class ProjectDocumentAnalysisService {
     private final ProjectAuthorizationService projectAuthorizationService;
     private final PlanningDocumentExtractionValidator extractionValidator;
     private final ProjectRequirementImportService requirementImportService;
+    private final TransactionTemplate transactionTemplate;
 
     // Runs planning extraction synchronously and stores the validated requirements atomically.
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ProjectRequirementsResponse analyzeRequirements(
             Long projectId,
             List<Long> requestedDocumentIds
+    ) {
+        List<Long> documentIds = requestedDocumentIds.stream()
+                .distinct()
+                .sorted()
+                .toList();
+        String fingerprint = createFingerprint(projectId, documentIds);
+        AnalysisPreparation preparation = inTransaction(
+                () -> prepareAnalysis(projectId, documentIds, fingerprint)
+        );
+        List<StoredDocumentFile> files =
+                projectDocumentService.getStoredDocumentFilesFromSnapshots(
+                        preparation.documents()
+                );
+        PlanningDocumentExtractResponse response =
+                planningAgentClient.extractDocuments(files, true);
+        PlanningDocumentExtractionValidator.ValidatedResult validatedResult =
+                extractionValidator.validateForRequirementAnalysis(
+                        response,
+                        preparation.documents().stream()
+                                .map(ProjectDocumentService.StoredDocumentSnapshot::originalFileName)
+                                .toList(),
+                        preparation.projectName(),
+                        preparation.projectDescription()
+                );
+
+        return inTransaction(() -> persistAnalysis(preparation, validatedResult));
+    }
+
+    private AnalysisPreparation prepareAnalysis(
+            Long projectId,
+            List<Long> documentIds,
+            String fingerprint
     ) {
         projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
@@ -81,33 +119,63 @@ public class ProjectDocumentAnalysisService {
                         "PROJECT_NOT_FOUND",
                         "프로젝트를 찾을 수 없습니다. projectId=" + projectId
                 ));
-        List<Long> documentIds = requestedDocumentIds.stream()
-                .distinct()
-                .sorted()
-                .toList();
         List<ProjectDocument> documents =
-                projectDocumentService.getAnalyzableProjectDocuments(projectId, documentIds);
-
-        String fingerprint = createFingerprint(projectId, documentIds);
+                projectDocumentService.getAnalyzableProjectDocuments(
+                        projectId,
+                        documentIds
+                );
         if (analysisResultRepository.existsByAgentExecutionId(fingerprint)) {
             throw duplicateAnalysis();
         }
-        ProjectDocumentAnalysisResult analysisResult =
-                reserveAnalysisResult(project, fingerprint, documentIds);
+        return new AnalysisPreparation(
+                projectId,
+                project.getName(),
+                project.getDescription(),
+                project.getUpdatedAt(),
+                fingerprint,
+                documentIds,
+                documents.stream()
+                        .map(ProjectDocumentService.StoredDocumentSnapshot::from)
+                        .toList()
+        );
+    }
 
-        documents.forEach(document -> document.setStatus(ProjectDocumentStatus.ANALYZING));
-        List<StoredDocumentFile> files =
-                projectDocumentService.getStoredDocumentFiles(documents);
-        PlanningDocumentExtractResponse response =
-                planningAgentClient.extractDocuments(files, true);
-        PlanningDocumentExtractionValidator.ValidatedResult validatedResult =
-                extractionValidator.validateForRequirementAnalysis(
-                        response,
-                        documents.stream()
-                                .map(ProjectDocument::getOriginalFileName)
-                                .toList(),
-                        project.getName(),
-                        project.getDescription()
+    private ProjectRequirementsResponse persistAnalysis(
+            AnalysisPreparation preparation,
+            PlanningDocumentExtractionValidator.ValidatedResult validatedResult
+    ) {
+        Project project = projectRepository.findForUpdate(preparation.projectId())
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "Project was not found. projectId=" + preparation.projectId()
+                ));
+        projectAuthorizationService.requireProjectPm(project);
+        if (!Objects.equals(project.getUpdatedAt(), preparation.projectUpdatedAt())
+                || !Objects.equals(project.getName(), preparation.projectName())
+                || !Objects.equals(project.getDescription(), preparation.projectDescription())) {
+            throw analysisInputChanged();
+        }
+
+        List<ProjectDocument> documents =
+                projectDocumentRepository.findForUpdate(
+                        preparation.projectId(),
+                        preparation.documentIds()
+                );
+        if (!documents.stream()
+                .map(ProjectDocumentService.StoredDocumentSnapshot::from)
+                .toList()
+                .equals(preparation.documents())) {
+            throw analysisInputChanged();
+        }
+        if (analysisResultRepository.existsByAgentExecutionId(preparation.fingerprint())) {
+            throw duplicateAnalysis();
+        }
+        ProjectDocumentAnalysisResult analysisResult =
+                reserveAnalysisResult(
+                        project,
+                        preparation.fingerprint(),
+                        preparation.documentIds()
                 );
 
         applyAnalysisResult(analysisResult, validatedResult.response().projectInfo());
@@ -132,7 +200,7 @@ public class ProjectDocumentAnalysisService {
         projectRequirementRepository.flush();
 
         return new ProjectRequirementsResponse(
-                projectId,
+                preparation.projectId(),
                 requirements.stream()
                         .map(projectRequirementMapper::toAiSuggestion)
                         .toList(),
@@ -143,6 +211,18 @@ public class ProjectDocumentAnalysisService {
     }
 
     // AI Server 분석 응답을 프로젝트 분석 결과와 요구사항으로 저장하고 결과 ID를 반환한다.
+    private <T> T inTransaction(Supplier<T> work) {
+        return transactionTemplate.execute(status -> work.get());
+    }
+
+    private ApiException analysisInputChanged() {
+        return new ApiException(
+                HttpStatus.CONFLICT,
+                "PROJECT_ANALYSIS_INPUT_CHANGED",
+                "The project or selected documents changed during analysis."
+        );
+    }
+
     @Transactional
     public SaveDocumentAnalysisResultResponse saveAnalysisResult(Long projectId, SaveDocumentAnalysisResultRequest request) {
         projectAuthorizationService.requireProjectPm(projectId);
@@ -489,5 +569,16 @@ public class ProjectDocumentAnalysisService {
                 planningExtraction.getRequiredArtifactCount(),
                 planningExtraction.getCreatedAt()
         );
+    }
+
+    private record AnalysisPreparation(
+            Long projectId,
+            String projectName,
+            String projectDescription,
+            LocalDateTime projectUpdatedAt,
+            String fingerprint,
+            List<Long> documentIds,
+            List<ProjectDocumentService.StoredDocumentSnapshot> documents
+    ) {
     }
 }

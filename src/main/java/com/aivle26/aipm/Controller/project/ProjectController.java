@@ -31,8 +31,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -48,6 +51,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequiredArgsConstructor
@@ -76,6 +80,30 @@ public class ProjectController {
             @PathVariable Long projectId
     ) {
         return ResponseEntity.ok(projectDocumentService.listProjectDocuments(projectId));
+    }
+
+    @GetMapping("/{projectId}/documents/{documentId}/content")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
+    public ResponseEntity<byte[]> getProjectDocumentContent(
+            @PathVariable Long projectId,
+            @PathVariable Long documentId
+    ) {
+        ProjectDocumentService.ProjectDocumentContent content =
+                projectDocumentService.getPdfContent(projectId, documentId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .cacheControl(CacheControl.noStore())
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline()
+                                .filename(
+                                        content.originalFileName(),
+                                        StandardCharsets.UTF_8
+                                )
+                                .build()
+                                .toString()
+                )
+                .body(content.content());
     }
 
     // 인증된 PM의 프로젝트와 연결 문서 및 저장 파일을 함께 삭제한다.

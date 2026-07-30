@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Entity.project;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -10,21 +11,32 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "project_requirements")
+@Table(
+        name = "project_requirements",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_project_requirement_active_external_reference",
+                columnNames = {"project_id", "active_external_reference_id"}
+        )
+)
 public class ProjectRequirement {
 
     @Id
@@ -45,6 +57,9 @@ public class ProjectRequirement {
 
     @Column(nullable = false)
     private Long externalReferenceId;
+
+    @Column(name = "active_external_reference_id")
+    private Long activeExternalReferenceId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -90,6 +105,14 @@ public class ProjectRequirement {
     @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean includedInFinal = true;
 
+    @OneToMany(
+            mappedBy = "requirement",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    @OrderBy("id ASC")
+    private List<ProjectRequirementEvidence> evidences = new ArrayList<>();
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -100,6 +123,7 @@ public class ProjectRequirement {
     @PrePersist
     public void onCreate() {
         LocalDateTime now = LocalDateTime.now();
+        synchronizeActiveExternalReferenceId();
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -107,6 +131,23 @@ public class ProjectRequirement {
     // 요구사항 수정 직전에 수정 시각을 현재 시각으로 갱신한다.
     @PreUpdate
     public void onUpdate() {
+        synchronizeActiveExternalReferenceId();
         this.updatedAt = LocalDateTime.now();
+    }
+
+    private void synchronizeActiveExternalReferenceId() {
+        this.activeExternalReferenceId = includedInFinal
+                ? externalReferenceId
+                : null;
+    }
+
+    public void addEvidence(ProjectRequirementEvidence evidence) {
+        evidence.setRequirement(this);
+        evidences.add(evidence);
+    }
+
+    public void replaceEvidences(List<ProjectRequirementEvidence> replacements) {
+        evidences.clear();
+        replacements.forEach(this::addEvidence);
     }
 }

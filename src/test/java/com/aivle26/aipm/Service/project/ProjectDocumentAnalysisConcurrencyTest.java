@@ -2,6 +2,7 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
+import com.aivle26.aipm.Dto.project.PlanningDocumentExtractResponse;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Mapper.project.ProjectRequirementMapper;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
@@ -19,6 +20,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +29,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,6 +62,8 @@ class ProjectDocumentAnalysisConcurrencyTest {
     private PlanningDocumentExtractionValidator extractionValidator;
     @Mock
     private ProjectRequirementImportService requirementImportService;
+    @Mock
+    private TransactionTemplate transactionTemplate;
 
     @Test
     void uniqueFingerprintConflictIsMappedToConflict() {
@@ -68,10 +76,32 @@ class ProjectDocumentAnalysisConcurrencyTest {
         document.setProject(project);
 
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+        when(projectRepository.findForUpdate(projectId)).thenReturn(Optional.of(project));
         when(projectDocumentService.getAnalyzableProjectDocuments(
                 projectId,
                 List.of(documentId)
         )).thenReturn(List.of(document));
+        when(projectDocumentRepository.findForUpdate(
+                projectId,
+                List.of(documentId)
+        )).thenReturn(List.of(document));
+        when(projectDocumentService.getStoredDocumentFilesFromSnapshots(any()))
+                .thenReturn(List.of());
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(mock(PlanningDocumentExtractResponse.class));
+        when(extractionValidator.validateForRequirementAnalysis(
+                any(),
+                any(),
+                any(),
+                any()
+        )).thenReturn(mock(PlanningDocumentExtractionValidator.ValidatedResult.class));
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            var callback = invocation.getArgument(
+                    0,
+                    org.springframework.transaction.support.TransactionCallback.class
+            );
+            return callback.doInTransaction(mock(TransactionStatus.class));
+        });
         when(analysisResultRepository.existsByAgentExecutionId(any())).thenReturn(false);
         when(analysisResultRepository.saveAndFlush(any()))
                 .thenThrow(new DataIntegrityViolationException("unique conflict"));
@@ -90,7 +120,8 @@ class ProjectDocumentAnalysisConcurrencyTest {
                 new ObjectMapper(),
                 authorizationService,
                 extractionValidator,
-                requirementImportService
+                requirementImportService,
+                transactionTemplate
         );
 
         assertThatThrownBy(() -> service.analyzeRequirements(
@@ -105,5 +136,10 @@ class ProjectDocumentAnalysisConcurrencyTest {
                                     .isEqualTo("PROJECT_REQUIREMENT_ANALYSIS_DUPLICATE");
                         }
                 );
+        verify(projectRepository).findForUpdate(projectId);
+        verify(projectDocumentRepository).findForUpdate(
+                projectId,
+                List.of(documentId)
+        );
     }
 }

@@ -3,6 +3,11 @@ package com.aivle26.aipm.Repository.project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +31,19 @@ public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument
     List<ProjectDocument> findByProjectIdAndIdInOrderByIdAsc(
             Long projectId,
             List<Long> documentIds
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from ProjectDocument document
+            where document.project.id = :projectId
+              and document.id in :documentIds
+            order by document.id asc
+            """)
+    List<ProjectDocument> findForUpdate(
+            @Param("projectId") Long projectId,
+            @Param("documentIds") List<Long> documentIds
     );
 
     // 프로젝트에 연결된 모든 문서 레코드를 삭제한다.

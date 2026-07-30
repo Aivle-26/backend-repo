@@ -2,17 +2,20 @@ package com.aivle26.aipm.Mapper.project;
 
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
+import com.aivle26.aipm.Entity.project.ProjectRequirementEvidence;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
 import com.aivle26.aipm.Exception.ApiException;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -39,7 +42,8 @@ public class ProjectRequirementMapper {
                 requirement.getStatus(),
                 requirement.isConfirmed(),
                 requirement.getCreatedAt(),
-                requirement.getUpdatedAt()
+                requirement.getUpdatedAt(),
+                toEvidenceDetails(requirement)
         );
     }
 
@@ -97,7 +101,8 @@ public class ProjectRequirementMapper {
                     snapshot.status(),
                     snapshot.confirmed(),
                     requirement.getCreatedAt(),
-                    requirement.getCreatedAt()
+                    requirement.getCreatedAt(),
+                    toEvidenceDetails(requirement)
             );
         } catch (JsonProcessingException exception) {
             throw snapshotError(exception);
@@ -111,6 +116,47 @@ public class ProjectRequirementMapper {
                 "요구사항 AI 제안 데이터를 처리할 수 없습니다.",
                 exception
         );
+    }
+
+    public List<ProjectDocumentAnalysisResultsResponse.RequirementEvidenceDetail> toEvidenceDetails(
+            ProjectRequirement requirement
+    ) {
+        return requirement.getEvidences().stream()
+                .map(this::toEvidenceDetail)
+                .toList();
+    }
+
+    private ProjectDocumentAnalysisResultsResponse.RequirementEvidenceDetail toEvidenceDetail(
+            ProjectRequirementEvidence evidence
+    ) {
+        return new ProjectDocumentAnalysisResultsResponse.RequirementEvidenceDetail(
+                evidence.getId(),
+                evidence.getDocument().getId(),
+                evidence.getDocument().getOriginalFileName(),
+                evidence.getPageNumber(),
+                evidence.getChunkId(),
+                evidence.getQuoteText(),
+                evidence.getStartOffset(),
+                evidence.getEndOffset(),
+                parseBoundingBoxes(evidence.getBoundingBoxesJson())
+        );
+    }
+
+    private List<ProjectDocumentAnalysisResultsResponse.NormalizedBoundingBox> parseBoundingBoxes(
+            String json
+    ) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    json,
+                    new TypeReference<List<ProjectDocumentAnalysisResultsResponse.NormalizedBoundingBox>>() {
+                    }
+            );
+        } catch (JsonProcessingException exception) {
+            throw snapshotError(exception);
+        }
     }
 
     private record AiSuggestionSnapshot(

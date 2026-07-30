@@ -9,6 +9,7 @@ import com.aivle26.aipm.Entity.project.ProjectStatus;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -38,7 +41,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,9 +57,13 @@ class ProjectDocumentServiceTest {
     @Mock
     private ProjectDocumentRepository projectDocumentRepository;
     @Mock
+    private ProjectRequirementRepository projectRequirementRepository;
+    @Mock
     private ProjectAuthorizationService projectAuthorizationService;
     @Mock
     private S3Client s3Client;
+    @Mock
+    private TransactionTemplate transactionTemplate;
 
     private ProjectDocumentService service;
     private Project project;
@@ -77,16 +86,25 @@ class ProjectDocumentServiceTest {
         service = new ProjectDocumentService(
                 projectRepository,
                 projectDocumentRepository,
+                projectRequirementRepository,
                 documentProperties,
                 projectAuthorizationService,
                 s3Client,
-                s3Properties
+                s3Properties,
+                transactionTemplate
         );
 
         project = new Project();
         project.setId(PROJECT_ID);
         project.setStatus(ProjectStatus.DRAFT);
         lenient().when(projectRepository.findById(PROJECT_ID)).thenReturn(Optional.of(project));
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            var callback = invocation.getArgument(
+                    0,
+                    org.springframework.transaction.support.TransactionCallback.class
+            );
+            return callback.doInTransaction(mock(TransactionStatus.class));
+        });
         lenient().when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
         lenient().when(projectDocumentRepository.saveAll(any())).thenAnswer(invocation -> {
@@ -132,6 +150,43 @@ class ProjectDocumentServiceTest {
         assertThat(files).hasSize(1);
         assertThat(files.getFirst().originalFileName()).isEqualTo("requirements.txt");
         assertThat(files.getFirst().content()).isEqualTo(content);
+        verify(s3Client, times(1))
+                .getObjectAsBytes(any(GetObjectRequest.class));
+    }
+
+    @Test
+    void pdfContentRequiresProjectAccessAndStreamsStoredBytes() {
+        byte[] content = "%PDF-1.7".getBytes();
+        ProjectDocument document = pdfDocument(77L);
+        when(projectDocumentRepository.findByIdAndProjectId(77L, PROJECT_ID))
+                .thenReturn(Optional.of(document));
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(
+                ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder()
+                                .contentLength((long) content.length)
+                                .build(),
+                        content
+                )
+        );
+
+        ProjectDocumentService.ProjectDocumentContent result =
+                service.getPdfContent(PROJECT_ID, 77L);
+
+        verify(projectAuthorizationService).requireProjectAccess(PROJECT_ID);
+        assertThat(result.originalFileName()).isEqualTo("requirements.pdf");
+        assertThat(result.contentType()).isEqualTo("application/pdf");
+        assertThat(result.content()).isEqualTo(content);
+    }
+
+    @Test
+    void pdfContentDoesNotAllowDocumentFromAnotherProject() {
+        when(projectDocumentRepository.findByIdAndProjectId(77L, PROJECT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getPdfContent(PROJECT_ID, 77L))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Project document was not found");
+        verify(s3Client, never()).getObjectAsBytes(any(GetObjectRequest.class));
     }
 
     @Test
@@ -141,6 +196,47 @@ class ProjectDocumentServiceTest {
         assertThatThrownBy(() -> service.uploadInitialDocuments(PROJECT_ID, List.of(file)))
                 .isInstanceOf(ApiException.class);
         verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    private ProjectDocument pdfDocument(Long documentId) {
+        ProjectDocument document = new ProjectDocument();
+        document.setId(documentId);
+        document.setProject(project);
+        document.setOriginalFileName("requirements.pdf");
+        document.setStoredFileName("stored.pdf");
+        document.setExtension("pdf");
+        document.setContentType("application/pdf");
+        document.setFileSize(8);
+        document.setStoragePath("projects/42/documents/id/requirements.pdf");
+        return document;
+    }
+
+    @Test
+    void uploadDoesNotReplaceDocumentAfterRequirementsReferenceProjectDocuments() {
+        ProjectDocument existing = new ProjectDocument();
+        existing.setId(88L);
+        existing.setProject(project);
+        existing.setOriginalFileName("requirements.txt");
+        existing.setStoragePath("projects/42/documents/old/requirements.txt");
+        when(projectDocumentRepository.findByProjectIdAndOriginalFileName(
+                PROJECT_ID,
+                "requirements.txt"
+        )).thenReturn(Optional.of(existing));
+        when(projectRequirementRepository.existsByProjectId(PROJECT_ID))
+                .thenReturn(true);
+
+        assertThatThrownBy(() ->
+                service.uploadInitialDocuments(PROJECT_ID, List.of(textFile())))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("PROJECT_DOCUMENT_IN_USE")
+                );
+        verify(s3Client, never()).putObject(
+                any(PutObjectRequest.class),
+                any(RequestBody.class)
+        );
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test

@@ -89,7 +89,29 @@ public record ProjectDocumentAnalysisResultsResponse(
             RequirementStatus status,
             boolean confirmed,
             LocalDateTime createdAt,
-            LocalDateTime updatedAt
+            LocalDateTime updatedAt,
+            List<RequirementEvidenceDetail> evidences
+    ) {
+    }
+
+    public record RequirementEvidenceDetail(
+            Long evidenceId,
+            Long documentId,
+            String sourceDocument,
+            Integer pageNumber,
+            String chunkId,
+            String quoteText,
+            Integer startOffset,
+            Integer endOffset,
+            List<NormalizedBoundingBox> boundingBoxes
+    ) {
+    }
+
+    public record NormalizedBoundingBox(
+            double x,
+            double y,
+            double width,
+            double height
     ) {
     }
 
