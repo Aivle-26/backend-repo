@@ -12,5 +12,18 @@ spring:
       hibernate:
         format_sql: ${JPA_FORMAT_SQL:false}
 
+  mail:
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_STARTTLS_ENABLE:true}
+            required: ${MAIL_STARTTLS_REQUIRED:true}
+
+app:
+  mail:
+    enabled: ${MAIL_ENABLED:true}
+
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}

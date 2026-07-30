@@ -16,6 +16,8 @@ import com.aivle26.aipm.Repository.user.EmailVerificationRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 
 import jakarta.mail.Session;
+import jakarta.mail.Multipart;
+import jakarta.mail.Part;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,7 +40,9 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @SpringBootTest
@@ -68,7 +72,7 @@ class UserServiceTest {
     }
 
     @Test
-    void signupSendsVerificationWithoutCreatingUser() {
+    void signupSendsVerificationWithoutCreatingUser() throws Exception {
         var response = userService.signup(new SignupRequest(
                 "PM002",
                 "New PM",
@@ -82,7 +86,10 @@ class UserServiceTest {
         assertThat(response.expiresIn()).isEqualTo(300);
         assertThat(userRepository.findById("PM002")).isEmpty();
         assertThat(emailVerificationRepository.count()).isOne();
-        verify(javaMailSender).send(any(MimeMessage.class));
+        var captor = org.mockito.ArgumentCaptor.forClass(MimeMessage.class);
+        verify(javaMailSender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("[PM Agent] 회원가입 이메일 인증");
+        assertThat(captor.getValue().getHeader("Auto-Submitted", null)).isEqualTo("auto-generated");
     }
 
     @Test
@@ -189,6 +196,27 @@ class UserServiceTest {
 
         assertThat(userRepository.findById("PM004")).isEmpty();
         assertThat(emailVerificationRepository.count()).isZero();
+        verify(javaMailSender, times(3)).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void signupRetriesTransientMailFailure() {
+        doThrow(new MailSendException("temporary smtp failure"))
+                .doNothing()
+                .when(javaMailSender)
+                .send(any(MimeMessage.class));
+
+        var response = userService.signup(new SignupRequest(
+                "PM005",
+                "Retry Mail",
+                "retry@example.com",
+                "Signup123",
+                "PM"
+        ));
+
+        assertThat(response.success()).isTrue();
+        assertThat(emailVerificationRepository.count()).isOne();
+        verify(javaMailSender, times(2)).send(any(MimeMessage.class));
     }
 
     @Test
@@ -217,6 +245,38 @@ class UserServiceTest {
                 });
 
         assertThat(userRepository.findById("PM004")).isEmpty();
+    }
+
+    @Test
+    void verifySignupInvalidatesCodeAfterFiveFailures() {
+        userService.signup(new SignupRequest(
+                "PM006",
+                "Attempt Limited",
+                "attempts@example.com",
+                "Signup123",
+                "PM"
+        ));
+
+        for (int attempt = 1; attempt <= 4; attempt++) {
+            assertThatThrownBy(() -> userService.verifySignup(
+                    new SignupVerifyRequest("attempts@example.com", "000000")))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessage("verification code mismatch");
+        }
+
+        assertThatThrownBy(() -> userService.verifySignup(
+                new SignupVerifyRequest("attempts@example.com", "000000")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("verification code invalidated");
+
+        EmailVerification verification = emailVerificationRepository
+                .findTopByEmailIgnoreCaseAndPurposeOrderByCreatedAtDesc(
+                        "attempts@example.com",
+                        VerificationPurpose.SIGNUP
+                )
+                .orElseThrow();
+        assertThat(verification.isUsed()).isTrue();
+        assertThat(verification.getFailedAttempts()).isEqualTo(5);
     }
 
     @Test
@@ -388,12 +448,14 @@ class UserServiceTest {
     }
 
     @Test
-    void sendPasswordEmailCodeSuccess() {
+    void sendPasswordEmailCodeSuccess() throws Exception {
         userService.sendPasswordEmailCode(new PasswordEmailSendRequest("PM001", "pm001@example.com"));
+        String verificationCode = extractLatestVerificationCode();
 
         User savedUser = userRepository.findById("PM001").orElseThrow();
         assertThat(savedUser.getVerificationEmail()).isEqualTo("pm001@example.com");
-        assertThat(savedUser.getVerificationCode()).matches("\\d{6}");
+        assertThat(savedUser.getVerificationCode()).isNotEqualTo(verificationCode);
+        assertThat(passwordEncoder.matches(verificationCode, savedUser.getVerificationCode())).isTrue();
         assertThat(savedUser.getVerificationCodeExpiresAt()).isAfter(LocalDateTime.now());
         assertThat(savedUser.getVerificationCodeFailedAttempts()).isZero();
     }
@@ -405,6 +467,18 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.sendPasswordEmailCode(new PasswordEmailSendRequest("PM001", "pm001@example.com")))
                 .isInstanceOf(ApiException.class)
                 .hasMessage("verification code resend too soon");
+    }
+
+    @Test
+    void sendPasswordEmailCodeRejectsAccountWithoutRegisteredEmail() {
+        userRepository.save(createUser("PM007", null, "PM", "CorrectPassword1!"));
+
+        assertThatThrownBy(() -> userService.sendPasswordEmailCode(
+                new PasswordEmailSendRequest("PM007", "attacker@example.com")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("email does not match registered email");
+
+        verify(javaMailSender, never()).send(any(MimeMessage.class));
     }
 
     @Test
@@ -428,16 +502,17 @@ class UserServiceTest {
     }
 
     @Test
-    void verifyPasswordEmailCodeSuccessClearsVerificationCode() {
+    void verifyPasswordEmailCodeSuccessClearsVerificationCode() throws Exception {
         userService.sendPasswordEmailCode(new PasswordEmailSendRequest("PM001", "pm001@example.com"));
-        User issuedUser = userRepository.findById("PM001").orElseThrow();
+        String verificationCode = extractLatestVerificationCode();
 
         var response = userService.verifyPasswordEmailCode(
-                new PasswordEmailCheckRequest("PM001", "pm001@example.com", issuedUser.getVerificationCode())
+                new PasswordEmailCheckRequest("PM001", "pm001@example.com", verificationCode)
         );
 
         User savedUser = userRepository.findById("PM001").orElseThrow();
-        assertThat(response.resetToken()).isEqualTo(savedUser.getResetToken());
+        assertThat(response.resetToken()).isNotEqualTo(savedUser.getResetToken());
+        assertThat(passwordEncoder.matches(response.resetToken(), savedUser.getResetToken())).isTrue();
         assertThat(savedUser.getEmail()).isEqualTo("pm001@example.com");
         assertThat(savedUser.getVerificationCode()).isNull();
         assertThat(savedUser.getVerificationEmail()).isNull();
@@ -452,6 +527,7 @@ class UserServiceTest {
         verification.setPurpose(VerificationPurpose.LOGIN);
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(3));
         verification.setUsed(false);
+        verification.setFailedAttempts(0);
         verification.setCreatedAt(LocalDateTime.now());
         emailVerificationRepository.save(verification);
     }
@@ -472,9 +548,23 @@ class UserServiceTest {
         var captor = org.mockito.ArgumentCaptor.forClass(MimeMessage.class);
         verify(javaMailSender, atLeastOnce()).send(captor.capture());
 
-        Object content = captor.getValue().getContent();
-        var matcher = Pattern.compile("\\b\\d{6}\\b").matcher(content.toString());
+        var matcher = Pattern.compile("\\b\\d{6}\\b").matcher(readMessageText(captor.getValue()));
         assertThat(matcher.find()).isTrue();
         return matcher.group();
+    }
+
+    private String readMessageText(Part part) throws Exception {
+        Object content = part.getContent();
+        if (content instanceof String text) {
+            return text;
+        }
+        if (content instanceof Multipart multipart) {
+            StringBuilder result = new StringBuilder();
+            for (int index = 0; index < multipart.getCount(); index++) {
+                result.append(readMessageText(multipart.getBodyPart(index)));
+            }
+            return result.toString();
+        }
+        return "";
     }
 }

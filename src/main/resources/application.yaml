@@ -22,6 +22,7 @@ spring:
           auth: ${MAIL_SMTP_AUTH:false}
           starttls:
             enable: ${MAIL_STARTTLS_ENABLE:false}
+            required: ${MAIL_STARTTLS_REQUIRED:false}
           connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
           timeout: ${MAIL_TIMEOUT:5000}
           writetimeout: ${MAIL_WRITE_TIMEOUT:5000}
@@ -65,8 +66,13 @@ app:
     inactivity-timeout-minutes: ${AUTH_INACTIVITY_TIMEOUT_MINUTES:30}
     jwt-secret: ${AUTH_JWT_SECRET}
   mail:
+    enabled: ${MAIL_ENABLED:false}
     from-address: ${MAIL_FROM_ADDRESS:}
-    from-name: ${MAIL_FROM_NAME:AIPM}
+    from-name: ${MAIL_FROM_NAME:PM Agent}
+    reply-to: ${MAIL_REPLY_TO:}
+    subject-prefix: ${MAIL_SUBJECT_PREFIX:[PM Agent]}
+    max-attempts: ${MAIL_MAX_ATTEMPTS:3}
+    retry-delay-ms: ${MAIL_RETRY_DELAY_MS:500}
   document:
     storage-path: ${DOCUMENT_STORAGE_PATH:uploads/documents}
     max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10485760}

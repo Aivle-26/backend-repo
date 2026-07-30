@@ -39,7 +39,7 @@ public class User {
     @Column(nullable = false, length = 30)
     private UserStatus status;
 
-    @Column(length = 6)
+    @Column(length = 255)
     private String verificationCode;
 
     @Column(length = 255)
