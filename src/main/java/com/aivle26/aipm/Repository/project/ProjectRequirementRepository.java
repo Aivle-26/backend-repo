@@ -6,13 +6,18 @@ import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface ProjectRequirementRepository extends JpaRepository<ProjectRequirement, Long> {
+
+    boolean existsByProjectId(Long projectId);
 
     @Query("""
             select requirement
@@ -27,19 +32,31 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
             @Param("status") RequirementStatus status
     );
 
-    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument"})
+    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     List<ProjectRequirement> findByProjectIdAndAiSuggestionJsonIsNotNullOrderByIdAsc(Long projectId);
 
-    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument"})
+    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     List<ProjectRequirement> findByProjectIdAndAnalysisResultIdOrderByIdAsc(Long projectId, Long analysisResultId);
 
-    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument"})
+    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     Optional<ProjectRequirement> findByIdAndProjectId(Long id, Long projectId);
 
-    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument"})
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select requirement
+            from ProjectRequirement requirement
+            where requirement.id = :requirementId
+              and requirement.project.id = :projectId
+            """)
+    Optional<ProjectRequirement> findForUpdate(
+            @Param("requirementId") Long requirementId,
+            @Param("projectId") Long projectId
+    );
+
+    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     List<ProjectRequirement> findByProjectIdOrderByIdAsc(Long projectId);
 
-    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument"})
+    @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     @Query("""
             select requirement
             from ProjectRequirement requirement

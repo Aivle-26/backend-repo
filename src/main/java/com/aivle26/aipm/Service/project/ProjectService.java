@@ -9,6 +9,7 @@ import com.aivle26.aipm.Repository.project.ProjectPlanningExtractionRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequirementChangeCandidateRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
@@ -30,6 +31,7 @@ public class ProjectService {
     private final ProjectDocumentService projectDocumentService;
     private final ProjectDocumentAnalysisResultRepository projectDocumentAnalysisResultRepository;
     private final ProjectRequirementRepository projectRequirementRepository;
+    private final ProjectRequirementChangeCandidateRepository projectRequirementChangeCandidateRepository;
     private final ProjectRequiredArtifactRepository projectRequiredArtifactRepository;
     private final ProjectKeyFeatureRepository projectKeyFeatureRepository;
     private final ProjectPlanningExtractionRepository projectPlanningExtractionRepository;
@@ -97,6 +99,7 @@ public class ProjectService {
         projectPlanningExtractionRepository.deleteAllByProjectId(projectId);
         projectKeyFeatureRepository.deleteAllByProjectId(projectId);
         projectRequiredArtifactRepository.deleteAllByProjectId(projectId);
+        projectRequirementChangeCandidateRepository.deleteAllByProjectId(projectId);
         projectRequirementRepository.deleteAllByProjectId(projectId);
         projectDocumentAnalysisResultRepository.deleteAllByProjectId(projectId);
         projectDocumentService.deleteProjectDocumentRecords(projectId);

@@ -1,9 +1,13 @@
 package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.AnalyzeProjectRequirementsRequest;
+import com.aivle26.aipm.Dto.project.ApplyRequirementChangesRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectRequirementRequest;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Dto.project.ProjectRequirementsResponse;
+import com.aivle26.aipm.Dto.project.RequirementChangeCandidateResponse;
+import com.aivle26.aipm.Dto.project.RequirementReadjustmentResponse;
+import com.aivle26.aipm.Dto.project.ReviewRequirementChangeRequest;
 import com.aivle26.aipm.Dto.project.SaveFinalRequirementsRequest;
 import com.aivle26.aipm.Dto.project.UpdateProjectRequirementRequest;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
@@ -11,6 +15,7 @@ import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.project.RequirementType;
 import com.aivle26.aipm.Service.project.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.project.ProjectRequirementService;
+import com.aivle26.aipm.Service.project.ProjectRequirementReadjustmentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -36,6 +41,7 @@ import java.util.List;
 public class ProjectRequirementController {
     private final ProjectRequirementService projectRequirementService;
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
+    private final ProjectRequirementReadjustmentService readjustmentService;
 
     // Analyzes the selected project documents and returns the persisted requirements.
     @PostMapping("/analyze")
@@ -48,6 +54,47 @@ public class ProjectRequirementController {
                         projectId,
                         request.documentIds()
                 )
+        );
+    }
+
+    @PostMapping("/readjust")
+    public ResponseEntity<RequirementReadjustmentResponse> readjust(
+            @PathVariable Long projectId,
+            @Valid @RequestBody AnalyzeProjectRequirementsRequest request
+    ) {
+        return ResponseEntity.ok(
+                readjustmentService.createCandidates(
+                        projectId,
+                        request.documentIds()
+                )
+        );
+    }
+
+    @GetMapping("/readjustments")
+    public ResponseEntity<RequirementReadjustmentResponse> listReadjustments(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(readjustmentService.listCandidates(projectId));
+    }
+
+    @PutMapping("/readjustments/{candidateId}")
+    public ResponseEntity<RequirementChangeCandidateResponse> reviewReadjustment(
+            @PathVariable Long projectId,
+            @PathVariable Long candidateId,
+            @Valid @RequestBody ReviewRequirementChangeRequest request
+    ) {
+        return ResponseEntity.ok(
+                readjustmentService.review(projectId, candidateId, request)
+        );
+    }
+
+    @PostMapping("/readjustments/apply")
+    public ResponseEntity<ProjectRequirementsResponse> applyReadjustments(
+            @PathVariable Long projectId,
+            @Valid @RequestBody ApplyRequirementChangesRequest request
+    ) {
+        return ResponseEntity.ok(
+                readjustmentService.apply(projectId, request.candidateIds())
         );
     }
 

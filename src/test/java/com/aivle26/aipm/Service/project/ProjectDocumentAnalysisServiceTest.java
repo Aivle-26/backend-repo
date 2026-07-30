@@ -258,6 +258,111 @@ class ProjectDocumentAnalysisServiceTest {
     }
 
     @Test
+    void analyzeRequirementsPersistsValidatedEvidence() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        PlanningDocumentExtractResponse base =
+                successResponse(List.of(document.getOriginalFileName()));
+        PlanningDocumentExtractResponse.RequirementCandidate source =
+                base.requirementCandidates().getFirst();
+        PlanningDocumentExtractResponse response =
+                new PlanningDocumentExtractResponse(
+                        base.projectInfo(),
+                        List.of(new PlanningDocumentExtractResponse.RequirementCandidate(
+                                source.requirementId(),
+                                source.functionName(),
+                                source.requirementText(),
+                                source.category(),
+                                source.priority(),
+                                source.acceptanceCriteria(),
+                                source.dueDate(),
+                                source.deliverableName(),
+                                source.securityCondition(),
+                                source.sourceDocument(),
+                                "User login",
+                                List.of(new PlanningDocumentExtractResponse.RequirementEvidence(
+                                        document.getId(),
+                                        document.getOriginalFileName(),
+                                        2,
+                                        document.getId() + ":2:1",
+                                        "User login",
+                                        10,
+                                        20,
+                                        List.of()
+                                ))
+                        )),
+                        base.documents(),
+                        base.llmStatus()
+                );
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(response);
+
+        ProjectRequirementsResponse result =
+                projectDocumentAnalysisService.analyzeRequirements(
+                        document.getProject().getId(),
+                        List.of(document.getId())
+                );
+
+        assertThat(result.finalRequirements().getFirst().evidences()).hasSize(1);
+        var evidence = result.finalRequirements().getFirst().evidences().getFirst();
+        assertThat(evidence.documentId()).isEqualTo(document.getId());
+        assertThat(evidence.pageNumber()).isEqualTo(2);
+        assertThat(evidence.chunkId()).isEqualTo(document.getId() + ":2:1");
+        assertThat(evidence.quoteText()).isEqualTo("User login");
+    }
+
+    @Test
+    void analyzeRequirementsRejectsEvidenceFromAnotherDocument() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        PlanningDocumentExtractResponse base =
+                successResponse(List.of(document.getOriginalFileName()));
+        PlanningDocumentExtractResponse.RequirementCandidate source =
+                base.requirementCandidates().getFirst();
+        PlanningDocumentExtractResponse response =
+                new PlanningDocumentExtractResponse(
+                        base.projectInfo(),
+                        List.of(new PlanningDocumentExtractResponse.RequirementCandidate(
+                                source.requirementId(),
+                                source.functionName(),
+                                source.requirementText(),
+                                source.category(),
+                                source.priority(),
+                                source.acceptanceCriteria(),
+                                source.dueDate(),
+                                source.deliverableName(),
+                                source.securityCondition(),
+                                source.sourceDocument(),
+                                source.sourceExcerpt(),
+                                List.of(new PlanningDocumentExtractResponse.RequirementEvidence(
+                                        999999L,
+                                        document.getOriginalFileName(),
+                                        1,
+                                        "999999:1:1",
+                                        "User login",
+                                        0,
+                                        10,
+                                        List.of()
+                                ))
+                        )),
+                        base.documents(),
+                        base.llmStatus()
+                );
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(response);
+
+        assertThatThrownBy(() ->
+                projectDocumentAnalysisService.analyzeRequirements(
+                        document.getProject().getId(),
+                        List.of(document.getId())
+                ))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("evidence document");
+        assertThat(projectRequirementRepository.count()).isZero();
+        assertThat(analysisResultRepository.count()).isZero();
+    }
+
+    @Test
     void analyzeRequirementsAcceptsOptionalProjectMetadataFromAiContract() throws Exception {
         ProjectDocument document = uploadDocument();
         prepareStoredContent();

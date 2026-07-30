@@ -98,6 +98,7 @@ agent:
   planning:
     base-url: ${PLANNING_AGENT_BASE_URL:http://localhost:8000}
     extract-path: ${PLANNING_AGENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+    readjust-path: ${PLANNING_AGENT_READJUST_PATH:/api/v1/planning/documents/readjust}
     wbs-path: ${PLANNING_AGENT_WBS_PATH:/api/v1/planning/wbs/generate}
     connect-timeout: ${PLANNING_AGENT_CONNECT_TIMEOUT:5s}
     read-timeout: ${PLANNING_AGENT_READ_TIMEOUT:120s}

@@ -91,7 +91,72 @@ public record PlanningDocumentExtractResponse(
             String sourceDocument,
 
             @JsonProperty("source_excerpt")
-            String sourceExcerpt
+            String sourceExcerpt,
+
+            List<RequirementEvidence> evidences
+    ) {
+        public RequirementCandidate(
+                Long requirementId,
+                String functionName,
+                String requirementText,
+                String category,
+                String priority,
+                String acceptanceCriteria,
+                LocalDate dueDate,
+                String deliverableName,
+                String securityCondition,
+                String sourceDocument,
+                String sourceExcerpt
+        ) {
+            this(
+                    requirementId,
+                    functionName,
+                    requirementText,
+                    category,
+                    priority,
+                    acceptanceCriteria,
+                    dueDate,
+                    deliverableName,
+                    securityCondition,
+                    sourceDocument,
+                    sourceExcerpt,
+                    List.of()
+            );
+        }
+    }
+
+    public record RequirementEvidence(
+            @JsonProperty("document_id")
+            Long documentId,
+
+            @JsonProperty("source_document")
+            String sourceDocument,
+
+            @JsonProperty("page_number")
+            Integer pageNumber,
+
+            @JsonProperty("chunk_id")
+            String chunkId,
+
+            @JsonProperty("quote_text")
+            String quoteText,
+
+            @JsonProperty("start_offset")
+            Integer startOffset,
+
+            @JsonProperty("end_offset")
+            Integer endOffset,
+
+            @JsonProperty("bounding_boxes")
+            List<NormalizedBoundingBox> boundingBoxes
+    ) {
+    }
+
+    public record NormalizedBoundingBox(
+            double x,
+            double y,
+            double width,
+            double height
     ) {
     }
 

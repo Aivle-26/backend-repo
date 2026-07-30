@@ -4,6 +4,15 @@ public record StoredDocumentFile(
         String originalFileName,
         String contentType,
         long fileSize,
-        byte[] content
+        byte[] content,
+        Long documentId
 ) {
+    public StoredDocumentFile(
+            String originalFileName,
+            String contentType,
+            long fileSize,
+            byte[] content
+    ) {
+        this(originalFileName, contentType, fileSize, content, null);
+    }
 }

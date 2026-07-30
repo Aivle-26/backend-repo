@@ -20,6 +20,9 @@ public class PlanningAgentProperties {
     private String extractPath = "/api/v1/planning/documents/extract";
 
     @NotBlank
+    private String readjustPath = "/api/v1/planning/documents/readjust";
+
+    @NotBlank
     private String wbsPath = "/api/v1/planning/wbs/generate";
 
     private Duration connectTimeout = Duration.ofSeconds(5);

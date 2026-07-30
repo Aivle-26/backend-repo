@@ -2,6 +2,7 @@ package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.PlanningDocumentExtractResponse;
+import com.aivle26.aipm.Dto.project.PlanningRequirementReadjustResponse;
 import com.aivle26.aipm.Exception.ApiException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -132,6 +133,85 @@ class PlanningAgentHttpClientTest {
     }
 
     @Test
+    void sendsStableDocumentManifestWhenDatabaseIdIsAvailable() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "project_info": {},
+                          "requirement_candidates": [],
+                          "documents": [],
+                          "llm_status": "SUCCEEDED"
+                        }
+                        """));
+        PlanningAgentHttpClient client =
+                createClient(mockWebServer.url("/").toString());
+        StoredDocumentFile file = new StoredDocumentFile(
+                "rfp.txt",
+                "text/plain",
+                4,
+                "test".getBytes(StandardCharsets.UTF_8),
+                12L
+        );
+
+        client.extractDocuments(List.of(file), true);
+
+        String body = mockWebServer.takeRequest().getBody().readUtf8();
+        assertThat(body).contains("name=\"document_manifest\"");
+        assertThat(body)
+                .contains("\"document_id\":12")
+                .contains("\"file_name\":\"rfp.txt\"");
+    }
+
+    @Test
+    void sendsReadjustmentToDedicatedEndpoint() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "change_candidates": [],
+                          "documents": [],
+                          "llm_status": "SUCCEEDED"
+                        }
+                        """));
+        PlanningAgentHttpClient client =
+                createClient(mockWebServer.url("/").toString());
+        StoredDocumentFile file = new StoredDocumentFile(
+                "change.txt",
+                "text/plain",
+                4,
+                "test".getBytes(StandardCharsets.UTF_8),
+                15L
+        );
+        var existing = new PlanningRequirementReadjustResponse.ExistingRequirement(
+                10L,
+                "Login",
+                "Users must log in.",
+                "FUNCTIONAL",
+                "HIGH",
+                null,
+                null,
+                null,
+                null,
+                "base.pdf",
+                null,
+                List.of()
+        );
+
+        client.readjustRequirements(List.of(file), List.of(existing));
+
+        var request = mockWebServer.takeRequest();
+        assertThat(request.getPath())
+                .isEqualTo("/api/v1/planning/documents/readjust");
+        String body = request.getBody().readUtf8();
+        assertThat(body).contains("name=\"existing_requirements\"");
+        assertThat(body).contains("\"requirement_id\":10");
+        assertThat(body).contains("\"document_id\":15");
+    }
+
+    @Test
     void mapsAgentValidationFailureToUnprocessableEntity() {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(422)
@@ -213,6 +293,7 @@ class PlanningAgentHttpClientTest {
         PlanningAgentProperties properties = new PlanningAgentProperties();
         properties.setBaseUrl(baseUrl);
         properties.setExtractPath("/api/v1/planning/documents/extract");
+        properties.setReadjustPath("/api/v1/planning/documents/readjust");
         properties.setConnectTimeout(Duration.ofSeconds(1));
         properties.setReadTimeout(readTimeout);
 

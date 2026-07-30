@@ -12,6 +12,7 @@ import com.aivle26.aipm.Entity.project.ProjectStatus;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -55,6 +56,7 @@ public class ProjectDocumentService {
 
     private final ProjectRepository projectRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
+    private final ProjectRequirementRepository projectRequirementRepository;
     private final DocumentStorageProperties documentStorageProperties;
     private final ProjectAuthorizationService projectAuthorizationService;
     private final S3Client s3Client;
@@ -131,6 +133,32 @@ public class ProjectDocumentService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public ProjectDocumentContent getPdfContent(Long projectId, Long documentId) {
+        projectAuthorizationService.requireProjectAccess(projectId);
+        ProjectDocument document = projectDocumentRepository
+                .findByIdAndProjectId(documentId, projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_DOCUMENT_NOT_FOUND",
+                        "Project document was not found."
+                ));
+        if (!"pdf".equalsIgnoreCase(document.getExtension())
+                || !"application/pdf".equalsIgnoreCase(document.getContentType())) {
+            throw new ApiException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "PROJECT_DOCUMENT_NOT_PDF",
+                    "Only PDF project documents can be viewed."
+            );
+        }
+        StoredDocumentFile storedFile = toStoredDocumentFile(document);
+        return new ProjectDocumentContent(
+                storedFile.originalFileName(),
+                storedFile.contentType(),
+                storedFile.content()
+        );
+    }
+
     // 프로젝트에 연결된 문서 DB 레코드를 일괄 삭제한다.
     @Transactional
     public void deleteProjectDocumentRecords(Long projectId) {
@@ -193,6 +221,14 @@ public class ProjectDocumentService {
             for (ValidatedUploadFile validatedFile : validatedFiles) {
                 projectDocumentRepository.findByProjectIdAndOriginalFileName(project.getId(), validatedFile.originalFileName())
                         .ifPresent(replacedDocuments::add);
+            }
+            if (!replacedDocuments.isEmpty()
+                    && projectRequirementRepository.existsByProjectId(project.getId())) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "PROJECT_DOCUMENT_IN_USE",
+                        "A document referenced by project requirements cannot be replaced. Upload it with a new file name."
+                );
             }
 
             for (ValidatedUploadFile validatedFile : validatedFiles) {
@@ -271,7 +307,8 @@ public class ProjectDocumentService {
                     projectDocument.getOriginalFileName(),
                     projectDocument.getContentType(),
                     projectDocument.getFileSize(),
-                    object.asByteArray()
+                    object.asByteArray(),
+                    projectDocument.getId()
             );
         } catch (SdkException exception) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "DOCUMENT_STORAGE_ERROR", "file download failed", exception);
@@ -448,6 +485,13 @@ public class ProjectDocumentService {
             String contentType,
             long fileSize,
             String objectKey
+    ) {
+    }
+
+    public record ProjectDocumentContent(
+            String originalFileName,
+            String contentType,
+            byte[] content
     ) {
     }
 }
