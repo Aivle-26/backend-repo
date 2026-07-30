@@ -152,11 +152,30 @@ public class ProjectRequirementService {
     // 저장 버튼에서 전달한 전체 편집본을 ID 기준으로 추가·수정·제외하고 한 트랜잭션으로 반영한다.
     @Transactional
     public ProjectRequirementsResponse saveFinal(Long projectId, SaveFinalRequirementsRequest request) {
-        Project project = requireAccessibleProject(projectId);
+        Project project = projectRepository.findForUpdate(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "프로젝트를 찾을 수 없습니다. projectId=" + projectId
+                ));
+        projectAuthorizationService.requireProjectPm(project);
         List<ProjectRequirement> existingRequirements =
                 projectRequirementRepository.findByProjectIdOrderByIdAsc(projectId);
         Map<Long, ProjectRequirement> existingById = new LinkedHashMap<>();
         existingRequirements.forEach(requirement -> existingById.put(requirement.getId(), requirement));
+
+        Set<Long> originallyFinalRequirementIds = new HashSet<>();
+        List<ProjectRequirement> stagedFinalRequirements = existingRequirements.stream()
+                .filter(ProjectRequirement::isIncludedInFinal)
+                .toList();
+        stagedFinalRequirements.forEach(requirement -> {
+            originallyFinalRequirementIds.add(requirement.getId());
+            requirement.setIncludedInFinal(false);
+        });
+        if (!stagedFinalRequirements.isEmpty()) {
+            projectRequirementRepository.saveAll(stagedFinalRequirements);
+            projectRequirementRepository.flush();
+        }
 
         Set<Long> requestedIds = new HashSet<>();
         Set<Long> externalReferenceIds = new HashSet<>();
@@ -183,7 +202,8 @@ public class ProjectRequirementService {
                     );
                 }
                 requirement = existingById.get(item.requirementId());
-                if (requirement == null || !requirement.isIncludedInFinal()) {
+                if (requirement == null
+                        || !originallyFinalRequirementIds.contains(requirement.getId())) {
                     throw requirementNotFound(item.requirementId());
                 }
                 applyValues(requirement, projectId, toValues(item));
@@ -193,7 +213,8 @@ public class ProjectRequirementService {
         }
 
         for (ProjectRequirement existing : existingRequirements) {
-            if (!existing.isIncludedInFinal() || requestedIds.contains(existing.getId())) {
+            if (!originallyFinalRequirementIds.contains(existing.getId())
+                    || requestedIds.contains(existing.getId())) {
                 continue;
             }
             if (mustPreserveRow(existing)) {

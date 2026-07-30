@@ -18,11 +18,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.text.Normalizer;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -61,6 +64,7 @@ public class ProjectDocumentService {
     private final ProjectAuthorizationService projectAuthorizationService;
     private final S3Client s3Client;
     private final S3Properties s3Properties;
+    private final TransactionTemplate transactionTemplate;
 
     // 초안 프로젝트의 업로드 파일을 검증·교체 저장하고 문서 메타데이터를 반환한다.
     @Transactional
@@ -72,9 +76,14 @@ public class ProjectDocumentService {
     }
 
     // 프로젝트 문서 레코드와 실제 파일을 검증해 AI 전송용 저장 파일 목록을 반환한다.
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<StoredDocumentFile> getStoredDocumentFiles(Long projectId) {
-        return loadStoredDocumentFiles(loadProjectDocuments(projectId, true));
+        List<StoredDocumentSnapshot> documents = transactionTemplate.execute(status ->
+                loadProjectDocuments(projectId).stream()
+                        .map(StoredDocumentSnapshot::from)
+                        .toList()
+        );
+        return getStoredDocumentFilesFromSnapshots(documents);
     }
 
     // Selects only the requested documents after validating project ownership and scope.
@@ -114,13 +123,28 @@ public class ProjectDocumentService {
 
     // Downloads exactly the validated document set for a planning-agent request.
     public List<StoredDocumentFile> getStoredDocumentFiles(List<ProjectDocument> documents) {
-        return loadStoredDocumentFiles(documents);
+        return getStoredDocumentFilesFromSnapshots(
+                documents.stream()
+                        .map(StoredDocumentSnapshot::from)
+                        .toList()
+        );
+    }
+
+    // Downloads documents from immutable metadata captured before leaving the DB lookup phase.
+    public List<StoredDocumentFile> getStoredDocumentFilesFromSnapshots(
+            List<StoredDocumentSnapshot> documents
+    ) {
+        List<StoredDocumentFile> storedFiles = new ArrayList<>();
+        for (StoredDocumentSnapshot document : documents) {
+            storedFiles.add(toStoredDocumentFile(document));
+        }
+        return storedFiles;
     }
 
     // 프로젝트에 연결된 문서 메타데이터를 조회해 엔티티 목록으로 반환한다.
     @Transactional(readOnly = true)
     public List<ProjectDocument> getProjectDocuments(Long projectId) {
-        return loadProjectDocuments(projectId, false);
+        return loadProjectDocuments(projectId);
     }
 
     // 접근 가능한 프로젝트의 문서 메타데이터를 업로드 복원용 응답으로 반환한다.
@@ -133,24 +157,27 @@ public class ProjectDocumentService {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ProjectDocumentContent getPdfContent(Long projectId, Long documentId) {
-        projectAuthorizationService.requireProjectAccess(projectId);
-        ProjectDocument document = projectDocumentRepository
-                .findByIdAndProjectId(documentId, projectId)
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND,
-                        "PROJECT_DOCUMENT_NOT_FOUND",
-                        "Project document was not found."
-                ));
-        if (!"pdf".equalsIgnoreCase(document.getExtension())
-                || !"application/pdf".equalsIgnoreCase(document.getContentType())) {
-            throw new ApiException(
-                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "PROJECT_DOCUMENT_NOT_PDF",
-                    "Only PDF project documents can be viewed."
-            );
-        }
+        StoredDocumentSnapshot document = transactionTemplate.execute(status -> {
+            projectAuthorizationService.requireProjectAccess(projectId);
+            ProjectDocument current = projectDocumentRepository
+                    .findByIdAndProjectId(documentId, projectId)
+                    .orElseThrow(() -> new ApiException(
+                            HttpStatus.NOT_FOUND,
+                            "PROJECT_DOCUMENT_NOT_FOUND",
+                            "Project document was not found."
+                    ));
+            if (!"pdf".equalsIgnoreCase(current.getExtension())
+                    || !"application/pdf".equalsIgnoreCase(current.getContentType())) {
+                throw new ApiException(
+                        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                        "PROJECT_DOCUMENT_NOT_PDF",
+                        "Only PDF project documents can be viewed."
+                );
+            }
+            return StoredDocumentSnapshot.from(current);
+        });
         StoredDocumentFile storedFile = toStoredDocumentFile(document);
         return new ProjectDocumentContent(
                 storedFile.originalFileName(),
@@ -271,29 +298,22 @@ public class ProjectDocumentService {
     }
 
     // 프로젝트 문서를 조회하고 필요 시 실제 파일 존재까지 검증해 반환한다.
-    private List<ProjectDocument> loadProjectDocuments(Long projectId, boolean requireFiles) {
+    private List<ProjectDocument> loadProjectDocuments(Long projectId) {
         List<ProjectDocument> projectDocuments = projectDocumentRepository.findByProjectId(projectId);
         if (projectDocuments.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "document not found");
-        }
-        if (requireFiles) {
-            loadStoredDocumentFiles(projectDocuments);
         }
         return projectDocuments;
     }
 
     // 문서 메타데이터 목록을 실제 파일이 확인된 AI 전송용 파일 목록으로 변환한다.
-    private List<StoredDocumentFile> loadStoredDocumentFiles(List<ProjectDocument> projectDocuments) {
-        List<StoredDocumentFile> storedFiles = new ArrayList<>();
-        for (ProjectDocument projectDocument : projectDocuments) {
-            storedFiles.add(toStoredDocumentFile(projectDocument));
-        }
-        return storedFiles;
-    }
-
     // 문서 저장 경로의 소유 범위와 존재 여부를 검증해 저장 파일 객체로 반환한다.
     private StoredDocumentFile toStoredDocumentFile(ProjectDocument projectDocument) {
-        String storagePath = projectDocument.getStoragePath();
+        return toStoredDocumentFile(StoredDocumentSnapshot.from(projectDocument));
+    }
+
+    private StoredDocumentFile toStoredDocumentFile(StoredDocumentSnapshot projectDocument) {
+        String storagePath = projectDocument.storagePath();
         if (storagePath == null || storagePath.isBlank()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "document not found");
         }
@@ -304,11 +324,11 @@ public class ProjectDocumentService {
                     .key(storagePath)
                     .build());
             return new StoredDocumentFile(
-                    projectDocument.getOriginalFileName(),
-                    projectDocument.getContentType(),
-                    projectDocument.getFileSize(),
+                    projectDocument.originalFileName(),
+                    projectDocument.contentType(),
+                    projectDocument.fileSize(),
                     object.asByteArray(),
-                    projectDocument.getId()
+                    projectDocument.id()
             );
         } catch (SdkException exception) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "DOCUMENT_STORAGE_ERROR", "file download failed", exception);
@@ -493,5 +513,37 @@ public class ProjectDocumentService {
             String contentType,
             byte[] content
     ) {
+    }
+
+    public record StoredDocumentSnapshot(
+            Long id,
+            String originalFileName,
+            String storedFileName,
+            String storagePath,
+            String extension,
+            String contentType,
+            long fileSize,
+            ProjectDocumentStatus status,
+            Long characterCount,
+            String fileType,
+            String processingMode,
+            LocalDateTime createdAt
+    ) {
+        public static StoredDocumentSnapshot from(ProjectDocument document) {
+            return new StoredDocumentSnapshot(
+                    document.getId(),
+                    document.getOriginalFileName(),
+                    document.getStoredFileName(),
+                    document.getStoragePath(),
+                    document.getExtension(),
+                    document.getContentType(),
+                    document.getFileSize(),
+                    document.getStatus(),
+                    document.getCharacterCount(),
+                    document.getFileType(),
+                    document.getProcessingMode(),
+                    document.getCreatedAt()
+            );
+        }
     }
 }

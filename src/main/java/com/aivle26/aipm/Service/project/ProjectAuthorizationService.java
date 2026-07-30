@@ -32,8 +32,14 @@ public class ProjectAuthorizationService {
 
     public void requireProjectPm(Long projectId) {
         Project project = requireProject(projectId);
+        requireProjectPm(project);
+    }
+
+    // Validates ownership against an already loaded (and optionally locked) project.
+    public void requireProjectPm(Project project) {
         AuthenticatedUser currentUser = currentUser();
-        if (!PM_ROLE.equals(currentUser.role())
+        if (project == null
+                || !PM_ROLE.equals(currentUser.role())
                 || !project.getPm().getEmployeeNumber().equals(currentUser.employeeNumber())) {
             throw new AccessDeniedException("Access is denied");
         }

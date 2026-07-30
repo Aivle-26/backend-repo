@@ -15,6 +15,7 @@ import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
 import com.aivle26.aipm.Entity.project.RequirementPriority;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
+import com.aivle26.aipm.Entity.project.RequirementType;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
@@ -38,6 +39,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -45,6 +48,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -102,6 +106,9 @@ class ProjectDocumentAnalysisServiceTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @BeforeEach
     void setUp() {
@@ -255,6 +262,207 @@ class ProjectDocumentAnalysisServiceTest {
         assertThat(analysisResultRepository.count()).isEqualTo(1);
         assertThat(projectDocumentRepository.findById(document.getId()).orElseThrow().getStatus())
                 .isEqualTo(ProjectDocumentStatus.ANALYZED);
+    }
+
+    @Test
+    void analyzeRequirementsPerformsStorageAndAiIoWithoutDbTransaction() {
+        ProjectDocument document = uploadDocument();
+        byte[] content = "transaction boundary".getBytes();
+        AtomicBoolean storageObservedWithoutTransaction = new AtomicBoolean();
+        AtomicBoolean aiObservedWithoutTransaction = new AtomicBoolean();
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenAnswer(invocation -> {
+            storageObservedWithoutTransaction.set(
+                    !TransactionSynchronizationManager.isActualTransactionActive()
+            );
+            return ResponseBytes.fromByteArray(
+                    GetObjectResponse.builder()
+                            .contentLength((long) content.length)
+                            .build(),
+                    content
+            );
+        });
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenAnswer(invocation -> {
+                    aiObservedWithoutTransaction.set(
+                            !TransactionSynchronizationManager.isActualTransactionActive()
+                    );
+                    return successResponse(List.of(document.getOriginalFileName()));
+                });
+
+        projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        );
+
+        assertThat(storageObservedWithoutTransaction).isTrue();
+        assertThat(aiObservedWithoutTransaction).isTrue();
+    }
+
+    @Test
+    void storedDocumentDownloadSuspendsCallerTransactionAndDownloadsOnce() {
+        ProjectDocument document = uploadDocument();
+        byte[] content = "single download".getBytes();
+        AtomicBoolean storageObservedWithoutTransaction = new AtomicBoolean();
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenAnswer(invocation -> {
+            storageObservedWithoutTransaction.set(
+                    !TransactionSynchronizationManager.isActualTransactionActive()
+            );
+            return ResponseBytes.fromByteArray(
+                    GetObjectResponse.builder()
+                            .contentLength((long) content.length)
+                            .build(),
+                    content
+            );
+        });
+
+        List<StoredDocumentFile> files = transactionTemplate.execute(status -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .isTrue();
+            return projectDocumentService.getStoredDocumentFiles(
+                    document.getProject().getId()
+            );
+        });
+
+        assertThat(files).hasSize(1);
+        assertThat(storageObservedWithoutTransaction).isTrue();
+        verify(s3Client, times(1))
+                .getObjectAsBytes(any(GetObjectRequest.class));
+    }
+
+    @Test
+    void pdfDownloadSuspendsCallerTransactionAndDownloadsOnce() {
+        Long projectId = createProject("PM001");
+        byte[] content = "%PDF-1.7".getBytes();
+        projectDocumentService.uploadInitialDocuments(
+                projectId,
+                List.of(new MockMultipartFile(
+                        "files",
+                        "evidence.pdf",
+                        "application/pdf",
+                        content
+                ))
+        );
+        ProjectDocument document =
+                projectDocumentRepository.findByProjectId(projectId).getFirst();
+        AtomicBoolean storageObservedWithoutTransaction = new AtomicBoolean();
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenAnswer(invocation -> {
+            storageObservedWithoutTransaction.set(
+                    !TransactionSynchronizationManager.isActualTransactionActive()
+            );
+            return ResponseBytes.fromByteArray(
+                    GetObjectResponse.builder()
+                            .contentLength((long) content.length)
+                            .build(),
+                    content
+            );
+        });
+
+        ProjectDocumentService.ProjectDocumentContent result =
+                transactionTemplate.execute(status -> {
+                    assertThat(TransactionSynchronizationManager
+                            .isActualTransactionActive()).isTrue();
+                    return projectDocumentService.getPdfContent(
+                            projectId,
+                            document.getId()
+                    );
+                });
+
+        assertThat(result.content()).isEqualTo(content);
+        assertThat(storageObservedWithoutTransaction).isTrue();
+        verify(s3Client, times(1))
+                .getObjectAsBytes(any(GetObjectRequest.class));
+    }
+
+    @Test
+    void analyzeRequirementsTimeoutLeavesNoPartialData() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenThrow(new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "PLANNING_AGENT_TIMEOUT",
+                        "Document analysis timed out."
+                ));
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> {
+                            assertThat(exception.getStatus())
+                                    .isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+                            assertThat(exception.getCode())
+                                    .isEqualTo("PLANNING_AGENT_TIMEOUT");
+                        }
+                );
+
+        assertThat(analysisResultRepository.count()).isZero();
+        assertThat(projectRequirementRepository.count()).isZero();
+        assertThat(projectDocumentRepository.findById(document.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.UPLOADED);
+    }
+
+    @Test
+    void analyzeRequirementsRejectsDocumentChangedDuringAiCall() {
+        ProjectDocument document = uploadDocument();
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenAnswer(invocation -> {
+                    ProjectDocument changed = projectDocumentRepository
+                            .findById(document.getId())
+                            .orElseThrow();
+                    changed.setStoragePath(changed.getStoragePath() + "-replaced");
+                    projectDocumentRepository.saveAndFlush(changed);
+                    return successResponse(List.of(document.getOriginalFileName()));
+                });
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        ))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> {
+                            assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                            assertThat(exception.getCode())
+                                    .isEqualTo("PROJECT_ANALYSIS_INPUT_CHANGED");
+                        }
+                );
+
+        assertThat(analysisResultRepository.count()).isZero();
+        assertThat(projectRequirementRepository.count()).isZero();
+    }
+
+    @Test
+    void analyzeRequirementsRollsBackAllWritesWhenPersistenceFails() {
+        ProjectDocument document = uploadDocument();
+        ProjectRequirement existing = new ProjectRequirement();
+        existing.setProject(projectRepository.findById(document.getProject().getId()).orElseThrow());
+        existing.setSourceDocument(document);
+        existing.setExternalReferenceId(91001L);
+        existing.setType(RequirementType.FUNCTIONAL);
+        existing.setTitle("Existing");
+        existing.setDescription("Existing requirement");
+        existing.setPriority(RequirementPriority.HIGH);
+        existing.setStatus(RequirementStatus.UNCONFIRMED);
+        existing.setConfirmed(false);
+        existing.setIncludedInFinal(true);
+        projectRequirementRepository.saveAndFlush(existing);
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(successResponse(List.of(document.getOriginalFileName())));
+
+        assertThatThrownBy(() -> projectDocumentAnalysisService.analyzeRequirements(
+                document.getProject().getId(),
+                List.of(document.getId())
+        )).isInstanceOf(RuntimeException.class);
+
+        assertThat(analysisResultRepository.count()).isZero();
+        assertThat(projectRequirementRepository.count()).isEqualTo(1);
+        assertThat(projectDocumentRepository.findById(document.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.UPLOADED);
     }
 
     @Test

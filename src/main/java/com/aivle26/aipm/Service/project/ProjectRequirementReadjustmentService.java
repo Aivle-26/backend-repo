@@ -30,9 +30,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -41,7 +44,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -55,18 +60,44 @@ public class ProjectRequirementReadjustmentService {
     private final ProjectRequirementMapper requirementMapper;
     private final ProjectAuthorizationService authorizationService;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RequirementReadjustmentResponse createCandidates(
             Long projectId,
             List<Long> requestedDocumentIds
     ) {
-        authorizationService.requireProjectPm(projectId);
-        Project project = requireProject(projectId);
         List<Long> documentIds = requestedDocumentIds.stream()
                 .distinct()
                 .sorted()
                 .toList();
+        ReadjustmentPreparation preparation = inTransaction(
+                () -> prepareReadjustment(projectId, documentIds)
+        );
+        List<StoredDocumentFile> files =
+                projectDocumentService.getStoredDocumentFilesFromSnapshots(
+                        preparation.documents()
+                );
+        PlanningRequirementReadjustResponse response =
+                planningAgentClient.readjustRequirements(
+                        files,
+                        preparation.agentExistingRequirements()
+                );
+
+        if (response == null || response.changeCandidates() == null) {
+            throw invalidAgentResponse(
+                    "change_candidates must be present as an array."
+            );
+        }
+        return inTransaction(() -> persistCandidates(preparation, response));
+    }
+
+    private ReadjustmentPreparation prepareReadjustment(
+            Long projectId,
+            List<Long> documentIds
+    ) {
+        authorizationService.requireProjectPm(projectId);
+        Project project = requireProject(projectId);
         List<ProjectDocument> selectedDocuments =
                 projectDocumentService.getAnalyzableProjectDocuments(
                         projectId,
@@ -85,15 +116,66 @@ public class ProjectRequirementReadjustmentService {
             );
         }
 
-        List<StoredDocumentFile> files =
-                projectDocumentService.getStoredDocumentFiles(selectedDocuments);
-        PlanningRequirementReadjustResponse response =
-                planningAgentClient.readjustRequirements(
-                        files,
-                        existingRequirements.stream()
-                                .map(this::toAgentExistingRequirement)
-                                .toList()
+        ReadjustmentPreparation preparation = new ReadjustmentPreparation(
+                projectId,
+                project.getUpdatedAt(),
+                documentIds,
+                selectedDocuments.stream()
+                        .map(ProjectDocumentService.StoredDocumentSnapshot::from)
+                        .toList(),
+                existingRequirements.stream()
+                        .map(RequirementSnapshot::from)
+                        .toList(),
+                existingRequirements.stream()
+                        .map(this::toAgentExistingRequirement)
+                        .toList()
+        );
+        return preparation;
+    }
+
+    private RequirementReadjustmentResponse persistCandidates(
+            ReadjustmentPreparation preparation,
+            PlanningRequirementReadjustResponse response
+    ) {
+        Long projectId = preparation.projectId();
+        Project project = projectRepository.findForUpdate(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "Project was not found."
+                ));
+        authorizationService.requireProjectPm(project);
+        if (!Objects.equals(project.getUpdatedAt(), preparation.projectUpdatedAt())) {
+            throw readjustmentInputChanged();
+        }
+        List<ProjectDocument> selectedDocuments =
+                projectDocumentRepository.findForUpdate(
+                        projectId,
+                        preparation.documentIds()
                 );
+        if (!selectedDocuments.stream()
+                .map(ProjectDocumentService.StoredDocumentSnapshot::from)
+                .toList()
+                .equals(preparation.documents())) {
+            throw readjustmentInputChanged();
+        }
+        List<ProjectRequirement> existingRequirements =
+                projectRequirementRepository.findFinalForUpdate(projectId);
+        if (!existingRequirements.stream()
+                .map(RequirementSnapshot::from)
+                .toList()
+                .equals(preparation.requirements())) {
+            throw readjustmentInputChanged();
+        }
+        List<PlanningRequirementReadjustResponse.ExistingRequirement>
+                currentAgentExistingRequirements = existingRequirements.stream()
+                        .map(this::toAgentExistingRequirement)
+                        .toList();
+        if (!currentAgentExistingRequirements.equals(
+                preparation.agentExistingRequirements()
+        )) {
+            throw readjustmentInputChanged();
+        }
 
         Map<Long, ProjectRequirement> existingById = new LinkedHashMap<>();
         existingRequirements.forEach(requirement ->
@@ -107,14 +189,11 @@ public class ProjectRequirementReadjustmentService {
             documentById.put(document.getId(), document);
             documentByName.put(document.getOriginalFileName(), document);
         });
-        Set<Long> selectedDocumentIds = new HashSet<>(documentIds);
+        Set<Long> selectedDocumentIds = new HashSet<>(preparation.documentIds());
 
         List<ProjectRequirementChangeCandidate> candidates = new ArrayList<>();
-        List<PlanningRequirementReadjustResponse.ChangeCandidate> changes =
-                response == null || response.changeCandidates() == null
-                        ? List.of()
-                        : response.changeCandidates();
-        for (PlanningRequirementReadjustResponse.ChangeCandidate change : changes) {
+        for (PlanningRequirementReadjustResponse.ChangeCandidate change :
+                response.changeCandidates()) {
             candidates.add(toCandidate(
                     project,
                     change,
@@ -200,8 +279,13 @@ public class ProjectRequirementReadjustmentService {
             Long projectId,
             List<Long> requestedCandidateIds
     ) {
-        authorizationService.requireProjectPm(projectId);
-        Project project = requireProject(projectId);
+        Project project = projectRepository.findForUpdate(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "Project was not found."
+                ));
+        authorizationService.requireProjectPm(project);
         List<Long> candidateIds = requestedCandidateIds.stream()
                 .distinct()
                 .sorted()
@@ -223,8 +307,10 @@ public class ProjectRequirementReadjustmentService {
             );
         }
 
+        // A locking read is required here: under MySQL REPEATABLE_READ a normal
+        // SELECT could keep the snapshot created by the earlier authorization query.
         long nextExternalReferenceId = projectRequirementRepository
-                .findByProjectIdOrderByIdAsc(projectId)
+                .findAllForUpdate(projectId)
                 .stream()
                 .map(ProjectRequirement::getExternalReferenceId)
                 .filter(value -> value != null)
@@ -281,7 +367,16 @@ public class ProjectRequirementReadjustmentService {
             }
             candidate.setAppliedAt(LocalDateTime.now());
         }
-        projectRequirementRepository.flush();
+        try {
+            projectRequirementRepository.flush();
+        } catch (DataIntegrityViolationException exception) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "REQUIREMENT_REFERENCE_CONFLICT",
+                    "A project requirement already uses the generated external reference ID.",
+                    exception
+            );
+        }
         candidateRepository.flush();
         return buildRequirementsResponse(projectId);
     }
@@ -422,6 +517,9 @@ public class ProjectRequirementReadjustmentService {
                 source.evidences() == null
                         ? List.<PlanningDocumentExtractResponse.RequirementEvidence>of()
                         : source.evidences()) {
+            if (evidence == null) {
+                throw invalidAgentResponse("Requirement evidence is invalid.");
+            }
             ProjectDocument document = evidence.documentId() == null
                     ? documentByName.get(evidence.sourceDocument())
                     : documentById.get(evidence.documentId());
@@ -903,6 +1001,18 @@ public class ProjectRequirementReadjustmentService {
         }
     }
 
+    private <T> T inTransaction(Supplier<T> work) {
+        return transactionTemplate.execute(status -> work.get());
+    }
+
+    private ApiException readjustmentInputChanged() {
+        return new ApiException(
+                HttpStatus.CONFLICT,
+                "PROJECT_READJUSTMENT_INPUT_CHANGED",
+                "The project, selected documents, or requirements changed during readjustment."
+        );
+    }
+
     private Project requireProject(Long projectId) {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(
@@ -981,5 +1091,30 @@ public class ProjectRequirementReadjustmentService {
                 "REQUIREMENT_CHANGE_CANDIDATE_NOT_FOUND",
                 "Requirement change candidate was not found: " + candidateId
         );
+    }
+
+    private record ReadjustmentPreparation(
+            Long projectId,
+            LocalDateTime projectUpdatedAt,
+            List<Long> documentIds,
+            List<ProjectDocumentService.StoredDocumentSnapshot> documents,
+            List<RequirementSnapshot> requirements,
+            List<PlanningRequirementReadjustResponse.ExistingRequirement>
+                    agentExistingRequirements
+    ) {
+    }
+
+    private record RequirementSnapshot(
+            Long id,
+            LocalDateTime updatedAt,
+            boolean includedInFinal
+    ) {
+        private static RequirementSnapshot from(ProjectRequirement requirement) {
+            return new RequirementSnapshot(
+                    requirement.getId(),
+                    requirement.getUpdatedAt(),
+                    requirement.isIncludedInFinal()
+            );
+        }
     }
 }

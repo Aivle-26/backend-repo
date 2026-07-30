@@ -19,6 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -39,7 +41,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,6 +62,8 @@ class ProjectDocumentServiceTest {
     private ProjectAuthorizationService projectAuthorizationService;
     @Mock
     private S3Client s3Client;
+    @Mock
+    private TransactionTemplate transactionTemplate;
 
     private ProjectDocumentService service;
     private Project project;
@@ -84,13 +90,21 @@ class ProjectDocumentServiceTest {
                 documentProperties,
                 projectAuthorizationService,
                 s3Client,
-                s3Properties
+                s3Properties,
+                transactionTemplate
         );
 
         project = new Project();
         project.setId(PROJECT_ID);
         project.setStatus(ProjectStatus.DRAFT);
         lenient().when(projectRepository.findById(PROJECT_ID)).thenReturn(Optional.of(project));
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            var callback = invocation.getArgument(
+                    0,
+                    org.springframework.transaction.support.TransactionCallback.class
+            );
+            return callback.doInTransaction(mock(TransactionStatus.class));
+        });
         lenient().when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
         lenient().when(projectDocumentRepository.saveAll(any())).thenAnswer(invocation -> {
@@ -136,6 +150,8 @@ class ProjectDocumentServiceTest {
         assertThat(files).hasSize(1);
         assertThat(files.getFirst().originalFileName()).isEqualTo("requirements.txt");
         assertThat(files.getFirst().content()).isEqualTo(content);
+        verify(s3Client, times(1))
+                .getObjectAsBytes(any(GetObjectRequest.class));
     }
 
     @Test

@@ -16,6 +16,7 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -29,7 +30,13 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "project_requirements")
+@Table(
+        name = "project_requirements",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_project_requirement_active_external_reference",
+                columnNames = {"project_id", "active_external_reference_id"}
+        )
+)
 public class ProjectRequirement {
 
     @Id
@@ -50,6 +57,9 @@ public class ProjectRequirement {
 
     @Column(nullable = false)
     private Long externalReferenceId;
+
+    @Column(name = "active_external_reference_id")
+    private Long activeExternalReferenceId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -113,6 +123,7 @@ public class ProjectRequirement {
     @PrePersist
     public void onCreate() {
         LocalDateTime now = LocalDateTime.now();
+        synchronizeActiveExternalReferenceId();
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -120,7 +131,14 @@ public class ProjectRequirement {
     // 요구사항 수정 직전에 수정 시각을 현재 시각으로 갱신한다.
     @PreUpdate
     public void onUpdate() {
+        synchronizeActiveExternalReferenceId();
         this.updatedAt = LocalDateTime.now();
+    }
+
+    private void synchronizeActiveExternalReferenceId() {
+        this.activeExternalReferenceId = includedInFinal
+                ? externalReferenceId
+                : null;
     }
 
     public void addEvidence(ProjectRequirementEvidence evidence) {

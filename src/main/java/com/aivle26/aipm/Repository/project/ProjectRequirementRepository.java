@@ -53,6 +53,31 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
             @Param("projectId") Long projectId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select requirement
+            from ProjectRequirement requirement
+            where requirement.project.id = :projectId
+            order by requirement.id asc
+            """)
+    List<ProjectRequirement> findAllForUpdate(@Param("projectId") Long projectId);
+
+    @EntityGraph(attributePaths = {
+            "analysisResult",
+            "sourceDocument",
+            "evidences",
+            "evidences.document"
+    })
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select requirement
+            from ProjectRequirement requirement
+            where requirement.project.id = :projectId
+              and requirement.includedInFinal = true
+            order by requirement.id asc
+            """)
+    List<ProjectRequirement> findFinalForUpdate(@Param("projectId") Long projectId);
+
     @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     List<ProjectRequirement> findByProjectIdOrderByIdAsc(Long projectId);
 
