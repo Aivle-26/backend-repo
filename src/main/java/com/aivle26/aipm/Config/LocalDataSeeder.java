@@ -89,16 +89,19 @@ public class LocalDataSeeder implements CommandLineRunner {
         log.info("  프로젝트 ID: {}", saved.getId());
     }
 
-    /** 재배정 추천 테스트용 더미 팀원 4명 (1명은 현재 담당자). */
+    /** 재배정·지연분석 테스트용 더미 팀원 4명 (1명은 현재 담당자). */
     private void seedDummyTeamMembers(Long projectId) {
-        riskTeamMemberRepository.save(member(projectId, "김개발", "Backend", "Java", 85, 3, true));
-        riskTeamMemberRepository.save(member(projectId, "이수현", "Backend", "Java,Spring,AWS", 40, 0, false));
-        riskTeamMemberRepository.save(member(projectId, "박지민", "Backend", "Java", 60, 1, false));
-        riskTeamMemberRepository.save(member(projectId, "최유진", "Frontend", "React", 30, 0, false));
+        // 인자: name, role, skills, workloadRate, overdue, current, assigned, completed, inProgress, avgDelayDays, daysSinceUpdate
+        riskTeamMemberRepository.save(member(projectId, "김개발", "Backend", "Java", 85, 3, true, 8, 3, 2, 4.0, 6));
+        riskTeamMemberRepository.save(member(projectId, "이수현", "Backend", "Java,Spring,AWS", 40, 0, false, 6, 6, 0, 0.0, 1));
+        riskTeamMemberRepository.save(member(projectId, "박지민", "Backend", "Java", 60, 1, false, 5, 2, 2, 2.0, 3));
+        riskTeamMemberRepository.save(member(projectId, "최유진", "Frontend", "React", 30, 0, false, 4, 3, 1, 1.0, 2));
     }
 
     private RiskTeamMember member(Long projectId, String name, String role, String skills,
-                                  double workloadRate, int overdueTaskCount, boolean currentAssignee) {
+                                  double workloadRate, int overdueTaskCount, boolean currentAssignee,
+                                  int assignedTaskCount, int completedTaskCount, int inProgressTaskCount,
+                                  double averageDelayDays, int daysSinceLastUpdate) {
         RiskTeamMember m = new RiskTeamMember();
         m.setProjectId(projectId);
         m.setMemberName(name);
@@ -107,6 +110,11 @@ public class LocalDataSeeder implements CommandLineRunner {
         m.setWorkloadRate(workloadRate);
         m.setOverdueTaskCount(overdueTaskCount);
         m.setCurrentAssignee(currentAssignee);
+        m.setAssignedTaskCount(assignedTaskCount);
+        m.setCompletedTaskCount(completedTaskCount);
+        m.setInProgressTaskCount(inProgressTaskCount);
+        m.setAverageDelayDays(averageDelayDays);
+        m.setDaysSinceLastUpdate(daysSinceLastUpdate);
         return m;
     }
 }

@@ -54,4 +54,23 @@ public class RiskTeamMember {
     /** 이 프로젝트에서 현재 배정 담당자로 볼 더미 플래그. true인 1명이 current_assignee가 된다. */
     @Column(nullable = false)
     private boolean currentAssignee;
+
+    /* ---------- 팀원별 업무 지연 분석(member-delay)용 필드 ---------- */
+
+    @Column(nullable = false)
+    private int assignedTaskCount;
+
+    @Column(nullable = false)
+    private int completedTaskCount;
+
+    @Column(nullable = false)
+    private int inProgressTaskCount;
+
+    /** 평균 지연 일수 */
+    @Column(nullable = false)
+    private double averageDelayDays;
+
+    /** 마지막 업무 갱신 후 경과 일수 */
+    @Column(nullable = false)
+    private int daysSinceLastUpdate;
 }
