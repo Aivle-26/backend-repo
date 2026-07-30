@@ -4,6 +4,9 @@ import com.aivle26.aipm.Exception.ApiException;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeBodyPart;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +19,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.util.HtmlUtils;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
@@ -109,37 +113,117 @@ public class MailService {
 
     private void sendVerificationMail(String email, String subject, String description, String code, int expiresInMinutes) {
         String resolvedSubject = resolveSubject(subject);
-        String plainText = """
+        String plainText = buildVerificationText(resolvedSubject, description, code, expiresInMinutes);
+        String htmlText = buildVerificationHtml(description, code, expiresInMinutes);
+
+        sendMail(email, resolvedSubject, plainText, htmlText);
+    }
+
+    private String buildVerificationText(
+            String subject,
+            String description,
+            String verificationCode,
+            int expiresInMinutes
+    ) {
+        return """
+                %s
+
                 %s
 
                 인증번호: %s
-                유효시간: %d분
+                인증번호는 %d분 동안 유효합니다.
 
                 본인이 요청하지 않았다면 이 메일을 무시해 주세요.
                 이 메일은 발신 전용입니다.
-                """.formatted(description, code, expiresInMinutes);
-        String htmlText = """
+
+                PM Agent
+                대표: 홍길동
+                주소: 부산광역시 동구 초량중로 29, 3층
+
+                본 메일은 발신 전용으로 회신되지 않습니다.
+                """.formatted(subject, description, verificationCode, expiresInMinutes);
+    }
+
+    private String buildVerificationHtml(String description, String verificationCode, int expiresInMinutes) {
+        String escapedDescription = HtmlUtils.htmlEscape(description);
+        String escapedVerificationCode = HtmlUtils.htmlEscape(verificationCode);
+        return """
                 <!doctype html>
                 <html lang="ko">
-                <body style="margin:0;padding:24px;background:#f4f6f8;font-family:Arial,'Noto Sans KR',sans-serif;color:#17212b">
-                  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:32px">
-                    <h1 style="margin:0 0 20px;font-size:22px">PM Agent</h1>
-                    <p style="margin:0 0 24px;line-height:1.6">%s</p>
-                    <div style="margin:0 0 20px;padding:20px;text-align:center;background:#f8fafc;border-radius:8px">
-                      <div style="font-size:13px;color:#64748b;margin-bottom:8px">인증번호</div>
-                      <strong style="font-size:32px;letter-spacing:8px;color:#0f172a">%s</strong>
-                    </div>
-                    <p style="margin:0 0 8px;font-size:14px">인증번호는 <strong>%d분</strong> 동안 유효합니다.</p>
-                    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5">
-                      본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
-                      이 메일은 발신 전용입니다.
-                    </p>
-                  </div>
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>PM Agent 이메일 인증</title>
+                </head>
+                <body style="margin:0;padding:0;background-color:#f4f6f8;color:#0f172a;font-family:Arial,'Noto Sans KR',sans-serif">
+                  <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#f4f6f8;border-collapse:collapse">
+                    <tr>
+                      <td align="center" style="padding:24px">
+                        <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;max-width:560px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate">
+                          <tr>
+                            <td style="padding:32px">
+                              <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
+                                <tr>
+                                  <td align="left" style="padding:0 0 20px;font-size:22px;font-weight:700;line-height:1.3;color:#172554">
+                                    PM Agent
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td align="left" style="padding:0 0 24px;font-size:16px;line-height:1.6;color:#0f172a">
+                                    %s
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td align="center" style="padding:20px;background-color:#f8fafc;border-radius:8px">
+                                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
+                                      <tr>
+                                        <td align="center" style="padding:0 0 10px;font-size:13px;line-height:1.4;color:#64748b">
+                                          인증번호
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td align="center" style="padding:0;font-size:32px;font-weight:700;line-height:1.2;color:#172554">
+                                          <span style="display:inline-block;padding-left:8px;letter-spacing:8px">%s</span>
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td align="left" style="padding:20px 0 8px;font-size:14px;line-height:1.5;color:#0f172a">
+                                    인증번호는 <strong>%d분</strong> 동안 유효합니다.
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td align="left" style="padding:0;font-size:13px;line-height:1.5;color:#64748b">
+                                    본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
+                                    이 메일은 발신 전용입니다.
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td style="padding:24px 0 0">
+                                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse;border-top:1px solid #e2e8f0">
+                                      <tr>
+                                        <td align="left" style="padding:20px 0 0;font-size:12px;line-height:1.6;color:#64748b">
+                                          <strong style="color:#475569">PM Agent</strong><br>
+                                          대표: 홍길동<br>
+                                          주소: 부산광역시 동구 초량중로 29, 3층<br><br>
+                                          본 메일은 발신 전용으로 회신되지 않습니다.
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
                 </body>
                 </html>
-                """.formatted(description, code, expiresInMinutes);
-
-        sendMail(email, resolvedSubject, plainText, htmlText);
+                """.formatted(escapedDescription, escapedVerificationCode, expiresInMinutes);
     }
 
     // 메일 설정을 검증하고 일시적인 SMTP 장애에 한해 제한적으로 재시도한다.
@@ -151,7 +235,6 @@ public class MailService {
                 var message = javaMailSender.createMimeMessage();
                 var helper = new MimeMessageHelper(
                         message,
-                        MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
                         StandardCharsets.UTF_8.name()
                 );
                 helper.setTo(email);
@@ -160,7 +243,7 @@ public class MailService {
                     helper.setReplyTo(replyTo.trim());
                 }
                 helper.setSubject(subject);
-                helper.setText(plainText, htmlText);
+                setAlternativeBody(message, plainText, htmlText);
                 message.setHeader("Auto-Submitted", "auto-generated");
                 message.setHeader("X-Auto-Response-Suppress", "All");
                 javaMailSender.send(message);
@@ -193,10 +276,25 @@ public class MailService {
         }
     }
 
+    private void setAlternativeBody(MimeMessage message, String plainText, String htmlText) throws MessagingException {
+        MimeBodyPart plainTextPart = new MimeBodyPart();
+        plainTextPart.setText(plainText, StandardCharsets.UTF_8.name(), "plain");
+
+        MimeBodyPart htmlTextPart = new MimeBodyPart();
+        htmlTextPart.setText(htmlText, StandardCharsets.UTF_8.name(), "html");
+
+        MimeMultipart alternative = new MimeMultipart("alternative");
+        alternative.addBodyPart(plainTextPart);
+        alternative.addBodyPart(htmlTextPart);
+        message.setContent(alternative);
+    }
+
     private String resolveSubject(String subject) {
-        return StringUtils.hasText(subjectPrefix)
-                ? subjectPrefix.trim() + " " + subject
-                : subject;
+        if (!StringUtils.hasText(subjectPrefix)) {
+            return subject;
+        }
+        String prefix = subjectPrefix.trim();
+        return subject.startsWith(prefix) ? subject : prefix + " " + subject;
     }
 
     private String resolveFromAddress() {
