@@ -101,11 +101,13 @@ public class ProjectDocumentAnalysisService {
         PlanningDocumentExtractResponse response =
                 planningAgentClient.extractDocuments(files, true);
         PlanningDocumentExtractionValidator.ValidatedResult validatedResult =
-                extractionValidator.validate(
+                extractionValidator.validateForRequirementAnalysis(
                         response,
                         documents.stream()
                                 .map(ProjectDocument::getOriginalFileName)
-                                .toList()
+                                .toList(),
+                        project.getName(),
+                        project.getDescription()
                 );
 
         applyAnalysisResult(analysisResult, validatedResult.response().projectInfo());
