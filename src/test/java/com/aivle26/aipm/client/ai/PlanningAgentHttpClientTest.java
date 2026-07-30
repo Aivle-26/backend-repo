@@ -254,6 +254,46 @@ class PlanningAgentHttpClientTest {
     }
 
     @Test
+    void mapsAgentGatewayTimeoutToGatewayTimeout() {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(504)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"detail\":\"upstream timeout\"}"));
+
+        assertClientError(
+                createClient(mockWebServer.url("/").toString()),
+                HttpStatus.GATEWAY_TIMEOUT,
+                "PLANNING_AGENT_TIMEOUT"
+        );
+    }
+
+    @Test
+    void mapsReadjustAgentGatewayTimeoutToGatewayTimeout() {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(504)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"detail\":\"upstream timeout\"}"));
+
+        StoredDocumentFile file = new StoredDocumentFile(
+                "source.txt",
+                "text/plain",
+                6,
+                "source".getBytes(StandardCharsets.UTF_8)
+        );
+
+        assertThatThrownBy(() ->
+                createClient(mockWebServer.url("/").toString())
+                        .readjustRequirements(List.of(file), List.of())
+        ).isInstanceOfSatisfying(
+                ApiException.class,
+                exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+                    assertThat(exception.getCode()).isEqualTo("PLANNING_AGENT_TIMEOUT");
+                }
+        );
+    }
+
+    @Test
     void mapsConnectionRefusalToServiceUnavailable() throws Exception {
         int unusedPort;
         try (ServerSocket socket = new ServerSocket(0)) {

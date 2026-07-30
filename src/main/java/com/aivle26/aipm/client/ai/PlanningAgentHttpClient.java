@@ -70,6 +70,14 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
             }
             throw new ApiException(HttpStatus.BAD_GATEWAY, "PLANNING_AGENT_CLIENT_ERROR", "문서 분석 서버가 요청을 처리할 수 없습니다.", exception);
         } catch (HttpServerErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.GATEWAY_TIMEOUT) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "PLANNING_AGENT_TIMEOUT",
+                        "문서 분석 처리 시간이 초과되었습니다.",
+                        exception
+                );
+            }
             throw new ApiException(HttpStatus.BAD_GATEWAY, "PLANNING_AGENT_SERVER_ERROR", "문서 분석 서버에서 오류가 발생했습니다.", exception);
         } catch (ResourceAccessException exception) {
             if (isTimeout(exception)) {
@@ -127,6 +135,14 @@ public class PlanningAgentHttpClient implements PlanningAgentClient {
                     exception
             );
         } catch (HttpServerErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.GATEWAY_TIMEOUT) {
+                throw new ApiException(
+                        HttpStatus.GATEWAY_TIMEOUT,
+                        "PLANNING_AGENT_TIMEOUT",
+                        "The planning agent readjustment timed out.",
+                        exception
+                );
+            }
             throw new ApiException(
                     HttpStatus.BAD_GATEWAY,
                     "PLANNING_AGENT_SERVER_ERROR",
