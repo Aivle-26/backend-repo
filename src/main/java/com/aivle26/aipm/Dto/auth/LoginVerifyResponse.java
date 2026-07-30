@@ -10,8 +10,6 @@ public record LoginVerifyResponse(
         String refreshToken,
         long accessTokenExpiresAt,
         long absoluteExpiresAt,
-        long lastActivityAt,
-        long serverTime,
-        long inactivityTimeoutMinutes
+        long serverTime
 ) {
 }

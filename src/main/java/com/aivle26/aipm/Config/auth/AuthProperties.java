@@ -19,9 +19,6 @@ public class AuthProperties {
     @Min(1)
     private long absoluteLoginExpirationHours = 8;
 
-    @Min(1)
-    private long inactivityTimeoutMinutes = 30;
-
     @NotBlank
     @Size(min = 32)
     private String jwtSecret;

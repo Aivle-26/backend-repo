@@ -38,10 +38,12 @@ app:
   auth:
     access-token-expiration-minutes: 30
     absolute-login-expiration-hours: 8
-    inactivity-timeout-minutes: 30
     jwt-secret: test-secret-test-secret-test-secret-test-secret
   mail:
+    enabled: true
     from-address: test-sender@example.com
+    max-attempts: 3
+    retry-delay-ms: 1
   document:
     storage-path: build/test-uploads/documents
     max-file-size: 1048576

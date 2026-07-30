@@ -30,9 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Service
@@ -91,7 +91,7 @@ public class UserService {
     }
 
     // 가입 인증 코드를 검증해 신규 사용자를 저장하고 가입 완료 응답을 반환한다.
-    @Transactional
+    @Transactional(noRollbackFor = ApiException.class)
     public SignupResponse verifySignup(SignupVerifyRequest request) {
         String email = request.email().trim();
         EmailVerification verification = getLatestSignupVerification(email);
@@ -104,9 +104,7 @@ public class UserService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "verification code expired");
         }
 
-        if (!passwordEncoder.matches(request.verificationCode(), verification.getCodeHash())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "verification code mismatch");
-        }
+        validateVerificationCode(verification, request.verificationCode());
 
         if (verification.getSignupName() == null
                 || verification.getSignupPasswordHash() == null
@@ -165,9 +163,7 @@ public class UserService {
                 session.refreshToken(),
                 session.accessTokenExpiresAt(),
                 session.absoluteExpiresAt(),
-                session.lastActivityAt(),
-                session.serverTime(),
-                session.inactivityTimeoutMinutes()
+                session.serverTime()
         );
     }
 
@@ -191,7 +187,7 @@ public class UserService {
     }
 
     // 로그인 인증 코드를 검증해 사용자를 활성화하고 새 인증 세션을 반환한다.
-    @Transactional
+    @Transactional(noRollbackFor = ApiException.class)
     public LoginVerifyResponse verifyLogin(LoginVerifyRequest request) {
         String email = request.email().trim();
         EmailVerification verification = getLatestLoginVerification(email);
@@ -204,9 +200,7 @@ public class UserService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "verification code expired");
         }
 
-        if (!passwordEncoder.matches(request.verificationCode(), verification.getCodeHash())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "verification code mismatch");
-        }
+        validateVerificationCode(verification, request.verificationCode());
 
         verification.setUsed(true);
         verification.setUsedAt(LocalDateTime.now());
@@ -224,9 +218,7 @@ public class UserService {
                 session.refreshToken(),
                 session.accessTokenExpiresAt(),
                 session.absoluteExpiresAt(),
-                session.lastActivityAt(),
-                session.serverTime(),
-                session.inactivityTimeoutMinutes()
+                session.serverTime()
         );
     }
 
@@ -237,7 +229,7 @@ public class UserService {
         String email = request.email().trim();
         LocalDateTime now = LocalDateTime.now();
 
-        if (user.getEmail() != null && !user.getEmail().equalsIgnoreCase(email)) {
+        if (user.getEmail() == null || !user.getEmail().equalsIgnoreCase(email)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "email does not match registered email");
         }
 
@@ -246,7 +238,7 @@ public class UserService {
 
         String verificationCode = generateVerificationCode();
         clearVerificationState(user);
-        user.setVerificationCode(verificationCode);
+        user.setVerificationCode(passwordEncoder.encode(verificationCode));
         user.setVerificationEmail(email);
         user.setVerificationCodeSentAt(now);
         user.setVerificationCodeExpiresAt(now.plusMinutes(VERIFICATION_CODE_TTL_MINUTES));
@@ -255,7 +247,8 @@ public class UserService {
         user.setResetToken(null);
         user.setResetTokenExpiresAt(null);
 
-        mailService.sendVerificationCode(email, verificationCode);
+        userRepository.saveAndFlush(user);
+        mailService.sendPasswordResetVerificationCode(email, verificationCode);
     }
 
     // 비밀번호 인증 코드와 시도 횟수를 검증해 일회성 재설정 토큰을 반환한다.
@@ -279,7 +272,7 @@ public class UserService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "email does not match verification request");
         }
 
-        if (!request.code().equals(user.getVerificationCode())) {
+        if (!passwordEncoder.matches(request.code(), user.getVerificationCode())) {
             int failedAttempts = user.getVerificationCodeFailedAttempts() + 1;
             user.setVerificationCodeFailedAttempts(failedAttempts);
             if (failedAttempts >= VERIFICATION_MAX_FAILED_ATTEMPTS) {
@@ -295,12 +288,11 @@ public class UserService {
 
         validateEmailDuplicate(user.getEmployeeNumber(), email);
 
-        user.setEmail(email);
         user.setEmailVerified(true);
         clearVerificationState(user);
 
-        String resetToken = generateUniqueResetToken();
-        user.setResetToken(resetToken);
+        String resetToken = generateResetToken();
+        user.setResetToken(passwordEncoder.encode(resetToken));
         user.setResetTokenExpiresAt(LocalDateTime.now().plusMinutes(VERIFICATION_CODE_TTL_MINUTES));
 
         return new PasswordEmailCheckResponse(resetToken, "email verification success");
@@ -366,11 +358,12 @@ public class UserService {
         verification.setPurpose(VerificationPurpose.LOGIN);
         verification.setExpiresAt(now.plusSeconds(LOGIN_VERIFICATION_TTL_SECONDS));
         verification.setUsed(false);
+        verification.setFailedAttempts(0);
         verification.setCreatedAt(now);
         verification.setUsedAt(null);
-        mailService.sendLoginVerificationCode(email, verificationCode);
         expireActiveLoginVerifications(email);
-        emailVerificationRepository.save(verification);
+        emailVerificationRepository.saveAndFlush(verification);
+        mailService.sendLoginVerificationCode(email, verificationCode);
     }
 
     // 가입 정보를 보관한 새 인증 레코드를 생성하고 이메일 코드를 전송한다.
@@ -388,11 +381,12 @@ public class UserService {
         verification.setPurpose(VerificationPurpose.SIGNUP);
         verification.setExpiresAt(now.plusSeconds(SIGNUP_VERIFICATION_TTL_SECONDS));
         verification.setUsed(false);
+        verification.setFailedAttempts(0);
         verification.setCreatedAt(now);
         verification.setUsedAt(null);
-        mailService.sendVerificationCode(email, verificationCode);
         expireActiveSignupVerifications(employeeNumber, email);
-        emailVerificationRepository.save(verification);
+        emailVerificationRepository.saveAndFlush(verification);
+        mailService.sendSignupVerificationCode(email, verificationCode);
     }
 
     // 이메일에 남아 있는 미사용 로그인 인증 레코드를 모두 만료 처리한다.
@@ -478,7 +472,7 @@ public class UserService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "reset token not issued");
         }
 
-        if (!user.getResetToken().equals(resetToken)) {
+        if (!passwordEncoder.matches(resetToken, user.getResetToken())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "invalid reset token");
         }
 
@@ -515,13 +509,25 @@ public class UserService {
         user.setVerificationCodeFailedAttempts(0);
     }
 
-    // 저장소에 존재하지 않는 UUID 기반 비밀번호 재설정 토큰을 생성한다.
-    private String generateUniqueResetToken() {
-        String token = UUID.randomUUID().toString();
-        while (userRepository.existsByResetToken(token)) {
-            token = UUID.randomUUID().toString();
+    private void validateVerificationCode(EmailVerification verification, String rawCode) {
+        if (passwordEncoder.matches(rawCode, verification.getCodeHash())) {
+            return;
         }
-        return token;
+        int failedAttempts = verification.getFailedAttempts() + 1;
+        verification.setFailedAttempts(failedAttempts);
+        if (failedAttempts >= VERIFICATION_MAX_FAILED_ATTEMPTS) {
+            verification.setUsed(true);
+            verification.setUsedAt(LocalDateTime.now());
+            throw new ApiException(HttpStatus.BAD_REQUEST, "verification code invalidated");
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "verification code mismatch");
+    }
+
+    // 보안 난수 기반 일회성 재설정 토큰을 생성한다.
+    private String generateResetToken() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     // 계정 존재 여부를 노출하지 않는 공통 로그인 실패 예외를 생성한다.

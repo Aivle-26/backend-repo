@@ -54,6 +54,9 @@ public class EmailVerification {
     private boolean used;
 
     @Column(nullable = false)
+    private int failedAttempts;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt;
 
     private LocalDateTime usedAt;
