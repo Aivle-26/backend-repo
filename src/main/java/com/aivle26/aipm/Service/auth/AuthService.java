@@ -23,7 +23,6 @@ import java.util.Base64;
 public class AuthService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String EXPIRED_MESSAGE = "로그인 시간이 만료되었습니다. 다시 로그인해주세요.";
-    private static final String INACTIVITY_MESSAGE = "장시간 사용하지 않아 로그아웃되었습니다.";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -41,7 +40,6 @@ public class AuthService {
 
         user.setLoginAt(now);
         user.setAbsoluteExpiresAt(absoluteExpiresAt);
-        user.setLastActivityAt(now);
         user.setRefreshTokenHash(passwordEncoder.encode(refreshToken));
         userRepository.save(user);
 
@@ -53,7 +51,6 @@ public class AuthService {
     public AuthSessionResponse getCurrentSession(String employeeNumber) {
         User user = getUser(employeeNumber);
         validateActiveSession(user);
-        validateInactivity(user);
         LocalDateTime accessTokenExpiresAt = calculateAccessTokenExpiresAt(now(), user.getAbsoluteExpiresAt());
         return toSessionResponse(user, accessTokenExpiresAt, null);
     }
@@ -67,7 +64,6 @@ public class AuthService {
                 .orElseThrow(this::unauthorizedException);
 
         validateActiveSession(user);
-        validateInactivity(user);
 
         LocalDateTime accessTokenExpiresAt = calculateAccessTokenExpiresAt(now(), user.getAbsoluteExpiresAt());
         return toSessionResponse(user, accessTokenExpiresAt, refreshToken);
@@ -98,22 +94,12 @@ public class AuthService {
                 .ifPresent(this::clearSession);
     }
 
-    // 활성 세션을 검증하고 사용자의 최근 활동 시각을 현재 시각으로 갱신한다.
-    @Transactional
-    public void recordActivity(String employeeNumber) {
-        User user = getUser(employeeNumber);
-        validateActiveSession(user);
-        validateInactivity(user);
-        user.setLastActivityAt(now());
-    }
-
     // 액세스 토큰과 서버 세션을 검증해 Spring Security용 인증 사용자를 반환한다.
     @Transactional
     public AuthenticatedUser authenticateAccessToken(String token) {
         JwtService.JwtClaims claims = parseAccessToken(token, false);
         User user = getUser(claims.subject());
         validateActiveSession(user);
-        validateInactivity(user);
         return new AuthenticatedUser(user.getEmployeeNumber(), user.getRole());
     }
 
@@ -158,9 +144,7 @@ public class AuthService {
                 refreshToken,
                 toEpochMillis(accessTokenExpiresAt),
                 toEpochMillis(user.getAbsoluteExpiresAt()),
-                toEpochMillis(user.getLastActivityAt()),
-                toEpochMillis(now()),
-                authProperties.getInactivityTimeoutMinutes()
+                toEpochMillis(now())
         );
     }
 
@@ -181,25 +165,11 @@ public class AuthService {
         }
     }
 
-    // 마지막 활동 이후 허용 시간을 초과했는지 확인하고 초과 세션을 정리한다.
-    private void validateInactivity(User user) {
-        if (user.getLastActivityAt() == null) {
-            clearSession(user);
-            throw inactivityTimeoutException();
-        }
-        LocalDateTime inactivityDeadline = user.getLastActivityAt().plusMinutes(authProperties.getInactivityTimeoutMinutes());
-        if (!inactivityDeadline.isAfter(now())) {
-            clearSession(user);
-            throw inactivityTimeoutException();
-        }
-    }
-
     // 사용자에 저장된 리프레시 토큰과 세션·활동 만료 정보를 초기화한다.
     private void clearSession(User user) {
         user.setRefreshTokenHash(null);
         user.setLoginAt(null);
         user.setAbsoluteExpiresAt(null);
-        user.setLastActivityAt(null);
     }
 
     // 사번으로 인증 사용자를 조회하고 없으면 권한 없음 예외를 발생시킨다.
@@ -235,8 +205,4 @@ public class AuthService {
         return new ApiException(HttpStatus.UNAUTHORIZED, AuthCodes.AUTH_TOKEN_EXPIRED, EXPIRED_MESSAGE);
     }
 
-    // 장시간 미사용으로 세션이 종료되었음을 나타내는 공통 예외를 생성한다.
-    private ApiException inactivityTimeoutException() {
-        return new ApiException(HttpStatus.UNAUTHORIZED, AuthCodes.AUTH_INACTIVITY_TIMEOUT, INACTIVITY_MESSAGE);
-    }
 }

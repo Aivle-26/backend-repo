@@ -87,15 +87,6 @@ public class UserController {
         return ResponseEntity.ok(authService.refresh(request.refreshToken()));
     }
 
-    // 현재 사용자의 최근 활동 시각을 갱신하고 처리 결과를 반환한다.
-    @PostMapping("/activity")
-    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
-    public ResponseEntity<Map<String, String>> recordActivity(Authentication authentication) {
-        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        authService.recordActivity(user.employeeNumber());
-        return ResponseEntity.ok(Map.of("message", "activity recorded"));
-    }
-
     // 인증 사용자 또는 리프레시 토큰의 세션을 종료하고 결과를 반환한다.
     @PostMapping("/logout")
     public ResponseEntity<Map<String, String>> logout(Authentication authentication, @RequestBody(required = false) LogoutRequest request) {

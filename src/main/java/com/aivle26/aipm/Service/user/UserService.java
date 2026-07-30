@@ -163,9 +163,7 @@ public class UserService {
                 session.refreshToken(),
                 session.accessTokenExpiresAt(),
                 session.absoluteExpiresAt(),
-                session.lastActivityAt(),
-                session.serverTime(),
-                session.inactivityTimeoutMinutes()
+                session.serverTime()
         );
     }
 
@@ -220,9 +218,7 @@ public class UserService {
                 session.refreshToken(),
                 session.accessTokenExpiresAt(),
                 session.absoluteExpiresAt(),
-                session.lastActivityAt(),
-                session.serverTime(),
-                session.inactivityTimeoutMinutes()
+                session.serverTime()
         );
     }
 

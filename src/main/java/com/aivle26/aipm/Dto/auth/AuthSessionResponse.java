@@ -9,8 +9,6 @@ public record AuthSessionResponse(
         String refreshToken,
         long accessTokenExpiresAt,
         long absoluteExpiresAt,
-        long lastActivityAt,
-        long serverTime,
-        long inactivityTimeoutMinutes
+        long serverTime
 ) {
 }

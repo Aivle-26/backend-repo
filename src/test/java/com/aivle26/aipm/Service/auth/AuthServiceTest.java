@@ -49,7 +49,6 @@ class AuthServiceTest {
         assertThat(savedUser.getRefreshTokenHash()).isNull();
         assertThat(savedUser.getLoginAt()).isNull();
         assertThat(savedUser.getAbsoluteExpiresAt()).isNull();
-        assertThat(savedUser.getLastActivityAt()).isNull();
     }
 
     private User createUser(String employeeNumber) {

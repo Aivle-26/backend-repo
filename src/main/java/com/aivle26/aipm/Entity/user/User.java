@@ -66,6 +66,4 @@ public class User {
     private LocalDateTime loginAt;
 
     private LocalDateTime absoluteExpiresAt;
-
-    private LocalDateTime lastActivityAt;
 }

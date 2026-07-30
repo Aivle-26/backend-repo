@@ -63,7 +63,6 @@ app:
   auth:
     access-token-expiration-minutes: ${AUTH_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
     absolute-login-expiration-hours: ${AUTH_ABSOLUTE_LOGIN_EXPIRATION_HOURS:8}
-    inactivity-timeout-minutes: ${AUTH_INACTIVITY_TIMEOUT_MINUTES:30}
     jwt-secret: ${AUTH_JWT_SECRET}
   mail:
     enabled: ${MAIL_ENABLED:false}

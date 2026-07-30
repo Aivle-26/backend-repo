@@ -57,7 +57,7 @@ public class SecurityConfig {
                                 "/static/**",
                                 "/test-auth.html"
                         ).permitAll()
-                        .requestMatchers("/api/projects/**", "/api/admin/**", "/api/users/me", "/api/users/session", "/api/users/activity")
+                        .requestMatchers("/api/projects/**", "/api/admin/**", "/api/users/me", "/api/users/session")
                         .authenticated()
                         .anyRequest().permitAll()
                 )
