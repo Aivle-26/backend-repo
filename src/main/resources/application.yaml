@@ -67,9 +67,9 @@ app:
   mail:
     enabled: ${MAIL_ENABLED:false}
     from-address: ${MAIL_FROM_ADDRESS:}
-    from-name: ${MAIL_FROM_NAME:PM Agent}
+    from-name: ${MAIL_FROM_NAME:BidWorks AI}
     reply-to: ${MAIL_REPLY_TO:}
-    subject-prefix: ${MAIL_SUBJECT_PREFIX:[PM Agent]}
+    subject-prefix: ${MAIL_SUBJECT_PREFIX:[BidWorks AI]}
     max-attempts: ${MAIL_MAX_ATTEMPTS:3}
     retry-delay-ms: ${MAIL_RETRY_DELAY_MS:500}
   document:

@@ -13,6 +13,11 @@ spring:
         format_sql: ${JPA_FORMAT_SQL:false}
 
   mail:
+    # 운영 기본 전송 경로는 AWS SES SMTP이며 개인 Gmail을 사용하지 않는다.
+    host: ${MAIL_HOST:email-smtp.ap-northeast-2.amazonaws.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -24,6 +29,10 @@ spring:
 app:
   mail:
     enabled: ${MAIL_ENABLED:true}
+    from-address: ${MAIL_FROM_ADDRESS:}
+    from-name: ${MAIL_FROM_NAME:BidWorks AI}
+    reply-to: ${MAIL_REPLY_TO:}
+    subject-prefix: ${MAIL_SUBJECT_PREFIX:[BidWorks AI]}
 
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}

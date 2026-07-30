@@ -14,6 +14,20 @@ spring:
     password:
     driver-class-name: org.h2.Driver
 
+  # 로컬에서 실제 메일 발송이 필요할 때만 MAIL_ENABLED=true와 Gmail 앱 비밀번호를 설정한다.
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_STARTTLS_ENABLE:true}
+            required: ${MAIL_STARTTLS_REQUIRED:true}
+
   jpa:
     hibernate:
       # 인메모리라 매번 새로 만든다. 엔티티 매핑이 잘못되면 여기서 바로 터진다.
@@ -41,6 +55,12 @@ app:
     # 팀원 권한 작업(910aa3e)이 secret에 "최소 32자" 검증을 걸어서,
     # 로컬에 값이 없으면 부팅이 실패한다. 이 값은 로컬 전용이라 시크릿이 아니다.
     jwt-secret: ${AUTH_JWT_SECRET:local-dev-only-jwt-secret-please-change-in-prod-0123456789}
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from-address: ${MAIL_FROM_ADDRESS:}
+    from-name: ${MAIL_FROM_NAME:BidWorks AI}
+    reply-to: ${MAIL_REPLY_TO:}
+    subject-prefix: ${MAIL_SUBJECT_PREFIX:[BidWorks AI]}
   slack:
     # IntelliJ 실행 설정의 환경변수에 SLACK_BOT_TOKEN 을 넣으면 여기로 들어온다.
     bot-token: ${SLACK_BOT_TOKEN:}
