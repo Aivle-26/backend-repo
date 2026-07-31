@@ -2,6 +2,8 @@ package com.aivle26.aipm.Entity.project;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -10,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -21,36 +24,39 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "project_schedule_results")
-public class ProjectScheduleResult {
+@Table(
+        name = "project_schedule_scenarios",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_project_schedule_scenario_type",
+                columnNames = {"project_schedule_id", "scenario_type"}
+        )
+)
+public class ProjectScheduleScenario {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id", nullable = false)
-    private Project project;
+    @JoinColumn(name = "project_schedule_id", nullable = false)
+    private ProjectSchedule projectSchedule;
 
-    @Column(nullable = false, unique = true, length = 100)
-    private String agentExecutionId;
-
-    @Column(nullable = false, length = 100)
-    private String agentVersion;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scenario_type", nullable = false, length = 30)
+    private ScheduleScenarioType scenarioType;
 
     @Column(nullable = false)
-    private LocalDate projectStartDate;
+    private LocalDate startDate;
 
     @Column(nullable = false)
-    private LocalDate targetEndDate;
+    private LocalDate endDate;
 
-    @Column(columnDefinition = "TEXT")
-    private String warningsJson;
+    @Column(nullable = false)
+    private int estimatedDays;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // 일정 생성 결과 최초 저장 시 생성 시각을 현재 시각으로 설정한다.
     @PrePersist
     public void onCreate() {
         this.createdAt = LocalDateTime.now();

@@ -6,6 +6,7 @@ import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
+import com.aivle26.aipm.Dto.project.ProjectScheduleResponse;
 import com.aivle26.aipm.Dto.project.ProjectSummaryResponse;
 import com.aivle26.aipm.Dto.project.ProjectWbsResponse;
 import com.aivle26.aipm.Dto.project.SaveFinalWbsRequest;
@@ -225,6 +226,15 @@ public class ProjectController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(projectScheduleService.saveScheduleResult(projectId, request));
+    }
+
+    // 저장된 WBS별 P50·P80·P90 일정과 선행 관계를 모두 반환한다.
+    @GetMapping("/{projectId}/schedules")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<ProjectScheduleResponse> getSchedules(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(projectScheduleService.getSchedules(projectId));
     }
 
     @GetMapping("/{projectId}/artifacts/status")

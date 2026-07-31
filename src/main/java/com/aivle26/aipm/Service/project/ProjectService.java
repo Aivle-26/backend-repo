@@ -12,6 +12,7 @@ import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementChangeCandidateRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
+import com.aivle26.aipm.Repository.project.ProjectScheduleScenarioRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
@@ -39,6 +40,7 @@ public class ProjectService {
     private final ProjectWbsResultRepository projectWbsResultRepository;
     private final ProjectScheduleRepository projectScheduleRepository;
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
+    private final ProjectScheduleScenarioRepository projectScheduleScenarioRepository;
     private final RiskTeamMemberRepository riskTeamMemberRepository;
 
     // 현재 PM 소유 또는 STAFF 참여 범위의 프로젝트 요약만 반환한다.
@@ -87,6 +89,7 @@ public class ProjectService {
         projectDocumentService.deleteProjectDocumentFiles(projectId);
 
         projectScheduleRepository.deletePredecessorLinksByProjectId(projectId);
+        projectScheduleScenarioRepository.deleteAllByProjectSchedule_Project_Id(projectId);
         projectScheduleRepository.deleteAllByProjectId(projectId);
         projectScheduleResultRepository.deleteAllByProjectId(projectId);
 
