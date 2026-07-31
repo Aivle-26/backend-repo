@@ -516,9 +516,11 @@ class ProjectRequirementReadjustmentServiceTest {
         );
 
         assertThat(response.finalRequirements())
-                .extracting(
-                        detail -> detail.requirementId() + ":" + detail.externalReferenceId()
-                )
+                .allSatisfy(detail -> {
+                    assertThat(detail.status()).isEqualTo(RequirementStatus.CONFIRMED);
+                    assertThat(detail.confirmed()).isTrue();
+                })
+                .extracting(detail -> detail.requirementId() + ":" + detail.externalReferenceId())
                 .containsExactly(
                         first.getId() + ":2",
                         second.getId() + ":1"
@@ -526,6 +528,10 @@ class ProjectRequirementReadjustmentServiceTest {
         assertThat(requirementRepository.findByProjectIdOrderByIdAsc(
                 document.getProject().getId()
         ))
+                .allSatisfy(requirement -> {
+                    assertThat(requirement.getStatus()).isEqualTo(RequirementStatus.CONFIRMED);
+                    assertThat(requirement.isConfirmed()).isTrue();
+                })
                 .extracting(ProjectRequirement::getActiveExternalReferenceId)
                 .containsExactly(2L, 1L);
         verify(projectRepository)

@@ -209,6 +209,8 @@ public class ProjectRequirementService {
                 applyValues(requirement, projectId, toValues(item));
             }
             requirement.setIncludedInFinal(true);
+            requirement.setStatus(RequirementStatus.CONFIRMED);
+            requirement.setConfirmed(true);
             requirementsToSave.add(requirement);
         }
 
