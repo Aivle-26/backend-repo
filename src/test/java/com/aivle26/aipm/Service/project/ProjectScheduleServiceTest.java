@@ -2,6 +2,8 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.DocumentAnalysisRequirementRequest;
+import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendRequest;
+import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendResponse;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
@@ -19,9 +21,11 @@ import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
+import com.aivle26.aipm.Repository.project.ProjectScheduleScenarioRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
+import com.aivle26.aipm.client.ai.PlanningScheduleClient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +42,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @WithMockUser(username = "PM001", roles = "PM")
@@ -45,6 +52,9 @@ class ProjectScheduleServiceTest {
 
     @MockitoBean
     private S3Client s3Client;
+
+    @MockitoBean
+    private PlanningScheduleClient planningScheduleClient;
 
     @Autowired
     private ProjectScheduleService projectScheduleService;
@@ -89,10 +99,14 @@ class ProjectScheduleServiceTest {
     private ProjectScheduleRepository projectScheduleRepository;
 
     @Autowired
+    private ProjectScheduleScenarioRepository projectScheduleScenarioRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
+        projectScheduleScenarioRepository.deleteAll();
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();
@@ -103,6 +117,113 @@ class ProjectScheduleServiceTest {
         projectRepository.deleteAll();
         userRepository.deleteAll();
         userRepository.save(createPmUser("PM001"));
+    }
+
+    @Test
+    void requestScheduleGenerationStoresAndRestoresAllScenarios() {
+        List<ProjectWbsTask> wbsTasks =
+                createConfirmedWbs("analysis-ai-001", "wbs-ai-001");
+        Long projectId = wbsTasks.getFirst().getProject().getId();
+
+        when(planningScheduleClient.recommendSchedules(any()))
+                .thenReturn(new PlanningScheduleRecommendResponse(
+                        projectId,
+                        List.of(
+                                aiSchedule(
+                                        wbsTasks.getFirst().getId(),
+                                        LocalDate.of(2026, 7, 20),
+                                        LocalDate.of(2026, 7, 21),
+                                        LocalDate.of(2026, 7, 20),
+                                        LocalDate.of(2026, 7, 22),
+                                        LocalDate.of(2026, 7, 20),
+                                        LocalDate.of(2026, 7, 23),
+                                        List.of()
+                                ),
+                                aiSchedule(
+                                        wbsTasks.getLast().getId(),
+                                        LocalDate.of(2026, 7, 21),
+                                        LocalDate.of(2026, 7, 22),
+                                        LocalDate.of(2026, 7, 22),
+                                        LocalDate.of(2026, 7, 24),
+                                        LocalDate.of(2026, 7, 23),
+                                        LocalDate.of(2026, 7, 25),
+                                        List.of(wbsTasks.getFirst().getId())
+                                )
+                        ),
+                        List.of("target end date has enough margin"),
+                        "schedule-ai-001",
+                        "schedule-agent-v1"
+                ));
+
+        var requestResult =
+                projectScheduleService.requestScheduleGeneration(projectId);
+        var storedResult = projectScheduleService.getSchedules(projectId);
+
+        assertThat(requestResult.status().name()).isEqualTo("SUCCEEDED");
+        assertThat(projectScheduleRepository.count()).isEqualTo(2);
+        assertThat(projectScheduleScenarioRepository.count()).isEqualTo(6);
+        assertThat(storedResult.schedules()).hasSize(2);
+        assertThat(storedResult.schedules().getFirst().expected().estimatedDays())
+                .isEqualTo(2);
+        assertThat(storedResult.schedules().getFirst().recommended().estimatedDays())
+                .isEqualTo(3);
+        assertThat(storedResult.schedules().getFirst().conservative().estimatedDays())
+                .isEqualTo(4);
+        assertThat(storedResult.schedules().getLast().predecessorWbsIds())
+                .containsExactly(wbsTasks.getFirst().getId());
+        assertThat(storedResult.warnings())
+                .containsExactly("target end date has enough margin");
+
+        var requestCaptor =
+                org.mockito.ArgumentCaptor.forClass(PlanningScheduleRecommendRequest.class);
+        verify(planningScheduleClient).recommendSchedules(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().wbsItems())
+                .extracting(PlanningScheduleRecommendRequest.ScheduleWbsItem::wbsId)
+                .containsExactly(
+                        wbsTasks.getFirst().getId(),
+                        wbsTasks.getLast().getId()
+                );
+    }
+
+    @Test
+    void requestScheduleGenerationRollsBackWhenScenarioMissing() {
+        List<ProjectWbsTask> wbsTasks =
+                createConfirmedWbs("analysis-ai-002", "wbs-ai-002");
+        Long projectId = wbsTasks.getFirst().getProject().getId();
+
+        PlanningScheduleRecommendResponse.WbsSchedule invalid =
+                new PlanningScheduleRecommendResponse.WbsSchedule(
+                        wbsTasks.getFirst().getId(),
+                        new PlanningScheduleRecommendResponse.ScheduleDateRange(
+                                LocalDate.of(2026, 7, 20),
+                                LocalDate.of(2026, 7, 21)
+                        ),
+                        null,
+                        new PlanningScheduleRecommendResponse.ScheduleDateRange(
+                                LocalDate.of(2026, 7, 20),
+                                LocalDate.of(2026, 7, 23)
+                        ),
+                        List.of(),
+                        false,
+                        0,
+                        null
+                );
+        when(planningScheduleClient.recommendSchedules(any()))
+                .thenReturn(new PlanningScheduleRecommendResponse(
+                        projectId,
+                        List.of(invalid),
+                        List.of(),
+                        "schedule-ai-002",
+                        "schedule-agent-v1"
+                ));
+
+        assertThatThrownBy(
+                () -> projectScheduleService.requestScheduleGeneration(projectId)
+        ).isInstanceOf(ApiException.class);
+
+        assertThat(projectScheduleResultRepository.count()).isZero();
+        assertThat(projectScheduleRepository.count()).isZero();
+        assertThat(projectScheduleScenarioRepository.count()).isZero();
     }
 
     @Test
@@ -145,6 +266,7 @@ class ProjectScheduleServiceTest {
         assertThat(response.scheduleCount()).isEqualTo(2);
         assertThat(projectScheduleResultRepository.count()).isEqualTo(1);
         assertThat(projectScheduleRepository.count()).isEqualTo(2);
+        assertThat(projectScheduleScenarioRepository.count()).isEqualTo(6);
         assertThat(projectScheduleRepository.findAll().getFirst().isConfirmed()).isFalse();
     }
 
@@ -385,6 +507,37 @@ class ProjectScheduleServiceTest {
             tasks = projectWbsTaskRepository.findByProjectIdAndConfirmedTrue(projectId);
         }
         return tasks;
+    }
+
+    private PlanningScheduleRecommendResponse.WbsSchedule aiSchedule(
+            Long wbsId,
+            LocalDate expectedStart,
+            LocalDate expectedEnd,
+            LocalDate recommendedStart,
+            LocalDate recommendedEnd,
+            LocalDate conservativeStart,
+            LocalDate conservativeEnd,
+            List<Long> predecessorWbsIds
+    ) {
+        return new PlanningScheduleRecommendResponse.WbsSchedule(
+                wbsId,
+                new PlanningScheduleRecommendResponse.ScheduleDateRange(
+                        expectedStart,
+                        expectedEnd
+                ),
+                new PlanningScheduleRecommendResponse.ScheduleDateRange(
+                        recommendedStart,
+                        recommendedEnd
+                ),
+                new PlanningScheduleRecommendResponse.ScheduleDateRange(
+                        conservativeStart,
+                        conservativeEnd
+                ),
+                predecessorWbsIds,
+                false,
+                0,
+                null
+        );
     }
 
     private User createPmUser(String employeeNumber) {

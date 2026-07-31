@@ -10,8 +10,11 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.CascadeType;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -73,6 +76,14 @@ public class ProjectSchedule {
     )
     private Set<ProjectSchedule> predecessors = new LinkedHashSet<>();
 
+    @OneToMany(
+            mappedBy = "projectSchedule",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    @OrderBy("scenarioType ASC")
+    private Set<ProjectScheduleScenario> scenarios = new LinkedHashSet<>();
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -80,5 +91,10 @@ public class ProjectSchedule {
     @PrePersist
     public void onCreate() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    public void addScenario(ProjectScheduleScenario scenario) {
+        scenario.setProjectSchedule(this);
+        scenarios.add(scenario);
     }
 }

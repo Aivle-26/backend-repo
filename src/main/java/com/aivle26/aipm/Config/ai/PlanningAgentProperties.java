@@ -25,6 +25,12 @@ public class PlanningAgentProperties {
     @NotBlank
     private String wbsPath = "/api/v1/planning/wbs/generate";
 
+    @NotBlank
+    private String schedulePath = "/api/v1/planning/schedules/recommend";
+
+    @NotBlank
+    private String scheduleAgentVersion = "schedule-recommend-v1";
+
     private Duration connectTimeout = Duration.ofSeconds(5);
 
     private Duration readTimeout = Duration.ofSeconds(120);

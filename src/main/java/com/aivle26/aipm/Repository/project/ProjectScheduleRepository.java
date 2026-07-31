@@ -2,14 +2,20 @@ package com.aivle26.aipm.Repository.project;
 
 import com.aivle26.aipm.Entity.project.ProjectSchedule;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface ProjectScheduleRepository extends JpaRepository<ProjectSchedule, Long> {
     // 프로젝트에 이미 저장된 일정이 있는지 반환한다.
     boolean existsByProjectId(Long projectId);
+
+    @EntityGraph(attributePaths = {"wbsTask", "predecessors", "predecessors.wbsTask", "scenarios"})
+    List<ProjectSchedule> findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(Long projectId);
 
     // 프로젝트 일정 삭제 전에 선행 일정 연결 테이블의 관련 행을 제거한다.
     @Modifying(clearAutomatically = true, flushAutomatically = true)

@@ -1,21 +1,30 @@
 package com.aivle26.aipm.Service.project;
 
-import com.aivle26.aipm.client.ai.ProjectAgentClient;
+import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.AgentRequestResult;
+import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendRequest;
+import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendResponse;
+import com.aivle26.aipm.Dto.project.ProjectScheduleResponse;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultResponse;
 import com.aivle26.aipm.Dto.project.ScheduleResultRequest;
+import com.aivle26.aipm.Entity.project.AgentExecutionStatus;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectSchedule;
 import com.aivle26.aipm.Entity.project.ProjectScheduleResult;
+import com.aivle26.aipm.Entity.project.ProjectScheduleScenario;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
+import com.aivle26.aipm.Entity.project.ScheduleScenarioType;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
-
+import com.aivle26.aipm.client.ai.PlanningScheduleClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,12 +34,15 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -39,112 +51,467 @@ public class ProjectScheduleService {
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleRepository projectScheduleRepository;
-    private final ProjectAgentClient projectAgentClient;
+    private final PlanningScheduleClient planningScheduleClient;
+    private final PlanningAgentProperties planningAgentProperties;
     private final ProjectAuthorizationService projectAuthorizationService;
+    private final ObjectMapper objectMapper;
 
-    // 프로젝트와 저장 WBS 존재를 검증한 뒤 AI 일정 생성을 요청한다.
-    @Transactional(readOnly = true)
+    // 확정 WBS로 Planning AI를 호출하고 세 일정 시나리오를 원자적으로 저장한다.
+    @Transactional
     public AgentRequestResult requestScheduleGeneration(Long projectId) {
-        projectAuthorizationService.requireProjectPm(projectId);
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
+        Project project = requireSchedulableProject(projectId);
+        List<ProjectWbsTask> confirmedWbsTasks = getConfirmedWbsTasks(projectId);
+        PlanningScheduleRecommendRequest aiRequest = toAiRequest(project, confirmedWbsTasks);
 
-        if (project.getStatus() != ProjectStatus.DRAFT) {
-            throw new ApiException(HttpStatus.CONFLICT, "invalid project status");
+        PlanningScheduleRecommendResponse aiResponse =
+                planningScheduleClient.recommendSchedules(aiRequest);
+
+        String generatedExecutionId = "schedule-" + UUID.randomUUID();
+        String agentExecutionId = normalizeOrDefault(
+                aiResponse.agentExecutionId(),
+                generatedExecutionId
+        );
+        String agentVersion = normalizeOrDefault(
+                aiResponse.agentVersion(),
+                planningAgentProperties.getScheduleAgentVersion()
+        );
+
+        if (projectScheduleResultRepository.existsByAgentExecutionId(agentExecutionId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "duplicate agent execution id");
         }
-        if (!projectWbsTaskRepository.existsByProjectIdAndConfirmedTrue(projectId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "confirmed wbs not found");
-        }
-        return projectAgentClient.requestScheduleGeneration(projectId);
+
+        Map<Long, ProjectWbsTask> wbsTaskById = toWbsTaskMap(confirmedWbsTasks);
+        List<PreparedSchedule> preparedSchedules = prepareAiSchedules(
+                project,
+                aiResponse,
+                wbsTaskById,
+                agentExecutionId
+        );
+
+        persistSchedules(
+                project,
+                agentExecutionId,
+                agentVersion,
+                project.getPlannedStartDate(),
+                project.getPlannedEndDate(),
+                preparedSchedules,
+                safeWarnings(aiResponse.warnings())
+        );
+
+        return new AgentRequestResult(
+                agentExecutionId,
+                AgentExecutionStatus.SUCCEEDED,
+                agentVersion
+        );
     }
 
-    // AI 일정 요청의 기간과 선후행 관계를 검증해 일정 결과를 저장하고 반환한다.
+    // 기존 단일 일정 결과 API를 유지하되 같은 날짜로 세 시나리오를 영구 저장한다.
     @Transactional
-    public SaveScheduleResultResponse saveScheduleResult(Long projectId, SaveScheduleResultRequest request) {
+    public SaveScheduleResultResponse saveScheduleResult(
+            Long projectId,
+            SaveScheduleResultRequest request
+    ) {
         projectAuthorizationService.requireProjectPm(projectId);
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
+        Project project = getProject(projectId);
+        validateProjectState(project);
 
-        if (project.getStatus() != ProjectStatus.DRAFT) {
-            throw new ApiException(HttpStatus.CONFLICT, "invalid project status");
-        }
         if (!projectWbsTaskRepository.existsByProjectIdAndConfirmedTrue(projectId)) {
             throw new ApiException(HttpStatus.CONFLICT, "confirmed wbs not found");
         }
-        if (projectScheduleResultRepository.existsByAgentExecutionId(request.agentExecutionId().trim())) {
+        String agentExecutionId = request.agentExecutionId().trim();
+        if (projectScheduleResultRepository.existsByAgentExecutionId(agentExecutionId)) {
             throw new ApiException(HttpStatus.CONFLICT, "duplicate agent execution id");
         }
         if (projectScheduleResultRepository.existsByProjectId(projectId)) {
             throw new ApiException(HttpStatus.CONFLICT, "schedule already exists");
         }
-        validateProjectWindow(project, request.projectStartDate(), request.targetEndDate());
 
-        List<ProjectWbsTask> confirmedWbsTasks = projectWbsTaskRepository.findByProjectIdAndConfirmedTrue(projectId);
+        validateProjectWindow(project, request.projectStartDate(), request.targetEndDate());
+        Map<Long, ProjectWbsTask> wbsTaskById =
+                toWbsTaskMap(getConfirmedWbsTasks(projectId));
+        validateLegacySchedules(
+                project,
+                request.schedules(),
+                wbsTaskById,
+                request.projectStartDate(),
+                request.targetEndDate()
+        );
+
+        List<PreparedSchedule> preparedSchedules = request.schedules().stream()
+                .map(schedule -> toLegacyPreparedSchedule(schedule, wbsTaskById))
+                .toList();
+
+        ProjectScheduleResult savedResult = persistSchedules(
+                project,
+                agentExecutionId,
+                request.agentVersion().trim(),
+                request.projectStartDate(),
+                request.targetEndDate(),
+                preparedSchedules,
+                List.of()
+        );
+
+        return new SaveScheduleResultResponse(
+                savedResult.getId(),
+                projectId,
+                savedResult.getAgentExecutionId(),
+                preparedSchedules.size()
+        );
+    }
+
+    // 저장된 일정과 WBS별 P50·P80·P90 시나리오를 함께 조회한다.
+    @Transactional(readOnly = true)
+    public ProjectScheduleResponse getSchedules(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
+        getProject(projectId);
+
+        ProjectScheduleResult result = projectScheduleResultRepository
+                .findByProjectId(projectId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "schedule not found"));
+        List<ProjectSchedule> schedules =
+                projectScheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(projectId);
+
+        return new ProjectScheduleResponse(
+                result.getId(),
+                projectId,
+                result.getAgentExecutionId(),
+                result.getAgentVersion(),
+                result.getProjectStartDate(),
+                result.getTargetEndDate(),
+                schedules.stream().map(this::toScheduleDetail).toList(),
+                readWarnings(result.getWarningsJson())
+        );
+    }
+
+    private Project requireSchedulableProject(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
+        Project project = getProject(projectId);
+        validateProjectState(project);
+
+        if (project.getPlannedStartDate() == null || project.getPlannedEndDate() == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "project schedule date not found");
+        }
+        if (project.getPlannedEndDate().isBefore(project.getPlannedStartDate())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
+        }
+        if (projectScheduleResultRepository.existsByProjectId(projectId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "schedule already exists");
+        }
+        if (!projectWbsTaskRepository.existsByProjectIdAndConfirmedTrue(projectId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "confirmed wbs not found");
+        }
+        return project;
+    }
+
+    private Project getProject(Long projectId) {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
+    }
+
+    private void validateProjectState(Project project) {
+        if (project.getStatus() != ProjectStatus.DRAFT) {
+            throw new ApiException(HttpStatus.CONFLICT, "invalid project status");
+        }
+    }
+
+    private List<ProjectWbsTask> getConfirmedWbsTasks(Long projectId) {
+        List<ProjectWbsTask> tasks =
+                new ArrayList<>(projectWbsTaskRepository.findByProjectIdAndConfirmedTrue(projectId));
+        if (tasks.isEmpty()) {
+            throw new ApiException(HttpStatus.CONFLICT, "confirmed wbs not found");
+        }
+        tasks.sort(Comparator.comparingInt(ProjectWbsTask::getOrderIndex)
+                .thenComparing(ProjectWbsTask::getId));
+        return tasks;
+    }
+
+    private Map<Long, ProjectWbsTask> toWbsTaskMap(List<ProjectWbsTask> tasks) {
         Map<Long, ProjectWbsTask> wbsTaskById = new LinkedHashMap<>();
-        for (ProjectWbsTask task : confirmedWbsTasks) {
+        for (ProjectWbsTask task : tasks) {
             wbsTaskById.put(task.getId(), task);
         }
+        return wbsTaskById;
+    }
 
-        validateSchedules(project, request.schedules(), wbsTaskById, request.projectStartDate(), request.targetEndDate());
+    private PlanningScheduleRecommendRequest toAiRequest(
+            Project project,
+            List<ProjectWbsTask> tasks
+    ) {
+        Map<Long, ProjectWbsTask> taskById = toWbsTaskMap(tasks);
+        Set<Long> parentIds = new LinkedHashSet<>();
+        for (ProjectWbsTask task : tasks) {
+            if (task.getParentTask() != null) {
+                Long parentId = task.getParentTask().getId();
+                if (!taskById.containsKey(parentId)) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "invalid wbs hierarchy");
+                }
+                parentIds.add(parentId);
+            }
+        }
 
+        List<PlanningScheduleRecommendRequest.ScheduleWbsItem> items = tasks.stream()
+                .map(task -> new PlanningScheduleRecommendRequest.ScheduleWbsItem(
+                        task.getId(),
+                        task.getTaskCode(),
+                        task.getParentTask() == null ? null : task.getParentTask().getId(),
+                        resolveItemType(task, parentIds),
+                        task.getTaskName(),
+                        task.getDescription()
+                ))
+                .toList();
+
+        return new PlanningScheduleRecommendRequest(
+                project.getId(),
+                project.getPlannedStartDate(),
+                project.getPlannedEndDate(),
+                items
+        );
+    }
+
+    private PlanningScheduleRecommendRequest.ItemType resolveItemType(
+            ProjectWbsTask task,
+            Set<Long> parentIds
+    ) {
+        if (task.getParentTask() == null) {
+            return PlanningScheduleRecommendRequest.ItemType.PHASE;
+        }
+        if (parentIds.contains(task.getId())) {
+            return PlanningScheduleRecommendRequest.ItemType.WORK_PACKAGE;
+        }
+        return PlanningScheduleRecommendRequest.ItemType.TASK;
+    }
+
+    private List<PreparedSchedule> prepareAiSchedules(
+            Project project,
+            PlanningScheduleRecommendResponse response,
+            Map<Long, ProjectWbsTask> wbsTaskById,
+            String agentExecutionId
+    ) {
+        if (response == null
+                || response.projectId() == null
+                || !project.getId().equals(response.projectId())) {
+            throw invalidAiResponse("invalid project id");
+        }
+        if (response.wbsSchedules() == null) {
+            throw invalidAiResponse("schedule not found");
+        }
+
+        Map<Long, PreparedSchedule> preparedByWbsId = new LinkedHashMap<>();
+        Set<String> externalScheduleIds = new LinkedHashSet<>();
+        for (PlanningScheduleRecommendResponse.WbsSchedule aiSchedule : response.wbsSchedules()) {
+            if (aiSchedule == null || aiSchedule.wbsId() == null) {
+                throw invalidAiResponse("invalid wbs id");
+            }
+            ProjectWbsTask wbsTask = wbsTaskById.get(aiSchedule.wbsId());
+            if (wbsTask == null) {
+                throw invalidAiResponse("invalid wbs id");
+            }
+            if (preparedByWbsId.containsKey(aiSchedule.wbsId())) {
+                throw invalidAiResponse("duplicate wbs schedule");
+            }
+
+            ScenarioRange expected = toScenarioRange(
+                    project,
+                    ScheduleScenarioType.EXPECTED,
+                    aiSchedule.expected()
+            );
+            ScenarioRange recommended = toScenarioRange(
+                    project,
+                    ScheduleScenarioType.RECOMMENDED,
+                    aiSchedule.recommended()
+            );
+            ScenarioRange conservative = toScenarioRange(
+                    project,
+                    ScheduleScenarioType.CONSERVATIVE,
+                    aiSchedule.conservative()
+            );
+
+            String externalScheduleId = normalizeOrDefault(
+                    aiSchedule.externalScheduleId(),
+                    agentExecutionId + "-" + aiSchedule.wbsId()
+            );
+            if (!externalScheduleIds.add(externalScheduleId)) {
+                throw invalidAiResponse("duplicate schedule external id");
+            }
+
+            PreparedSchedule prepared = new PreparedSchedule(
+                    externalScheduleId,
+                    wbsTask,
+                    expected,
+                    recommended,
+                    conservative,
+                    safeIds(aiSchedule.predecessorWbsIds()),
+                    Boolean.TRUE.equals(aiSchedule.milestone()),
+                    aiSchedule.bufferDays() == null ? 0 : aiSchedule.bufferDays()
+            );
+            if (prepared.bufferDays() < 0) {
+                throw invalidAiResponse("invalid buffer days");
+            }
+            preparedByWbsId.put(aiSchedule.wbsId(), prepared);
+        }
+
+        if (!preparedByWbsId.keySet().equals(wbsTaskById.keySet())) {
+            throw invalidAiResponse("wbs schedule missing");
+        }
+
+        List<PreparedSchedule> preparedSchedules =
+                new ArrayList<>(preparedByWbsId.values());
+        validatePreparedPredecessors(preparedSchedules, wbsTaskById);
+        return preparedSchedules;
+    }
+
+    private ScenarioRange toScenarioRange(
+            Project project,
+            ScheduleScenarioType type,
+            PlanningScheduleRecommendResponse.ScheduleDateRange range
+    ) {
+        if (range == null || range.startDate() == null || range.endDate() == null) {
+            throw invalidAiResponse(type.name().toLowerCase() + " schedule missing");
+        }
+        validateScheduleDateRange(
+                project,
+                range.startDate(),
+                range.endDate(),
+                project.getPlannedStartDate(),
+                project.getPlannedEndDate()
+        );
+        return new ScenarioRange(
+                type,
+                range.startDate(),
+                range.endDate(),
+                calculateEstimatedDays(range.startDate(), range.endDate())
+        );
+    }
+
+    private PreparedSchedule toLegacyPreparedSchedule(
+            ScheduleResultRequest request,
+            Map<Long, ProjectWbsTask> wbsTaskById
+    ) {
+        ScenarioRange expected = new ScenarioRange(
+                ScheduleScenarioType.EXPECTED,
+                request.startDate(),
+                request.endDate(),
+                request.estimatedDays()
+        );
+        ScenarioRange recommended = new ScenarioRange(
+                ScheduleScenarioType.RECOMMENDED,
+                request.startDate(),
+                request.endDate(),
+                request.estimatedDays()
+        );
+        ScenarioRange conservative = new ScenarioRange(
+                ScheduleScenarioType.CONSERVATIVE,
+                request.startDate(),
+                request.endDate(),
+                request.estimatedDays()
+        );
+        return new PreparedSchedule(
+                request.externalScheduleId().trim(),
+                wbsTaskById.get(request.wbsId()),
+                expected,
+                recommended,
+                conservative,
+                List.copyOf(request.predecessorWbsIds()),
+                request.milestone(),
+                request.bufferDays()
+        );
+    }
+
+    private ProjectScheduleResult persistSchedules(
+            Project project,
+            String agentExecutionId,
+            String agentVersion,
+            LocalDate projectStartDate,
+            LocalDate targetEndDate,
+            List<PreparedSchedule> preparedSchedules,
+            List<String> warnings
+    ) {
         ProjectScheduleResult scheduleResult = new ProjectScheduleResult();
         scheduleResult.setProject(project);
-        scheduleResult.setAgentExecutionId(request.agentExecutionId().trim());
-        scheduleResult.setAgentVersion(request.agentVersion().trim());
-        scheduleResult.setProjectStartDate(request.projectStartDate());
-        scheduleResult.setTargetEndDate(request.targetEndDate());
-        ProjectScheduleResult savedResult = projectScheduleResultRepository.save(scheduleResult);
+        scheduleResult.setAgentExecutionId(agentExecutionId);
+        scheduleResult.setAgentVersion(agentVersion);
+        scheduleResult.setProjectStartDate(projectStartDate);
+        scheduleResult.setTargetEndDate(targetEndDate);
+        scheduleResult.setWarningsJson(writeWarnings(warnings));
+        ProjectScheduleResult savedResult =
+                projectScheduleResultRepository.save(scheduleResult);
 
         Map<Long, ProjectSchedule> scheduleByWbsId = new LinkedHashMap<>();
-        for (ScheduleResultRequest scheduleRequest : request.schedules()) {
+        for (PreparedSchedule prepared : preparedSchedules) {
             ProjectSchedule schedule = new ProjectSchedule();
             schedule.setProject(project);
             schedule.setScheduleResult(savedResult);
-            schedule.setWbsTask(wbsTaskById.get(scheduleRequest.wbsId()));
-            schedule.setExternalScheduleId(scheduleRequest.externalScheduleId().trim());
-            schedule.setStartDate(scheduleRequest.startDate());
-            schedule.setEndDate(scheduleRequest.endDate());
-            schedule.setEstimatedDays(scheduleRequest.estimatedDays());
-            schedule.setMilestone(scheduleRequest.milestone());
-            schedule.setBufferDays(scheduleRequest.bufferDays());
+            schedule.setWbsTask(prepared.wbsTask());
+            schedule.setExternalScheduleId(prepared.externalScheduleId());
+            schedule.setStartDate(prepared.recommended().startDate());
+            schedule.setEndDate(prepared.recommended().endDate());
+            schedule.setEstimatedDays(prepared.recommended().estimatedDays());
+            schedule.setMilestone(prepared.milestone());
+            schedule.setBufferDays(prepared.bufferDays());
             schedule.setConfirmed(false);
-            scheduleByWbsId.put(scheduleRequest.wbsId(), schedule);
+            schedule.addScenario(toScenarioEntity(prepared.expected()));
+            schedule.addScenario(toScenarioEntity(prepared.recommended()));
+            schedule.addScenario(toScenarioEntity(prepared.conservative()));
+            scheduleByWbsId.put(prepared.wbsTask().getId(), schedule);
         }
 
-        for (ScheduleResultRequest scheduleRequest : request.schedules()) {
-            ProjectSchedule schedule = scheduleByWbsId.get(scheduleRequest.wbsId());
+        projectScheduleRepository.saveAll(scheduleByWbsId.values());
+        projectScheduleRepository.flush();
+
+        for (PreparedSchedule prepared : preparedSchedules) {
+            ProjectSchedule schedule =
+                    scheduleByWbsId.get(prepared.wbsTask().getId());
             Set<ProjectSchedule> predecessors = new LinkedHashSet<>();
-            for (Long predecessorWbsId : scheduleRequest.predecessorWbsIds()) {
+            for (Long predecessorWbsId : prepared.predecessorWbsIds()) {
                 predecessors.add(scheduleByWbsId.get(predecessorWbsId));
             }
             schedule.setPredecessors(predecessors);
         }
-
         projectScheduleRepository.saveAll(scheduleByWbsId.values());
-        return new SaveScheduleResultResponse(savedResult.getId(), projectId, savedResult.getAgentExecutionId(), scheduleByWbsId.size());
+        projectScheduleRepository.flush();
+        return savedResult;
     }
 
-    // 요청 일정 기간이 유효하고 프로젝트 계획 기간 안에 포함되는지 검증한다.
-    private void validateProjectWindow(Project project, LocalDate projectStartDate, LocalDate targetEndDate) {
+    private ProjectScheduleScenario toScenarioEntity(ScenarioRange range) {
+        ProjectScheduleScenario scenario = new ProjectScheduleScenario();
+        scenario.setScenarioType(range.type());
+        scenario.setStartDate(range.startDate());
+        scenario.setEndDate(range.endDate());
+        scenario.setEstimatedDays(range.estimatedDays());
+        return scenario;
+    }
+
+    private void validateProjectWindow(
+            Project project,
+            LocalDate projectStartDate,
+            LocalDate targetEndDate
+    ) {
+        if (projectStartDate == null || targetEndDate == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "project schedule date not found");
+        }
         if (targetEndDate.isBefore(projectStartDate)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
         }
-        if (project.getPlannedStartDate() != null && projectStartDate.isBefore(project.getPlannedStartDate())) {
+        if (project.getPlannedStartDate() != null
+                && projectStartDate.isBefore(project.getPlannedStartDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
         }
-        if (project.getPlannedEndDate() != null && targetEndDate.isAfter(project.getPlannedEndDate())) {
+        if (project.getPlannedEndDate() != null
+                && targetEndDate.isAfter(project.getPlannedEndDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
         }
     }
 
-    // 작업별 일정의 필수값·중복·WBS 참조·기간·선행 관계를 종합 검증한다.
-    private void validateSchedules(
+    private void validateLegacySchedules(
             Project project,
             List<ScheduleResultRequest> schedules,
             Map<Long, ProjectWbsTask> wbsTaskById,
             LocalDate projectStartDate,
             LocalDate targetEndDate
     ) {
+        if (schedules == null || schedules.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "schedule not found");
+        }
         Map<Long, List<Long>> predecessorsByWbsId = new LinkedHashMap<>();
         Set<Long> scheduleWbsIds = new LinkedHashSet<>();
         Set<String> externalScheduleIds = new LinkedHashSet<>();
@@ -159,53 +526,109 @@ public class ProjectScheduleService {
             if (!wbsTaskById.containsKey(schedule.wbsId())) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "invalid wbs id");
             }
-            if (schedule.endDate().isBefore(schedule.startDate())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
-            }
-            long expectedDays = ChronoUnit.DAYS.between(schedule.startDate(), schedule.endDate()) + 1;
-            if (expectedDays != schedule.estimatedDays()) {
+            validateScheduleDateRange(
+                    project,
+                    schedule.startDate(),
+                    schedule.endDate(),
+                    projectStartDate,
+                    targetEndDate
+            );
+            if (calculateEstimatedDays(schedule.startDate(), schedule.endDate())
+                    != schedule.estimatedDays()) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "invalid estimated days");
             }
-            if (schedule.startDate().isBefore(projectStartDate) || schedule.endDate().isAfter(targetEndDate)) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
-            }
-            if (project.getPlannedStartDate() != null && schedule.startDate().isBefore(project.getPlannedStartDate())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
-            }
-            if (project.getPlannedEndDate() != null && schedule.endDate().isAfter(project.getPlannedEndDate())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
-            }
 
-            List<Long> predecessorIds = new ArrayList<>();
-            for (Long predecessorWbsId : schedule.predecessorWbsIds()) {
-                if (!wbsTaskById.containsKey(predecessorWbsId)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "predecessor wbs not found");
-                }
-                if (schedule.wbsId().equals(predecessorWbsId)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "invalid predecessor wbs");
-                }
-                predecessorIds.add(predecessorWbsId);
-            }
+            List<Long> predecessorIds = safeIds(schedule.predecessorWbsIds());
             predecessorsByWbsId.put(schedule.wbsId(), predecessorIds);
         }
 
+        validatePredecessorIds(predecessorsByWbsId, scheduleWbsIds);
+        validateNoScheduleCycle(predecessorsByWbsId);
+        validateLegacyPredecessorDates(schedules, predecessorsByWbsId);
+    }
+
+    private void validateScheduleDateRange(
+            Project project,
+            LocalDate startDate,
+            LocalDate endDate,
+            LocalDate projectStartDate,
+            LocalDate targetEndDate
+    ) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
+        }
+        if (startDate.isBefore(projectStartDate) || endDate.isAfter(targetEndDate)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
+        }
+        if (project.getPlannedStartDate() != null
+                && startDate.isBefore(project.getPlannedStartDate())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
+        }
+        if (project.getPlannedEndDate() != null
+                && endDate.isAfter(project.getPlannedEndDate())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
+        }
+    }
+
+    private void validatePreparedPredecessors(
+            List<PreparedSchedule> schedules,
+            Map<Long, ProjectWbsTask> wbsTaskById
+    ) {
+        Map<Long, List<Long>> predecessorsByWbsId = new LinkedHashMap<>();
+        Map<Long, PreparedSchedule> scheduleByWbsId = new LinkedHashMap<>();
+        for (PreparedSchedule schedule : schedules) {
+            Long wbsId = schedule.wbsTask().getId();
+            scheduleByWbsId.put(wbsId, schedule);
+            predecessorsByWbsId.put(wbsId, schedule.predecessorWbsIds());
+        }
+
+        validatePredecessorIds(predecessorsByWbsId, wbsTaskById.keySet());
+        validateNoScheduleCycle(predecessorsByWbsId);
+
+        for (PreparedSchedule schedule : schedules) {
+            for (Long predecessorWbsId : schedule.predecessorWbsIds()) {
+                PreparedSchedule predecessor = scheduleByWbsId.get(predecessorWbsId);
+                validateScenarioPredecessorDate(
+                        predecessor.expected(),
+                        schedule.expected()
+                );
+                validateScenarioPredecessorDate(
+                        predecessor.recommended(),
+                        schedule.recommended()
+                );
+                validateScenarioPredecessorDate(
+                        predecessor.conservative(),
+                        schedule.conservative()
+                );
+            }
+        }
+    }
+
+    private void validatePredecessorIds(
+            Map<Long, List<Long>> predecessorsByWbsId,
+            Set<Long> allowedWbsIds
+    ) {
         for (Map.Entry<Long, List<Long>> entry : predecessorsByWbsId.entrySet()) {
+            Set<Long> uniquePredecessors = new LinkedHashSet<>();
             for (Long predecessorWbsId : entry.getValue()) {
-                if (!scheduleWbsIds.contains(predecessorWbsId)) {
+                if (predecessorWbsId == null || !allowedWbsIds.contains(predecessorWbsId)) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "predecessor wbs not found");
+                }
+                if (entry.getKey().equals(predecessorWbsId)) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "invalid predecessor wbs");
+                }
+                if (!uniquePredecessors.add(predecessorWbsId)) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "duplicate predecessor wbs");
                 }
             }
         }
-
-        validateNoScheduleCycle(predecessorsByWbsId);
-        validatePredecessorDates(schedules, predecessorsByWbsId);
     }
 
-    // WBS별 선행 작업 관계를 순회해 일정 의존성에 순환이 없는지 검증한다.
-    private void validateNoScheduleCycle(Map<Long, List<Long>> predecessorsByWbsId) {
+    private void validateNoScheduleCycle(
+            Map<Long, List<Long>> predecessorsByWbsId
+    ) {
         Set<Long> visited = new LinkedHashSet<>();
         Set<Long> visiting = new LinkedHashSet<>();
-
         for (Long wbsId : predecessorsByWbsId.keySet()) {
             if (!visited.contains(wbsId)) {
                 walkPredecessors(wbsId, predecessorsByWbsId, visited, visiting);
@@ -213,7 +636,6 @@ public class ProjectScheduleService {
         }
     }
 
-    // 한 WBS 작업의 선행 관계를 재귀 순회해 순환 의존성을 탐지한다.
     private void walkPredecessors(
             Long wbsId,
             Map<Long, List<Long>> predecessorsByWbsId,
@@ -232,17 +654,19 @@ public class ProjectScheduleService {
                 childIndexStack.pop();
                 continue;
             }
-            if (!visiting.contains(current)) {
-                visiting.add(current);
-            }
+            visiting.add(current);
 
-            List<Long> predecessors = predecessorsByWbsId.getOrDefault(current, List.of());
+            List<Long> predecessors =
+                    predecessorsByWbsId.getOrDefault(current, List.of());
             int childIndex = childIndexStack.pop();
             if (childIndex < predecessors.size()) {
                 Long predecessor = predecessors.get(childIndex);
                 childIndexStack.push(childIndex + 1);
                 if (visiting.contains(predecessor)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "schedule dependency cycle");
+                    throw new ApiException(
+                            HttpStatus.BAD_REQUEST,
+                            "schedule dependency cycle"
+                    );
                 }
                 if (!visited.contains(predecessor)) {
                     stack.push(predecessor);
@@ -257,20 +681,175 @@ public class ProjectScheduleService {
         }
     }
 
-    // 각 작업 시작일이 모든 선행 작업 종료일 이후인지 검증한다.
-    private void validatePredecessorDates(List<ScheduleResultRequest> schedules, Map<Long, List<Long>> predecessorsByWbsId) {
+    private void validateLegacyPredecessorDates(
+            List<ScheduleResultRequest> schedules,
+            Map<Long, List<Long>> predecessorsByWbsId
+    ) {
         Map<Long, ScheduleResultRequest> scheduleByWbsId = new LinkedHashMap<>();
         for (ScheduleResultRequest schedule : schedules) {
             scheduleByWbsId.put(schedule.wbsId(), schedule);
         }
-
         for (ScheduleResultRequest schedule : schedules) {
-            for (Long predecessorWbsId : predecessorsByWbsId.getOrDefault(schedule.wbsId(), List.of())) {
-                ScheduleResultRequest predecessor = scheduleByWbsId.get(predecessorWbsId);
+            for (Long predecessorWbsId :
+                    predecessorsByWbsId.getOrDefault(schedule.wbsId(), List.of())) {
+                ScheduleResultRequest predecessor =
+                        scheduleByWbsId.get(predecessorWbsId);
                 if (predecessor.endDate().isAfter(schedule.startDate())) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "schedule conflict");
                 }
             }
         }
+    }
+
+    private void validateScenarioPredecessorDate(
+            ScenarioRange predecessor,
+            ScenarioRange successor
+    ) {
+        if (predecessor.endDate().isAfter(successor.startDate())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "schedule conflict");
+        }
+    }
+
+    private ProjectScheduleResponse.ScheduleDetail toScheduleDetail(
+            ProjectSchedule schedule
+    ) {
+        Map<ScheduleScenarioType, ProjectScheduleScenario> scenarioByType =
+                new EnumMap<>(ScheduleScenarioType.class);
+        for (ProjectScheduleScenario scenario : schedule.getScenarios()) {
+            if (scenarioByType.put(scenario.getScenarioType(), scenario) != null) {
+                throw new ApiException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "duplicate schedule scenario"
+                );
+            }
+        }
+
+        ProjectScheduleResponse.ScheduleDateRange expected =
+                toResponseRange(schedule, scenarioByType.get(ScheduleScenarioType.EXPECTED));
+        ProjectScheduleResponse.ScheduleDateRange recommended =
+                toResponseRange(schedule, scenarioByType.get(ScheduleScenarioType.RECOMMENDED));
+        ProjectScheduleResponse.ScheduleDateRange conservative =
+                toResponseRange(schedule, scenarioByType.get(ScheduleScenarioType.CONSERVATIVE));
+
+        return new ProjectScheduleResponse.ScheduleDetail(
+                schedule.getId(),
+                schedule.getWbsTask().getId(),
+                schedule.getWbsTask().getTaskCode(),
+                schedule.getWbsTask().getTaskName(),
+                expected,
+                recommended,
+                conservative,
+                schedule.getPredecessors().stream()
+                        .map(predecessor -> predecessor.getWbsTask().getId())
+                        .sorted()
+                        .toList(),
+                schedule.isMilestone(),
+                schedule.getBufferDays(),
+                schedule.isConfirmed()
+        );
+    }
+
+    private ProjectScheduleResponse.ScheduleDateRange toResponseRange(
+            ProjectSchedule schedule,
+            ProjectScheduleScenario scenario
+    ) {
+        if (scenario == null) {
+            return new ProjectScheduleResponse.ScheduleDateRange(
+                    schedule.getStartDate(),
+                    schedule.getEndDate(),
+                    schedule.getEstimatedDays()
+            );
+        }
+        return new ProjectScheduleResponse.ScheduleDateRange(
+                scenario.getStartDate(),
+                scenario.getEndDate(),
+                scenario.getEstimatedDays()
+        );
+    }
+
+    private int calculateEstimatedDays(LocalDate startDate, LocalDate endDate) {
+        long days = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        if (days > Integer.MAX_VALUE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid estimated days");
+        }
+        return (int) days;
+    }
+
+    private String writeWarnings(List<String> warnings) {
+        try {
+            return objectMapper.writeValueAsString(safeWarnings(warnings));
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "failed to store schedule warnings",
+                    exception
+            );
+        }
+    }
+
+    private List<String> readWarnings(String warningsJson) {
+        if (warningsJson == null || warningsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    warningsJson,
+                    new TypeReference<List<String>>() {
+                    }
+            );
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "SCHEDULE_DATA_CORRUPTED",
+                    "저장된 일정 경고를 읽을 수 없습니다.",
+                    exception
+            );
+        }
+    }
+
+    private List<String> safeWarnings(List<String> warnings) {
+        if (warnings == null) {
+            return List.of();
+        }
+        return warnings.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .toList();
+    }
+
+    private List<Long> safeIds(List<Long> ids) {
+        return ids == null ? List.of() : List.copyOf(ids);
+    }
+
+    private String normalizeOrDefault(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value.trim();
+    }
+
+    private ApiException invalidAiResponse(String message) {
+        return new ApiException(
+                HttpStatus.BAD_GATEWAY,
+                "INVALID_PLANNING_SCHEDULE_RESPONSE",
+                message
+        );
+    }
+
+    private record ScenarioRange(
+            ScheduleScenarioType type,
+            LocalDate startDate,
+            LocalDate endDate,
+            int estimatedDays
+    ) {
+    }
+
+    private record PreparedSchedule(
+            String externalScheduleId,
+            ProjectWbsTask wbsTask,
+            ScenarioRange expected,
+            ScenarioRange recommended,
+            ScenarioRange conservative,
+            List<Long> predecessorWbsIds,
+            boolean milestone,
+            int bufferDays
+    ) {
     }
 }
