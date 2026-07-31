@@ -2,7 +2,7 @@ package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.PlanningWbsGenerationRequest;
-import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
+import com.aivle26.aipm.Dto.project.PlanningWbsGenerationResponse;
 import com.aivle26.aipm.Exception.ApiException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,7 +26,7 @@ public class PlanningWbsHttpClient implements PlanningWbsClient {
     private final ObjectMapper objectMapper;
 
     @Override
-    public SaveWbsResultRequest generateWbs(PlanningWbsGenerationRequest request) {
+    public PlanningWbsGenerationResponse generateWbs(PlanningWbsGenerationRequest request) {
         try {
             byte[] responseBody = planningAgentRestClient.post()
                     .uri(properties.getWbsPath())
@@ -68,13 +68,14 @@ public class PlanningWbsHttpClient implements PlanningWbsClient {
         }
     }
 
-    private SaveWbsResultRequest decodeResponse(byte[] responseBody) {
+    private PlanningWbsGenerationResponse decodeResponse(byte[] responseBody) {
         if (responseBody == null || responseBody.length == 0) {
             throw invalidResponse(null);
         }
         try {
-            SaveWbsResultRequest response = objectMapper.readValue(responseBody, SaveWbsResultRequest.class);
-            if (response == null || response.tasks() == null) {
+            PlanningWbsGenerationResponse response =
+                    objectMapper.readValue(responseBody, PlanningWbsGenerationResponse.class);
+            if (response == null || response.wbsItems() == null || response.wbsItems().isEmpty()) {
                 throw invalidResponse(null);
             }
             return response;

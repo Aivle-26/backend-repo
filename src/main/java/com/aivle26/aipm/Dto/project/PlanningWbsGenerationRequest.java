@@ -6,17 +6,72 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record PlanningWbsGenerationRequest(
-        List<RequirementData> requirements
+        @JsonProperty("project_info")
+        ProjectInfo projectInfo,
+
+        @JsonProperty("requirement_candidates")
+        List<RequirementData> requirementCandidates,
+
+        List<String> methodology
 ) {
+    public record ProjectInfo(
+            @JsonProperty("project_name")
+            String projectName,
+
+            @JsonProperty("project_goal")
+            String projectGoal,
+
+            @JsonProperty("client_organization")
+            String clientOrganization,
+
+            @JsonProperty("period_start")
+            LocalDate periodStart,
+
+            @JsonProperty("period_end")
+            LocalDate periodEnd,
+
+            @JsonProperty("key_features")
+            List<String> keyFeatures,
+
+            @JsonProperty("required_artifacts")
+            List<RequiredArtifact> requiredArtifacts,
+
+            @JsonProperty("acceptance_conditions")
+            List<String> acceptanceConditions,
+
+            @JsonProperty("budget_contract_conditions")
+            List<String> budgetContractConditions,
+
+            @JsonProperty("security_privacy_conditions")
+            List<String> securityPrivacyConditions
+    ) {
+    }
+
+    public record RequiredArtifact(
+            @JsonProperty("artifact_type")
+            String artifactType,
+
+            @JsonProperty("artifact_name")
+            String artifactName,
+
+            @JsonProperty("required_version")
+            String requiredVersion
+    ) {
+    }
+
     public record RequirementData(
             @JsonProperty("requirement_id")
             Long requirementId,
 
-            String type,
+            @JsonProperty("function_name")
+            String functionName,
 
-            String title,
+            @JsonProperty("requirement_text")
+            String requirementText,
 
-            String description,
+            String category,
+
+            String priority,
 
             @JsonProperty("acceptance_criteria")
             String acceptanceCriteria,
@@ -30,7 +85,11 @@ public record PlanningWbsGenerationRequest(
             @JsonProperty("security_condition")
             String securityCondition,
 
-            String priority
+            @JsonProperty("source_document")
+            String sourceDocument,
+
+            @JsonProperty("source_excerpt")
+            String sourceExcerpt
     ) {
     }
 }

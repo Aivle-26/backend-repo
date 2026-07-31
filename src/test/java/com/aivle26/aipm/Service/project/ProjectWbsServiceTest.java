@@ -2,6 +2,8 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.DocumentAnalysisRequirementRequest;
+import com.aivle26.aipm.Dto.project.PlanningWbsGenerationRequest;
+import com.aivle26.aipm.Dto.project.PlanningWbsGenerationResponse;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultResponse;
@@ -22,6 +24,7 @@ import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
+import com.aivle26.aipm.client.ai.PlanningWbsClient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +41,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @WithMockUser(username = "PM001", roles = "PM")
@@ -45,6 +50,9 @@ class ProjectWbsServiceTest {
 
     @MockitoBean
     private S3Client s3Client;
+
+    @MockitoBean
+    private PlanningWbsClient planningWbsClient;
 
     @Autowired
     private ProjectWbsService projectWbsService;
@@ -133,6 +141,89 @@ class ProjectWbsServiceTest {
         var savedTask = projectWbsTaskRepository.findAll().getFirst();
         assertThat(savedTask.isConfirmed()).isFalse();
         assertThat(savedTask.getParentTask()).isNull();
+    }
+
+    @Test
+    void generateWbsUsesNativeAgentContractAndPersistsHierarchy() {
+        ProjectRequirement requirement = createConfirmedRequirement("analysis-native-001");
+        Project project = projectRepository.findAll().getFirst();
+        Long projectId = project.getId();
+        String projectName = project.getName();
+        when(planningWbsClient.generateWbs(any())).thenReturn(
+                new PlanningWbsGenerationResponse(
+                        projectName,
+                        List.of("요구사항 분석"),
+                        List.of(
+                                new PlanningWbsGenerationResponse.WbsItem(
+                                        1L,
+                                        "1",
+                                        null,
+                                        1,
+                                        1,
+                                        "PHASE",
+                                        "요구사항 분석",
+                                        "요구사항 분석 단계",
+                                        List.of(requirement.getId())
+                                ),
+                                new PlanningWbsGenerationResponse.WbsItem(
+                                        2L,
+                                        "1.1",
+                                        1L,
+                                        2,
+                                        1,
+                                        "WORK_PACKAGE",
+                                        "인증 요구사항",
+                                        "인증 요구사항 작업 묶음",
+                                        List.of(requirement.getId())
+                                ),
+                                new PlanningWbsGenerationResponse.WbsItem(
+                                        3L,
+                                        "1.1.1",
+                                        2L,
+                                        3,
+                                        1,
+                                        "TASK",
+                                        "문서 업로드 분석",
+                                        "프로젝트 문서를 분석한다.",
+                                        List.of(requirement.getId())
+                                )
+                        ),
+                        List.of(),
+                        "SUCCEEDED"
+                )
+        );
+
+        var response = projectWbsService.generateWbs(projectId);
+
+        assertThat(response.aiSuggestionTasks()).hasSize(3);
+        assertThat(response.aiSuggestionTasks())
+                .extracting(item -> item.externalTaskId())
+                .containsExactly("WBS-1", "WBS-2", "WBS-3");
+        assertThat(response.aiSuggestionTasks().get(1).parentExternalTaskId())
+                .isEqualTo("WBS-1");
+        assertThat(response.aiSuggestionTasks().get(2).parentExternalTaskId())
+                .isEqualTo("WBS-2");
+        assertThat(response.aiSuggestionTasks().get(2).phase().name())
+                .isEqualTo("ANALYSIS");
+        assertThat(response.aiSuggestionTasks().get(2).estimatedHours())
+                .isEqualTo(24);
+        assertThat(response.finalTasks()).hasSize(3);
+        assertThat(projectWbsTaskRepository.findByProjectIdOrderByOrderIndexAscIdAsc(
+                projectId
+        )).hasSize(3);
+
+        var requestCaptor =
+                org.mockito.ArgumentCaptor.forClass(PlanningWbsGenerationRequest.class);
+        org.mockito.Mockito.verify(planningWbsClient).generateWbs(requestCaptor.capture());
+        PlanningWbsGenerationRequest request = requestCaptor.getValue();
+        assertThat(request.projectInfo().projectName())
+                .isEqualTo(projectName);
+        assertThat(request.requirementCandidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.requirementId()).isEqualTo(requirement.getId());
+            assertThat(candidate.functionName()).isEqualTo(requirement.getTitle());
+            assertThat(candidate.requirementText()).isEqualTo(requirement.getDescription());
+            assertThat(candidate.category()).isEqualTo(requirement.getType().name());
+        });
     }
 
     @Test
