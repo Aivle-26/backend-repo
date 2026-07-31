@@ -88,8 +88,8 @@ class UserServiceTest {
         assertThat(emailVerificationRepository.count()).isOne();
         var captor = org.mockito.ArgumentCaptor.forClass(MimeMessage.class);
         verify(javaMailSender).send(captor.capture());
-        assertThat(captor.getValue().getSubject()).isEqualTo("[BidWorks AI] 회원가입 인증번호 안내");
-        assertThat(captor.getValue().getHeader("Auto-Submitted", null)).isNull();
+        assertThat(captor.getValue().getSubject()).isEqualTo("[PM Agent] 회원가입 이메일 인증");
+        assertThat(captor.getValue().getHeader("Auto-Submitted", null)).isEqualTo("auto-generated");
     }
 
     @Test

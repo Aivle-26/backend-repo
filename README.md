@@ -20,39 +20,36 @@ Use `.env.example` as the shape for environment variables, but keep real secrets
 ## Production Transactional Email
 
 회원가입 및 비밀번호 재설정 인증 메일은 Spring `JavaMailSender`를 통해 SMTP로 전송한다.
-`prod` 프로필은 서울 리전 AWS SES SMTP(`email-smtp.ap-northeast-2.amazonaws.com:587`)를 기본 전송 경로로 사용한다.
-개인 Gmail 계정은 운영 기본값으로 사용되지 않는다. SMTP 인증과 STARTTLS가 기본 활성화되며, 자격증명이나 발신 주소가 빠지면 애플리케이션 시작 시 누락된 환경변수 이름이 로그에 표시된다.
+운영 환경에서는 개인 Gmail 대신 AWS SES, SendGrid, Mailgun 등 트랜잭션 메일 공급자의 SMTP 자격 증명을 사용한다.
+`prod` 프로필은 메일 기능을 기본 활성화하고 SMTP 인증과 STARTTLS를 요구하므로 필수 설정이 빠지면 애플리케이션 시작이 실패한다.
 
-필수 환경변수는 `.env.example`의 `MAIL_*` 항목을 따른다. `MAIL_USERNAME`과 `MAIL_PASSWORD`에는 AWS 액세스 키가 아니라 SES에서 별도로 발급한 SMTP 자격증명을 넣는다. 실제 자격증명과 비밀번호는 저장소에 커밋하지 않는다.
+필수 환경변수는 `.env.example`의 `MAIL_*` 항목을 따른다. 실제 SMTP 사용자명과 비밀번호는 저장소에 커밋하지 않는다.
 
 ```properties
 MAIL_ENABLED=true
 MAIL_HOST=email-smtp.ap-northeast-2.amazonaws.com
 MAIL_PORT=587
-MAIL_USERNAME=<SES_SMTP_USERNAME>
-MAIL_PASSWORD=<SES_SMTP_PASSWORD>
+MAIL_USERNAME=<provider-smtp-username>
+MAIL_PASSWORD=<provider-smtp-password>
 MAIL_SMTP_AUTH=true
 MAIL_STARTTLS_ENABLE=true
 MAIL_STARTTLS_REQUIRED=true
-MAIL_FROM_ADDRESS=no-reply@your-service-domain.example
-MAIL_FROM_NAME=BidWorks AI
-MAIL_REPLY_TO=support@your-service-domain.example
-MAIL_SUBJECT_PREFIX=[BidWorks AI]
+MAIL_FROM_ADDRESS=no-reply@pmagent.co.kr
+MAIL_FROM_NAME=PM Agent
+MAIL_REPLY_TO=support@pmagent.co.kr
 ```
 
-AWS SES와 서비스 도메인 DNS에서 별도로 완료해야 하는 항목:
+메일 공급자와 DNS에서 별도로 완료해야 하는 항목:
 
-- `MAIL_FROM_ADDRESS`에 사용할 발신 주소 또는 발신 도메인 검증
-- SES SMTP 자격증명 발급
-- SES 샌드박스에서는 검증된 수신자에게만 발송 가능
-- 운영 사용 전 SES 프로덕션 액세스 요청
-- SES가 안내하는 SPF 레코드 등록
-- SES가 안내하는 DKIM 레코드 등록
-- 서비스 도메인의 DMARC 정책 등록
+- `MAIL_FROM_ADDRESS` 도메인의 발신자 또는 도메인 소유권 인증
+- 공급자가 제공하는 SPF 레코드 등록
+- 공급자가 제공하는 DKIM 레코드 등록
+- `_dmarc.pmagent.co.kr` DMARC 정책 등록
 - 표시 From 도메인과 SPF/DKIM 인증 도메인 정렬
+- AWS SES를 사용할 경우 프로덕션 액세스 승인 및 샌드박스 해제
 - 반송 및 스팸 신고 모니터링 설정
 
-`local` 프로필은 메일 기능이 기본 비활성화되어 있다. 로컬 Gmail SMTP 테스트가 필요할 때만 `MAIL_ENABLED=true`, Gmail 주소인 `MAIL_USERNAME`/`MAIL_FROM_ADDRESS`, Google 앱 비밀번호인 `MAIL_PASSWORD`를 설정한다. `MAIL_HOST=smtp.gmail.com`, `MAIL_PORT=587`, SMTP 인증과 STARTTLS는 로컬 프로필 기본값으로 제공되며 운영 발송에는 사용하지 않는다.
+로컬 Gmail SMTP 테스트에서는 `MAIL_HOST=smtp.gmail.com`, `MAIL_PORT=587`과 Google 앱 비밀번호를 사용할 수 있지만 운영 발송에는 사용하지 않는다.
 
 ## Document Relay Flow
 
