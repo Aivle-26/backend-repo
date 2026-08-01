@@ -9,6 +9,9 @@ import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -19,6 +22,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(OutputCaptureExtension.class)
 class PlanningWbsHttpClientTest {
     private MockWebServer mockWebServer;
 
@@ -98,6 +102,61 @@ class PlanningWbsHttpClientTest {
                             assertThat(exception.getCode()).isEqualTo("INVALID_PLANNING_WBS_RESPONSE");
                         }
                 );
+    }
+
+    @Test
+    void logsSanitizedAiValidationErrorWithoutRequestInput(CapturedOutput output) {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(422)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "detail": [
+                            {
+                              "type": "missing",
+                              "loc": ["body", "project_info"],
+                              "msg": "Field required",
+                              "input": {
+                                "project_name": "sensitive-project-name"
+                              }
+                            }
+                          ]
+                        }
+                        """));
+
+        assertThatThrownBy(() -> createClient().generateWbs(request()))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("PLANNING_WBS_CLIENT_ERROR")
+                );
+
+        assertThat(output.getOut())
+                .contains("status=422")
+                .contains("path=/api/v1/planning/wbs/generate")
+                .contains("type=missing")
+                .contains("loc=/body/project_info")
+                .contains("msg=Field required")
+                .doesNotContain("sensitive-project-name");
+    }
+
+    @Test
+    void logsAiNotFoundSeparatelyFromValidationError(CapturedOutput output) {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"detail":"Not Found"}
+                        """));
+
+        assertThatThrownBy(() -> createClient().generateWbs(request()))
+                .isInstanceOf(ApiException.class);
+
+        assertThat(output.getOut())
+                .contains("status=404")
+                .contains("path=/api/v1/planning/wbs/generate")
+                .contains("detail=Not Found")
+                .doesNotContain("status=422");
     }
 
     private PlanningWbsGenerationRequest request() {
