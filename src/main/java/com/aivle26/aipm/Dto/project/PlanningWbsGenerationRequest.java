@@ -1,5 +1,6 @@
 package com.aivle26.aipm.Dto.project;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDate;
@@ -25,9 +26,11 @@ public record PlanningWbsGenerationRequest(
             String clientOrganization,
 
             @JsonProperty("period_start")
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
             LocalDate periodStart,
 
             @JsonProperty("period_end")
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
             LocalDate periodEnd,
 
             @JsonProperty("key_features")
@@ -77,6 +80,7 @@ public record PlanningWbsGenerationRequest(
             String acceptanceCriteria,
 
             @JsonProperty("due_date")
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
             LocalDate dueDate,
 
             @JsonProperty("deliverable_name")

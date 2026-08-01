@@ -17,6 +17,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +73,13 @@ class PlanningWbsHttpClientTest {
         assertThat(recorded.getBody().readUtf8())
                 .contains("\"project_info\"")
                 .contains("\"requirement_candidates\"")
+                .contains("\"period_start\":\"2026-09-01\"")
+                .contains("\"period_end\":\"2026-11-30\"")
+                .contains("\"due_date\":\"2026-10-15\"")
                 .contains("\"function_name\":\"로그인\"")
+                .doesNotContain("\"period_start\":[")
+                .doesNotContain("\"period_end\":[")
+                .doesNotContain("\"due_date\":[")
                 .doesNotContain("\"requirements\":");
         assertThat(response.projectName()).isEqualTo("프로젝트");
         assertThat(response.wbsItems()).hasSize(1);
@@ -165,8 +172,8 @@ class PlanningWbsHttpClientTest {
                         "프로젝트",
                         "목표",
                         null,
-                        null,
-                        null,
+                        LocalDate.of(2026, 9, 1),
+                        LocalDate.of(2026, 11, 30),
                         List.of("로그인"),
                         List.of(),
                         List.of(),
@@ -180,7 +187,7 @@ class PlanningWbsHttpClientTest {
                         "FUNCTIONAL",
                         "HIGH",
                         null,
-                        null,
+                        LocalDate.of(2026, 10, 15),
                         null,
                         null,
                         "requirements.txt",

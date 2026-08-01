@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Config;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -9,6 +10,12 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 @Configuration
 @EnableConfigurationProperties(S3Properties.class)
+@ConditionalOnProperty(
+        prefix = "app.document",
+        name = "storage-type",
+        havingValue = "s3",
+        matchIfMissing = true
+)
 public class S3Config {
 
     @Bean

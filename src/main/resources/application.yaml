@@ -73,6 +73,7 @@ app:
     max-attempts: ${MAIL_MAX_ATTEMPTS:3}
     retry-delay-ms: ${MAIL_RETRY_DELAY_MS:500}
   document:
+    storage-type: ${DOCUMENT_STORAGE_TYPE:s3}
     storage-path: ${DOCUMENT_STORAGE_PATH:uploads/documents}
     max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10485760}
     allowed-extensions:

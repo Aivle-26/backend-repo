@@ -1,7 +1,7 @@
 package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.client.ai.StoredDocumentFile;
-import com.aivle26.aipm.Config.S3Properties;
+import com.aivle26.aipm.Config.storage.DocumentObjectStorage;
 import com.aivle26.aipm.Config.storage.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadItemResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
@@ -33,14 +33,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import software.amazon.awssdk.core.ResponseBytes;
-import software.amazon.awssdk.core.exception.SdkException;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @Service
 @Slf4j
@@ -62,8 +54,7 @@ public class ProjectDocumentService {
     private final ProjectRequirementRepository projectRequirementRepository;
     private final DocumentStorageProperties documentStorageProperties;
     private final ProjectAuthorizationService projectAuthorizationService;
-    private final S3Client s3Client;
-    private final S3Properties s3Properties;
+    private final DocumentObjectStorage documentObjectStorage;
     private final TransactionTemplate transactionTemplate;
 
     // 초안 프로젝트의 업로드 파일을 검증·교체 저장하고 문서 메타데이터를 반환한다.
@@ -319,18 +310,14 @@ public class ProjectDocumentService {
         }
 
         try {
-            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(GetObjectRequest.builder()
-                    .bucket(s3Properties.getBucket())
-                    .key(storagePath)
-                    .build());
             return new StoredDocumentFile(
                     projectDocument.originalFileName(),
                     projectDocument.contentType(),
                     projectDocument.fileSize(),
-                    object.asByteArray(),
+                    documentObjectStorage.get(storagePath),
                     projectDocument.id()
             );
-        } catch (SdkException exception) {
+        } catch (RuntimeException exception) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "DOCUMENT_STORAGE_ERROR", "file download failed", exception);
         }
     }
@@ -358,15 +345,13 @@ public class ProjectDocumentService {
                 uploadId,
                 sanitizeFileName(validatedFile.originalFileName(), validatedFile.extension())
         );
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(s3Properties.getBucket())
-                .key(objectKey)
-                .contentType(validatedFile.contentType())
-                .contentLength(validatedFile.fileSize())
-                .build();
-
         try (InputStream inputStream = validatedFile.file().getInputStream()) {
-            s3Client.putObject(request, RequestBody.fromInputStream(inputStream, validatedFile.fileSize()));
+            documentObjectStorage.put(
+                    objectKey,
+                    validatedFile.contentType(),
+                    validatedFile.fileSize(),
+                    inputStream
+            );
             return new StoredFile(
                     validatedFile.originalFileName(),
                     storedFileName,
@@ -393,12 +378,9 @@ public class ProjectDocumentService {
     private void cleanupObjects(List<String> objectKeys) {
         for (String objectKey : objectKeys) {
             try {
-                s3Client.deleteObject(DeleteObjectRequest.builder()
-                        .bucket(s3Properties.getBucket())
-                        .key(objectKey)
-                        .build());
+                documentObjectStorage.delete(objectKey);
             } catch (RuntimeException exception) {
-                log.warn("Failed to delete S3 project document: objectKey={}", objectKey, exception);
+                log.warn("Failed to delete stored project document: objectKey={}", objectKey, exception);
             }
         }
     }

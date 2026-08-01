@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Config.S3Properties;
+import com.aivle26.aipm.Config.storage.S3DocumentObjectStorage;
 import com.aivle26.aipm.Config.storage.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Entity.project.Project;
@@ -89,8 +90,7 @@ class ProjectDocumentServiceTest {
                 projectRequirementRepository,
                 documentProperties,
                 projectAuthorizationService,
-                s3Client,
-                s3Properties,
+                new S3DocumentObjectStorage(s3Client, s3Properties),
                 transactionTemplate
         );
 

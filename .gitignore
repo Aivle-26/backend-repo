@@ -36,8 +36,6 @@ out/
 ### VS Code ###
 .vscode/
 
-/src/main/resources/application-local.yaml
-
 node_modules/
 dist/
 .pnpm-store/
@@ -46,3 +44,4 @@ vite-dev.log
 .env
 .env.*
 !.env.example
+/uploads/
