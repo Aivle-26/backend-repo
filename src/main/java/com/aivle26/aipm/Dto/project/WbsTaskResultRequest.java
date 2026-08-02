@@ -52,6 +52,28 @@ public record WbsTaskResultRequest(
 
         @JsonAlias("requirement_ids")
         @NotNull
-        List<@NotNull Long> requirementIds
+        List<@NotNull Long> requirementIds,
+
+        @JsonAlias("related_artifacts")
+        List<RelatedArtifact> relatedArtifacts,
+
+        @JsonAlias("completion_criteria")
+        List<String> completionCriteria
 ) {
+    public WbsTaskResultRequest(
+            String externalTaskId, String parentExternalTaskId, String taskCode,
+            String taskName, String description, String phase, List<String> requiredSkills,
+            String difficulty, int estimatedHours, int orderIndex, List<Long> requirementIds
+    ) {
+        this(externalTaskId, parentExternalTaskId, taskCode, taskName, description, phase,
+                requiredSkills, difficulty, estimatedHours, orderIndex, requirementIds,
+                List.of(), List.of());
+    }
+
+    public record RelatedArtifact(
+            String artifactType,
+            String artifactName,
+            String requiredVersion
+    ) {
+    }
 }

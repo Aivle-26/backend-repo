@@ -47,6 +47,21 @@ public class ProjectWbsResult {
     @Column(columnDefinition = "TEXT")
     private String initialTasksJson;
 
+    @Column(length = 30)
+    private String llmStatus;
+
+    @Column(length = 30)
+    private String generationStatus;
+
+    @Column(columnDefinition = "TEXT")
+    private String warningsJson;
+
+    @Column(columnDefinition = "TEXT")
+    private String requirementCoverageJson;
+
+    @Column(columnDefinition = "TEXT")
+    private String artifactCoverageJson;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

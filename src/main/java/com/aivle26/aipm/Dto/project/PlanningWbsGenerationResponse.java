@@ -15,11 +15,30 @@ public record PlanningWbsGenerationResponse(
         @JsonProperty("wbs_items")
         List<WbsItem> wbsItems,
 
+        @JsonProperty("requirement_coverage")
+        RequirementCoverage requirementCoverage,
+
+        @JsonProperty("artifact_coverage")
+        ArtifactCoverage artifactCoverage,
+
         List<String> warnings,
 
         @JsonProperty("generation_status")
-        String generationStatus
+        String generationStatus,
+
+        @JsonProperty("llm_status")
+        String llmStatus
 ) {
+    public PlanningWbsGenerationResponse(
+            String projectName,
+            List<String> methodology,
+            List<WbsItem> wbsItems,
+            List<String> warnings,
+            String generationStatus
+    ) {
+        this(projectName, methodology, wbsItems, null, null, warnings, generationStatus, null);
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record WbsItem(
             @JsonProperty("wbs_id")
@@ -45,7 +64,50 @@ public record PlanningWbsGenerationResponse(
             String description,
 
             @JsonProperty("mapped_requirement_ids")
-            List<Long> mappedRequirementIds
+            List<Long> mappedRequirementIds,
+
+            @JsonProperty("related_artifacts")
+            List<RelatedArtifact> relatedArtifacts,
+
+            @JsonProperty("completion_criteria")
+            List<String> completionCriteria
+    ) {
+        public WbsItem(
+                Long wbsId,
+                String wbsCode,
+                Long parentWbsId,
+                Integer level,
+                Integer sortOrder,
+                String itemType,
+                String wbsName,
+                String description,
+                List<Long> mappedRequirementIds
+        ) {
+            this(wbsId, wbsCode, parentWbsId, level, sortOrder, itemType, wbsName,
+                    description, mappedRequirementIds, List.of(), List.of());
+        }
+    }
+
+    public record RelatedArtifact(
+            @JsonProperty("artifact_type") String artifactType,
+            @JsonProperty("artifact_name") String artifactName,
+            @JsonProperty("required_version") String requiredVersion
+    ) {
+    }
+
+    public record RequirementCoverage(
+            @JsonProperty("total_requirements") int totalRequirements,
+            @JsonProperty("mapped_requirements") int mappedRequirements,
+            @JsonProperty("unmapped_requirement_ids") List<Long> unmappedRequirementIds,
+            @JsonProperty("coverage_rate") double coverageRate
+    ) {
+    }
+
+    public record ArtifactCoverage(
+            @JsonProperty("total_required_artifacts") int totalRequiredArtifacts,
+            @JsonProperty("mapped_artifacts") int mappedArtifacts,
+            @JsonProperty("unmapped_artifact_types") List<String> unmappedArtifactTypes,
+            @JsonProperty("coverage_rate") double coverageRate
     ) {
     }
 }

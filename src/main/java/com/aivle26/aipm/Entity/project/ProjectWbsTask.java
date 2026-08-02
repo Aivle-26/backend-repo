@@ -85,6 +85,12 @@ public class ProjectWbsTask {
     @Column(nullable = false)
     private boolean confirmed;
 
+    @Column(columnDefinition = "TEXT")
+    private String relatedArtifactsJson;
+
+    @Column(columnDefinition = "TEXT")
+    private String completionCriteriaJson;
+
     @ManyToMany
     @JoinTable(
             name = "project_wbs_task_requirements",

@@ -13,6 +13,8 @@ public record ProjectWbsResponse(
         Long projectId,
         String agentExecutionId,
         String agentVersion,
+        AiStatus aiStatus,
+        Coverage coverage,
         boolean finalConfirmed,
         LocalDateTime createdAt,
         List<WbsTaskDetail> aiSuggestionTasks,
@@ -31,7 +33,38 @@ public record ProjectWbsResponse(
             int estimatedHours,
             int orderIndex,
             List<Long> requirementIds,
+            List<WbsTaskResultRequest.RelatedArtifact> relatedArtifacts,
+            List<String> completionCriteria,
             boolean confirmed
+    ) {
+    }
+
+    public record AiStatus(
+            String llmStatus,
+            String generationStatus,
+            List<String> warnings
+    ) {
+    }
+
+    public record Coverage(
+            RequirementCoverage requirements,
+            ArtifactCoverage artifacts
+    ) {
+    }
+
+    public record RequirementCoverage(
+            int total,
+            int mapped,
+            List<Long> unmappedRequirementIds,
+            double coverageRate
+    ) {
+    }
+
+    public record ArtifactCoverage(
+            int total,
+            int mapped,
+            List<String> unmappedArtifactTypes,
+            double coverageRate
     ) {
     }
 }

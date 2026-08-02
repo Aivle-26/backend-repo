@@ -57,11 +57,28 @@ class PlanningWbsHttpClientTest {
                               "item_type": "PHASE",
                               "wbs_name": "요구사항 분석",
                               "description": "요구사항을 분석한다.",
-                              "mapped_requirement_ids": [10]
+                              "mapped_requirement_ids": [10],
+                              "related_artifacts": [
+                                {"artifact_type":"WBS","artifact_name":"Project WBS","required_version":"1.0"}
+                              ],
+                              "completion_criteria": ["Approved by PM"]
                             }
                           ],
-                          "warnings": [],
-                          "generation_status": "SUCCEEDED"
+                          "requirement_coverage": {
+                            "total_requirements": 1,
+                            "mapped_requirements": 1,
+                            "unmapped_requirement_ids": [],
+                            "coverage_rate": 100.0
+                          },
+                          "artifact_coverage": {
+                            "total_required_artifacts": 1,
+                            "mapped_artifacts": 1,
+                            "unmapped_artifact_types": [],
+                            "coverage_rate": 100.0
+                          },
+                          "warnings": ["Review hierarchy"],
+                          "generation_status": "SUCCEEDED",
+                          "llm_status": "SUCCEEDED"
                         }
                         """));
 
@@ -84,6 +101,15 @@ class PlanningWbsHttpClientTest {
         assertThat(response.projectName()).isEqualTo("프로젝트");
         assertThat(response.wbsItems()).hasSize(1);
         assertThat(response.wbsItems().getFirst().itemType()).isEqualTo("PHASE");
+        assertThat(response.llmStatus()).isEqualTo("SUCCEEDED");
+        assertThat(response.warnings()).containsExactly("Review hierarchy");
+        assertThat(response.requirementCoverage().coverageRate()).isEqualTo(100.0);
+        assertThat(response.artifactCoverage().coverageRate()).isEqualTo(100.0);
+        assertThat(response.wbsItems().getFirst().relatedArtifacts())
+                .singleElement()
+                .satisfies(artifact -> assertThat(artifact.artifactName()).isEqualTo("Project WBS"));
+        assertThat(response.wbsItems().getFirst().completionCriteria())
+                .containsExactly("Approved by PM");
     }
 
     @Test

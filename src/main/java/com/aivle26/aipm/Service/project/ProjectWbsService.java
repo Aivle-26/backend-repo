@@ -76,7 +76,7 @@ public class ProjectWbsService {
         PlanningWbsGenerationResponse nativeResult =
                 planningWbsClient.generateWbs(toGenerationRequest(project, requirements));
         SaveWbsResultRequest aiResult = toSaveWbsResult(nativeResult, requirementById);
-        ProjectWbsResult savedResult = saveWbsSuggestion(project, aiResult, requirementById);
+        ProjectWbsResult savedResult = saveWbsSuggestion(project, aiResult, requirementById, nativeResult);
         return toResponse(savedResult);
     }
 
@@ -88,7 +88,8 @@ public class ProjectWbsService {
         ProjectWbsResult savedResult = saveWbsSuggestion(
                 project,
                 request,
-                toRequirementMap(getConfirmedRequirements(projectId))
+                toRequirementMap(getConfirmedRequirements(projectId)),
+                null
         );
         return new SaveWbsResultResponse(
                 savedResult.getId(),
@@ -121,7 +122,11 @@ public class ProjectWbsService {
         }
 
         Map<Long, ProjectRequirement> requirementById = toRequirementMap(getConfirmedRequirements(projectId));
-        List<PreparedWbsTask> preparedTasks = prepareTasks(request.tasks(), requirementById);
+        List<WbsTaskResultRequest> tasksWithMetadata = mergeMissingTaskMetadata(
+                request.tasks(),
+                readInitialTasks(result.getInitialTasksJson(), List.of())
+        );
+        List<PreparedWbsTask> preparedTasks = prepareTasks(tasksWithMetadata, requirementById);
         deleteFinalTasks(projectId);
         saveTasks(project, result, preparedTasks, true);
         projectWbsTaskRepository.flush();
@@ -131,7 +136,8 @@ public class ProjectWbsService {
     private ProjectWbsResult saveWbsSuggestion(
             Project project,
             SaveWbsResultRequest request,
-            Map<Long, ProjectRequirement> requirementById
+            Map<Long, ProjectRequirement> requirementById,
+            PlanningWbsGenerationResponse nativeResult
     ) {
         String agentExecutionId = requireText(request == null ? null : request.agentExecutionId(), "agentExecutionId");
         String agentVersion = requireText(request.agentVersion(), "agentVersion");
@@ -148,6 +154,7 @@ public class ProjectWbsService {
             existingResult.setAgentExecutionId(agentExecutionId);
             existingResult.setAgentVersion(agentVersion);
             existingResult.setInitialTasksJson(writeInitialTasks(request.tasks()));
+            applyAiMetadata(existingResult, nativeResult);
             return projectWbsResultRepository.save(existingResult);
         }
 
@@ -157,6 +164,7 @@ public class ProjectWbsService {
         result.setAgentExecutionId(agentExecutionId);
         result.setAgentVersion(agentVersion);
         result.setInitialTasksJson(writeInitialTasks(request.tasks()));
+        applyAiMetadata(result, nativeResult);
         ProjectWbsResult savedResult = projectWbsResultRepository.save(result);
 
         saveTasks(project, savedResult, preparedTasks, false);
@@ -186,6 +194,8 @@ public class ProjectWbsService {
             task.setEstimatedHours(preparedTask.estimatedHours());
             task.setOrderIndex(preparedTask.orderIndex());
             task.setConfirmed(confirmed);
+            task.setRelatedArtifactsJson(writeJson(preparedTask.relatedArtifacts()));
+            task.setCompletionCriteriaJson(writeJson(preparedTask.completionCriteria()));
             task.setRequirements(new LinkedHashSet<>(preparedTask.requirements()));
             taskByExternalId.put(task.getExternalTaskId(), task);
         }
@@ -215,6 +225,12 @@ public class ProjectWbsService {
                 result.getProject().getId(),
                 result.getAgentExecutionId(),
                 result.getAgentVersion(),
+                new ProjectWbsResponse.AiStatus(
+                        result.getLlmStatus(),
+                        result.getGenerationStatus(),
+                        readJsonList(result.getWarningsJson(), String.class)
+                ),
+                toCoverage(result),
                 !finalTasks.isEmpty() && finalTasks.stream().allMatch(ProjectWbsTask::isConfirmed),
                 result.getCreatedAt(),
                 initialTasks.stream()
@@ -239,6 +255,8 @@ public class ProjectWbsService {
                 task.estimatedHours(),
                 task.orderIndex(),
                 List.copyOf(task.requirementIds()),
+                safeList(task.relatedArtifacts()),
+                safeList(task.completionCriteria()),
                 false
         );
     }
@@ -261,6 +279,8 @@ public class ProjectWbsService {
                 task.getEstimatedHours(),
                 task.getOrderIndex(),
                 requirementIds,
+                readRelatedArtifacts(task.getRelatedArtifactsJson()),
+                readJsonList(task.getCompletionCriteriaJson(), String.class),
                 task.isConfirmed()
         );
     }
@@ -417,7 +437,15 @@ public class ProjectWbsService {
                     difficulty.name(),
                     estimatedHours,
                     index,
-                    requirementIdsByItem.get(item.wbsId())
+                    requirementIdsByItem.get(item.wbsId()),
+                    safeList(item.relatedArtifacts()).stream()
+                            .map(artifact -> new WbsTaskResultRequest.RelatedArtifact(
+                                    artifact.artifactType(),
+                                    artifact.artifactName(),
+                                    artifact.requiredVersion()
+                            ))
+                            .toList(),
+                    safeList(item.completionCriteria())
             ));
         }
 
@@ -704,6 +732,91 @@ public class ProjectWbsService {
         }
     }
 
+    private void applyAiMetadata(
+            ProjectWbsResult result,
+            PlanningWbsGenerationResponse response
+    ) {
+        if (response == null) {
+            return;
+        }
+        result.setLlmStatus(normalizeNullable(response.llmStatus()));
+        result.setGenerationStatus(normalizeNullable(response.generationStatus()));
+        result.setWarningsJson(writeJson(safeList(response.warnings())));
+        result.setRequirementCoverageJson(writeJson(response.requirementCoverage()));
+        result.setArtifactCoverageJson(writeJson(response.artifactCoverage()));
+    }
+
+    private ProjectWbsResponse.Coverage toCoverage(ProjectWbsResult result) {
+        PlanningWbsGenerationResponse.RequirementCoverage requirements = readJson(
+                result.getRequirementCoverageJson(),
+                PlanningWbsGenerationResponse.RequirementCoverage.class
+        );
+        PlanningWbsGenerationResponse.ArtifactCoverage artifacts = readJson(
+                result.getArtifactCoverageJson(),
+                PlanningWbsGenerationResponse.ArtifactCoverage.class
+        );
+        return new ProjectWbsResponse.Coverage(
+                requirements == null ? null : new ProjectWbsResponse.RequirementCoverage(
+                        requirements.totalRequirements(),
+                        requirements.mappedRequirements(),
+                        safeList(requirements.unmappedRequirementIds()),
+                        requirements.coverageRate()
+                ),
+                artifacts == null ? null : new ProjectWbsResponse.ArtifactCoverage(
+                        artifacts.totalRequiredArtifacts(),
+                        artifacts.mappedArtifacts(),
+                        safeList(artifacts.unmappedArtifactTypes()),
+                        artifacts.coverageRate()
+                )
+        );
+    }
+
+    private String writeJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "failed to store wbs metadata", exception);
+        }
+    }
+
+    private <T> T readJson(String json, Class<T> type) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, type);
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "WBS_DATA_CORRUPTED", exception);
+        }
+    }
+
+    private <T> List<T> readJsonList(String json, Class<T> itemType) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    json,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, itemType)
+            );
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "WBS_DATA_CORRUPTED", exception);
+        }
+    }
+
+    private List<WbsTaskResultRequest.RelatedArtifact> readRelatedArtifacts(String json) {
+        return readJsonList(json, WbsTaskResultRequest.RelatedArtifact.class);
+    }
+
+    private <T> List<T> safeList(List<T> values) {
+        return values == null
+                ? List.of()
+                : values.stream().filter(value -> value != null).toList();
+    }
+
     private List<WbsTaskResultRequest> readInitialTasks(
             String initialTasksJson,
             List<ProjectWbsTask> fallbackTasks
@@ -727,6 +840,51 @@ public class ProjectWbsService {
         }
     }
 
+    private List<WbsTaskResultRequest> mergeMissingTaskMetadata(
+            List<WbsTaskResultRequest> requestedTasks,
+            List<WbsTaskResultRequest> aiSuggestionTasks
+    ) {
+        Map<String, WbsTaskResultRequest> suggestionByExternalId = new HashMap<>();
+        for (WbsTaskResultRequest suggestion : safeList(aiSuggestionTasks)) {
+            if (suggestion != null && suggestion.externalTaskId() != null) {
+                suggestionByExternalId.put(suggestion.externalTaskId().trim(), suggestion);
+            }
+        }
+        return safeList(requestedTasks).stream()
+                .map(task -> {
+                    if (task == null || task.externalTaskId() == null) {
+                        return task;
+                    }
+                    WbsTaskResultRequest suggestion = suggestionByExternalId.get(
+                            task.externalTaskId().trim()
+                    );
+                    if (suggestion == null
+                            || (task.relatedArtifacts() != null && task.completionCriteria() != null)) {
+                        return task;
+                    }
+                    return new WbsTaskResultRequest(
+                            task.externalTaskId(),
+                            task.parentExternalTaskId(),
+                            task.taskCode(),
+                            task.taskName(),
+                            task.description(),
+                            task.phase(),
+                            task.requiredSkills(),
+                            task.difficulty(),
+                            task.estimatedHours(),
+                            task.orderIndex(),
+                            task.requirementIds(),
+                            task.relatedArtifacts() == null
+                                    ? safeList(suggestion.relatedArtifacts())
+                                    : task.relatedArtifacts(),
+                            task.completionCriteria() == null
+                                    ? safeList(suggestion.completionCriteria())
+                                    : task.completionCriteria()
+                    );
+                })
+                .toList();
+    }
+
     private WbsTaskResultRequest toTaskRequest(ProjectWbsTask task) {
         return new WbsTaskResultRequest(
                 task.getExternalTaskId(),
@@ -739,7 +897,9 @@ public class ProjectWbsService {
                 task.getDifficulty().name(),
                 task.getEstimatedHours(),
                 task.getOrderIndex(),
-                task.getRequirements().stream().map(ProjectRequirement::getId).sorted().toList()
+                task.getRequirements().stream().map(ProjectRequirement::getId).sorted().toList(),
+                readRelatedArtifacts(task.getRelatedArtifactsJson()),
+                readJsonList(task.getCompletionCriteriaJson(), String.class)
         );
     }
 
@@ -791,7 +951,9 @@ public class ProjectWbsService {
                     parseEnum(task.difficulty(), WbsDifficulty.class),
                     task.estimatedHours(),
                     task.orderIndex(),
-                    resolveRequirements(task.requirementIds(), requirementById)
+                    resolveRequirements(task.requirementIds(), requirementById),
+                    safeList(task.relatedArtifacts()),
+                    safeList(task.completionCriteria())
             ));
         }
 
@@ -899,7 +1061,9 @@ public class ProjectWbsService {
             WbsDifficulty difficulty,
             int estimatedHours,
             int orderIndex,
-            Set<ProjectRequirement> requirements
+            Set<ProjectRequirement> requirements,
+            List<WbsTaskResultRequest.RelatedArtifact> relatedArtifacts,
+            List<String> completionCriteria
     ) {
     }
 }

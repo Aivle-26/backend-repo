@@ -227,6 +227,65 @@ class ProjectWbsServiceTest {
     }
 
     @Test
+    void generateWbsPreservesAiStatusCoverageAndTaskMetadata() {
+        ProjectRequirement requirement = createConfirmedRequirement("analysis-native-metadata");
+        Project project = projectRepository.findAll().getFirst();
+        when(planningWbsClient.generateWbs(any())).thenReturn(
+                new PlanningWbsGenerationResponse(
+                        project.getName(),
+                        List.of("Analysis"),
+                        List.of(
+                                new PlanningWbsGenerationResponse.WbsItem(
+                                        1L, "1", null, 1, 1, "PHASE", "Analysis",
+                                        "Analysis phase", List.of(requirement.getId())
+                                ),
+                                new PlanningWbsGenerationResponse.WbsItem(
+                                        2L, "1.1", 1L, 2, 1, "WORK_PACKAGE", "Requirements",
+                                        "Requirements package", List.of(requirement.getId())
+                                ),
+                                new PlanningWbsGenerationResponse.WbsItem(
+                                        3L, "1.1.1", 2L, 3, 1, "TASK", "Analyze requirements",
+                                        "Analyze confirmed requirements", List.of(requirement.getId()),
+                                        List.of(new PlanningWbsGenerationResponse.RelatedArtifact(
+                                                "WBS", "Project WBS", "1.0"
+                                        )),
+                                        List.of("Requirement mapping is complete")
+                                )
+                        ),
+                        new PlanningWbsGenerationResponse.RequirementCoverage(
+                                1, 1, List.of(), 100.0
+                        ),
+                        new PlanningWbsGenerationResponse.ArtifactCoverage(
+                                1, 1, List.of(), 100.0
+                        ),
+                        List.of("Review the generated hierarchy"),
+                        "SUCCEEDED",
+                        "FALLBACK"
+                )
+        );
+
+        var generated = projectWbsService.generateWbs(project.getId());
+        var fetched = projectWbsService.getWbs(project.getId());
+
+        assertThat(generated.aiStatus().llmStatus()).isEqualTo("FALLBACK");
+        assertThat(generated.aiStatus().generationStatus()).isEqualTo("SUCCEEDED");
+        assertThat(generated.aiStatus().warnings())
+                .containsExactly("Review the generated hierarchy");
+        assertThat(generated.coverage().requirements().coverageRate()).isEqualTo(100.0);
+        assertThat(generated.coverage().artifacts().coverageRate()).isEqualTo(100.0);
+        assertThat(generated.aiSuggestionTasks().get(2).relatedArtifacts())
+                .singleElement()
+                .satisfies(artifact -> assertThat(artifact.artifactType()).isEqualTo("WBS"));
+        assertThat(generated.aiSuggestionTasks().get(2).completionCriteria())
+                .containsExactly("Requirement mapping is complete");
+        assertThat(fetched.finalTasks().get(2).relatedArtifacts())
+                .singleElement()
+                .satisfies(artifact -> assertThat(artifact.artifactName()).isEqualTo("Project WBS"));
+        assertThat(fetched.finalTasks().get(2).completionCriteria())
+                .containsExactly("Requirement mapping is complete");
+    }
+
+    @Test
     void saveWbsResultFailWhenParentMissing() {
         ProjectRequirement requirement = createConfirmedRequirement("analysis-001");
 
