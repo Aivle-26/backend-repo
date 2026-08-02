@@ -16,9 +16,14 @@ import com.aivle26.aipm.Dto.auth.SignupRequest;
 import com.aivle26.aipm.Dto.auth.SignupResponse;
 import com.aivle26.aipm.Dto.auth.SignupStartResponse;
 import com.aivle26.aipm.Dto.auth.SignupVerifyRequest;
+import com.aivle26.aipm.Dto.user.SaveUserCapabilitiesRequest;
+import com.aivle26.aipm.Dto.user.UserCapabilitiesResponse;
+import com.aivle26.aipm.Dto.user.TeamMemberResponse;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import com.aivle26.aipm.Service.auth.AuthService;
 import com.aivle26.aipm.Service.user.UserService;
+import com.aivle26.aipm.Service.user.UserCapabilityService;
+import com.aivle26.aipm.Service.user.TeamMemberQueryService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,11 +33,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -40,6 +47,8 @@ import java.util.Map;
 public class UserController {
     private final UserService userService;
     private final AuthService authService;
+    private final UserCapabilityService userCapabilityService;
+    private final TeamMemberQueryService teamMemberQueryService;
 
     // 가입 정보를 검증해 이메일 인증을 시작하고 안내 응답을 반환한다.
     @PostMapping("/signup")
@@ -79,6 +88,22 @@ public class UserController {
     public ResponseEntity<AuthSessionResponse> me(Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         return ResponseEntity.ok(authService.getCurrentSession(user.employeeNumber()));
+    }
+
+    @PutMapping("/me/capabilities")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
+    public ResponseEntity<UserCapabilitiesResponse> saveCapabilities(
+            Authentication authentication,
+            @Valid @RequestBody SaveUserCapabilitiesRequest request
+    ) {
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        return ResponseEntity.ok(userCapabilityService.save(user.employeeNumber(), request));
+    }
+
+    @GetMapping("/team-members")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<List<TeamMemberResponse>> getAllTeamMembers() {
+        return ResponseEntity.ok(teamMemberQueryService.getAllActiveTeamMembers());
     }
 
     // 리프레시 토큰을 검증해 갱신된 인증 세션을 반환한다.

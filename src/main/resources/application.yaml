@@ -107,6 +107,7 @@ agent:
     readjust-path: ${PLANNING_AGENT_READJUST_PATH:/api/v1/planning/documents/readjust}
     wbs-path: ${PLANNING_AGENT_WBS_PATH:/api/v1/planning/wbs/generate}
     schedule-path: ${PLANNING_AGENT_SCHEDULE_PATH:/api/v1/planning/schedules/recommend}
+    resource-path: ${PLANNING_AGENT_RESOURCE_PATH:/api/v1/planning/resources/recommend}
     schedule-agent-version: ${PLANNING_AGENT_SCHEDULE_VERSION:schedule-recommend-v1}
     connect-timeout: ${PLANNING_AGENT_CONNECT_TIMEOUT:5s}
     read-timeout: ${PLANNING_AGENT_READ_TIMEOUT:120s}

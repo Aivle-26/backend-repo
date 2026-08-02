@@ -14,12 +14,25 @@ public record PlanningScheduleRecommendResponse(
 
         List<String> warnings,
 
+        @JsonProperty("llm_status")
+        String llmStatus,
+
         @JsonProperty("agent_execution_id")
         String agentExecutionId,
 
         @JsonProperty("agent_version")
         String agentVersion
 ) {
+    public PlanningScheduleRecommendResponse(
+            Long projectId,
+            List<WbsSchedule> wbsSchedules,
+            List<String> warnings,
+            String agentExecutionId,
+            String agentVersion
+    ) {
+        this(projectId, wbsSchedules, warnings, null, agentExecutionId, agentVersion);
+    }
+
     public record WbsSchedule(
             @JsonProperty("wbs_id")
             Long wbsId,

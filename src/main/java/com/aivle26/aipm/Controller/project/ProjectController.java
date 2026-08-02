@@ -1,6 +1,8 @@
 package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.AgentRequestResult;
+import com.aivle26.aipm.Dto.project.AssignmentRecommendationRequest;
+import com.aivle26.aipm.Dto.project.AssignmentRecommendationResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
@@ -10,6 +12,7 @@ import com.aivle26.aipm.Dto.project.ProjectScheduleResponse;
 import com.aivle26.aipm.Dto.project.ProjectSummaryResponse;
 import com.aivle26.aipm.Dto.project.ProjectWbsResponse;
 import com.aivle26.aipm.Dto.project.SaveFinalWbsRequest;
+import com.aivle26.aipm.Dto.project.SaveFinalScheduleRequest;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultResponse;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
@@ -21,6 +24,7 @@ import com.aivle26.aipm.Dto.ProjectArtifactStatusResponse;
 import com.aivle26.aipm.Service.ProjectArtifactStatusService;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import com.aivle26.aipm.Service.project.ProjectCreationService;
+import com.aivle26.aipm.Service.project.AssignmentRecommendationService;
 import com.aivle26.aipm.Service.project.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.project.ProjectDocumentExtractService;
 import com.aivle26.aipm.Service.project.ProjectDocumentService;
@@ -66,6 +70,7 @@ public class ProjectController {
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
     private final ProjectWbsService projectWbsService;
     private final ProjectScheduleService projectScheduleService;
+    private final AssignmentRecommendationService assignmentRecommendationService;
 
     // 저장된 프로젝트를 조회해 화면용 요약 목록으로 반환한다.
     @GetMapping
@@ -235,6 +240,26 @@ public class ProjectController {
             @PathVariable Long projectId
     ) {
         return ResponseEntity.ok(projectScheduleService.getSchedules(projectId));
+    }
+
+    @PutMapping("/{projectId}/schedules/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<ProjectScheduleResponse> saveFinalSchedule(
+            @PathVariable Long projectId,
+            @Valid @RequestBody SaveFinalScheduleRequest request
+    ) {
+        return ResponseEntity.ok(projectScheduleService.saveFinalSchedule(projectId, request));
+    }
+
+    @PostMapping("/{projectId}/assignments/recommend")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<AssignmentRecommendationResponse> recommendAssignments(
+            @PathVariable Long projectId,
+            @Valid @RequestBody AssignmentRecommendationRequest request
+    ) {
+        return ResponseEntity.ok(
+                assignmentRecommendationService.recommend(projectId, request)
+        );
     }
 
     @GetMapping("/{projectId}/artifacts/status")

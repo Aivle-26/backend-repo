@@ -38,6 +38,9 @@ public class ProjectScheduleResult {
     @Column(nullable = false, length = 100)
     private String agentVersion;
 
+    @Column(length = 30)
+    private String llmStatus;
+
     @Column(nullable = false)
     private LocalDate projectStartDate;
 

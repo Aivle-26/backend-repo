@@ -5,6 +5,7 @@ import com.aivle26.aipm.Dto.project.DocumentAnalysisRequirementRequest;
 import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendRequest;
 import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendResponse;
 import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
+import com.aivle26.aipm.Dto.project.SaveFinalScheduleRequest;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
 import com.aivle26.aipm.Dto.project.ScheduleResultRequest;
@@ -151,6 +152,7 @@ class ProjectScheduleServiceTest {
                                 )
                         ),
                         List.of("target end date has enough margin"),
+                        "SUCCEEDED",
                         "schedule-ai-001",
                         "schedule-agent-v1"
                 ));
@@ -171,6 +173,13 @@ class ProjectScheduleServiceTest {
                 .isEqualTo(4);
         assertThat(storedResult.schedules().getLast().predecessorWbsIds())
                 .containsExactly(wbsTasks.getFirst().getId());
+        assertThat(storedResult.llmStatus()).isEqualTo("SUCCEEDED");
+        assertThat(storedResult.schedules().getFirst().wbsDescription())
+                .isEqualTo("Review documents");
+        assertThat(storedResult.schedules().getFirst().parentWbsId()).isNull();
+        assertThat(storedResult.schedules().getFirst().itemType())
+                .isEqualTo(PlanningScheduleRecommendRequest.ItemType.PHASE);
+        assertThat(storedResult.schedules().getFirst().orderIndex()).isEqualTo(1);
         assertThat(storedResult.warnings())
                 .containsExactly("target end date has enough margin");
 
@@ -183,6 +192,81 @@ class ProjectScheduleServiceTest {
                         wbsTasks.getFirst().getId(),
                         wbsTasks.getLast().getId()
                 );
+    }
+
+    @Test
+    void requestScheduleGenerationAllowsOverrunAndStoresWarning() {
+        List<ProjectWbsTask> wbsTasks = createConfirmedWbs("analysis-overrun", "wbs-overrun");
+        Long projectId = wbsTasks.getFirst().getProject().getId();
+
+        when(planningScheduleClient.recommendSchedules(any()))
+                .thenReturn(new PlanningScheduleRecommendResponse(
+                        projectId,
+                        List.of(
+                                aiSchedule(wbsTasks.getFirst().getId(),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 11, 1),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 11, 2),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 11, 3), List.of()),
+                                aiSchedule(wbsTasks.getLast().getId(),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 11, 4),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 11, 5),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 11, 6), List.of())
+                        ),
+                        List.of(), "SUCCEEDED", "schedule-overrun", "schedule-agent-v1"
+                ));
+
+        projectScheduleService.requestScheduleGeneration(projectId);
+
+        assertThat(projectScheduleService.getSchedules(projectId).warnings())
+                .contains("AI recommended schedule exceeds the project target end date: 2026-10-31");
+    }
+
+    @Test
+    void saveFinalScheduleReplacesAllSchedulesAndConfirmsThreeScenarios() {
+        List<ProjectWbsTask> wbsTasks = createConfirmedWbs("analysis-final", "wbs-final");
+        Long projectId = wbsTasks.getFirst().getProject().getId();
+        when(planningScheduleClient.recommendSchedules(any()))
+                .thenReturn(new PlanningScheduleRecommendResponse(
+                        projectId,
+                        List.of(
+                                aiSchedule(wbsTasks.getFirst().getId(),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 21),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 22),
+                                        LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 23), List.of()),
+                                aiSchedule(wbsTasks.getLast().getId(),
+                                        LocalDate.of(2026, 7, 24), LocalDate.of(2026, 7, 25),
+                                        LocalDate.of(2026, 7, 24), LocalDate.of(2026, 7, 26),
+                                        LocalDate.of(2026, 7, 24), LocalDate.of(2026, 7, 27),
+                                        List.of(wbsTasks.getFirst().getId()))
+                        ),
+                        List.of(), "SUCCEEDED", "schedule-final", "schedule-agent-v1"
+                ));
+        projectScheduleService.requestScheduleGeneration(projectId);
+
+        SaveFinalScheduleRequest request = new SaveFinalScheduleRequest(
+                LocalDate.of(2026, 7, 20),
+                LocalDate.of(2026, 10, 31),
+                List.of(
+                        finalSchedule("edited-1", wbsTasks.getFirst().getId(),
+                                LocalDate.of(2026, 7, 21), LocalDate.of(2026, 7, 23), List.of(), false, 1),
+                        finalSchedule("edited-2", wbsTasks.getLast().getId(),
+                                LocalDate.of(2026, 7, 24), LocalDate.of(2026, 7, 27),
+                                List.of(wbsTasks.getFirst().getId()), true, 2)
+                )
+        );
+
+        var saved = projectScheduleService.saveFinalSchedule(projectId, request);
+
+        assertThat(projectScheduleRepository.count()).isEqualTo(2);
+        assertThat(projectScheduleScenarioRepository.count()).isEqualTo(6);
+        assertThat(saved.schedules()).allMatch(item -> item.confirmed());
+        assertThat(saved.schedules().getLast().recommended().startDate())
+                .isEqualTo(LocalDate.of(2026, 7, 24));
+        assertThat(saved.schedules().getLast().predecessorWbsIds())
+                .containsExactly(wbsTasks.getFirst().getId());
+        assertThat(saved.schedules().getLast().milestone()).isTrue();
+        assertThat(saved.schedules().getLast().bufferDays()).isEqualTo(2);
+        assertThat(saved.llmStatus()).isEqualTo("SUCCEEDED");
     }
 
     @Test
@@ -537,6 +621,27 @@ class ProjectScheduleServiceTest {
                 false,
                 0,
                 null
+        );
+    }
+
+    private SaveFinalScheduleRequest.ScheduleItem finalSchedule(
+            String externalScheduleId,
+            Long wbsId,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<Long> predecessorWbsIds,
+            boolean milestone,
+            int bufferDays
+    ) {
+        return new SaveFinalScheduleRequest.ScheduleItem(
+                externalScheduleId,
+                wbsId,
+                new SaveFinalScheduleRequest.DateRange(startDate, endDate.minusDays(1)),
+                new SaveFinalScheduleRequest.DateRange(startDate, endDate),
+                new SaveFinalScheduleRequest.DateRange(startDate, endDate.plusDays(1)),
+                predecessorWbsIds,
+                milestone,
+                bufferDays
         );
     }
 

@@ -67,10 +67,14 @@ class PlanningScheduleHttpClientTest {
                               "conservative": {
                                 "start_date": "2026-08-03",
                                 "end_date": "2026-08-07"
-                              }
+                              },
+                              "predecessor_wbs_ids": [100],
+                              "milestone": true,
+                              "buffer_days": 2
                             }
                           ],
-                          "warnings": []
+                          "warnings": ["target end date exceeded"],
+                          "llm_status": "SUCCEEDED"
                         }
                         """));
 
@@ -102,5 +106,11 @@ class PlanningScheduleHttpClientTest {
                 .isEqualTo("TASK");
         assertThat(response.wbsSchedules().getFirst().recommended().endDate())
                 .isEqualTo(LocalDate.of(2026, 8, 6));
+        assertThat(response.wbsSchedules().getFirst().predecessorWbsIds())
+                .containsExactly(100L);
+        assertThat(response.wbsSchedules().getFirst().milestone()).isTrue();
+        assertThat(response.wbsSchedules().getFirst().bufferDays()).isEqualTo(2);
+        assertThat(response.llmStatus()).isEqualTo("SUCCEEDED");
+        assertThat(response.warnings()).containsExactly("target end date exceeded");
     }
 }

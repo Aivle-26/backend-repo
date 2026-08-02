@@ -29,6 +29,9 @@ public class PlanningAgentProperties {
     private String schedulePath = "/api/v1/planning/schedules/recommend";
 
     @NotBlank
+    private String resourcePath = "/api/v1/planning/resources/recommend";
+
+    @NotBlank
     private String scheduleAgentVersion = "schedule-recommend-v1";
 
     private Duration connectTimeout = Duration.ofSeconds(5);

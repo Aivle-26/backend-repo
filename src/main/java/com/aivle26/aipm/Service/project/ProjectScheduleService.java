@@ -7,6 +7,7 @@ import com.aivle26.aipm.Dto.project.PlanningScheduleRecommendResponse;
 import com.aivle26.aipm.Dto.project.ProjectScheduleResponse;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultResponse;
+import com.aivle26.aipm.Dto.project.SaveFinalScheduleRequest;
 import com.aivle26.aipm.Dto.project.ScheduleResultRequest;
 import com.aivle26.aipm.Entity.project.AgentExecutionStatus;
 import com.aivle26.aipm.Entity.project.Project;
@@ -95,7 +96,13 @@ public class ProjectScheduleService {
                 project.getPlannedStartDate(),
                 project.getPlannedEndDate(),
                 preparedSchedules,
-                safeWarnings(aiResponse.warnings())
+                withOverrunWarnings(
+                        safeWarnings(aiResponse.warnings()),
+                        preparedSchedules,
+                        project.getPlannedEndDate()
+                ),
+                aiResponse.llmStatus(),
+                false
         );
 
         return new AgentRequestResult(
@@ -148,7 +155,9 @@ public class ProjectScheduleService {
                 request.projectStartDate(),
                 request.targetEndDate(),
                 preparedSchedules,
-                List.of()
+                withOverrunWarnings(List.of(), preparedSchedules, request.targetEndDate()),
+                null,
+                false
         );
 
         return new SaveScheduleResultResponse(
@@ -176,11 +185,47 @@ public class ProjectScheduleService {
                 projectId,
                 result.getAgentExecutionId(),
                 result.getAgentVersion(),
+                result.getLlmStatus(),
                 result.getProjectStartDate(),
                 result.getTargetEndDate(),
-                schedules.stream().map(this::toScheduleDetail).toList(),
+                toScheduleDetails(schedules),
                 readWarnings(result.getWarningsJson())
         );
+    }
+
+    @Transactional
+    public ProjectScheduleResponse saveFinalSchedule(
+            Long projectId,
+            SaveFinalScheduleRequest request
+    ) {
+        projectAuthorizationService.requireProjectPm(projectId);
+        Project project = getProject(projectId);
+        validateProjectState(project);
+        validateProjectWindow(project, request.projectStartDate(), request.targetEndDate());
+
+        ProjectScheduleResult result = projectScheduleResultRepository.findByProjectId(projectId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "schedule not found"));
+        Map<Long, ProjectWbsTask> wbsTaskById = toWbsTaskMap(getConfirmedWbsTasks(projectId));
+        List<PreparedSchedule> preparedSchedules = prepareFinalSchedules(
+                project,
+                request,
+                wbsTaskById
+        );
+
+        projectScheduleRepository.deletePredecessorLinksByProjectId(projectId);
+        projectScheduleRepository.deleteAllByProjectId(projectId);
+        projectScheduleRepository.flush();
+
+        result.setProjectStartDate(request.projectStartDate());
+        result.setTargetEndDate(request.targetEndDate());
+        result.setWarningsJson(writeWarnings(withOverrunWarnings(
+                readWarnings(result.getWarningsJson()),
+                preparedSchedules,
+                request.targetEndDate()
+        )));
+        ProjectScheduleResult savedResult = projectScheduleResultRepository.save(result);
+        persistScheduleItems(savedResult, preparedSchedules, true);
+        return getSchedules(projectId);
     }
 
     private Project requireSchedulableProject(Long projectId) {
@@ -360,6 +405,41 @@ public class ProjectScheduleService {
         return preparedSchedules;
     }
 
+    private List<PreparedSchedule> prepareFinalSchedules(
+            Project project,
+            SaveFinalScheduleRequest request,
+            Map<Long, ProjectWbsTask> wbsTaskById
+    ) {
+        List<PlanningScheduleRecommendResponse.WbsSchedule> schedules = request.schedules().stream()
+                .map(item -> new PlanningScheduleRecommendResponse.WbsSchedule(
+                        item.wbsId(),
+                        toAiRange(item.expected()),
+                        toAiRange(item.recommended()),
+                        toAiRange(item.conservative()),
+                        item.predecessorWbsIds(),
+                        item.milestone(),
+                        item.bufferDays(),
+                        item.externalScheduleId()
+                ))
+                .toList();
+        return prepareAiSchedules(
+                project,
+                new PlanningScheduleRecommendResponse(
+                        project.getId(), schedules, List.of(), null, null, null
+                ),
+                wbsTaskById,
+                "schedule-final"
+        );
+    }
+
+    private PlanningScheduleRecommendResponse.ScheduleDateRange toAiRange(
+            SaveFinalScheduleRequest.DateRange range
+    ) {
+        return new PlanningScheduleRecommendResponse.ScheduleDateRange(
+                range.startDate(), range.endDate()
+        );
+    }
+
     private ScenarioRange toScenarioRange(
             Project project,
             ScheduleScenarioType type,
@@ -368,12 +448,10 @@ public class ProjectScheduleService {
         if (range == null || range.startDate() == null || range.endDate() == null) {
             throw invalidAiResponse(type.name().toLowerCase() + " schedule missing");
         }
-        validateScheduleDateRange(
+        validateScheduleDateRangeAllowOverrun(
                 project,
                 range.startDate(),
-                range.endDate(),
-                project.getPlannedStartDate(),
-                project.getPlannedEndDate()
+                range.endDate()
         );
         return new ScenarioRange(
                 type,
@@ -424,18 +502,31 @@ public class ProjectScheduleService {
             LocalDate projectStartDate,
             LocalDate targetEndDate,
             List<PreparedSchedule> preparedSchedules,
-            List<String> warnings
+            List<String> warnings,
+            String llmStatus,
+            boolean confirmed
     ) {
         ProjectScheduleResult scheduleResult = new ProjectScheduleResult();
         scheduleResult.setProject(project);
         scheduleResult.setAgentExecutionId(agentExecutionId);
         scheduleResult.setAgentVersion(agentVersion);
+        scheduleResult.setLlmStatus(normalizeNullable(llmStatus));
         scheduleResult.setProjectStartDate(projectStartDate);
         scheduleResult.setTargetEndDate(targetEndDate);
         scheduleResult.setWarningsJson(writeWarnings(warnings));
         ProjectScheduleResult savedResult =
                 projectScheduleResultRepository.save(scheduleResult);
 
+        persistScheduleItems(savedResult, preparedSchedules, confirmed);
+        return savedResult;
+    }
+
+    private void persistScheduleItems(
+            ProjectScheduleResult savedResult,
+            List<PreparedSchedule> preparedSchedules,
+            boolean confirmed
+    ) {
+        Project project = savedResult.getProject();
         Map<Long, ProjectSchedule> scheduleByWbsId = new LinkedHashMap<>();
         for (PreparedSchedule prepared : preparedSchedules) {
             ProjectSchedule schedule = new ProjectSchedule();
@@ -448,7 +539,7 @@ public class ProjectScheduleService {
             schedule.setEstimatedDays(prepared.recommended().estimatedDays());
             schedule.setMilestone(prepared.milestone());
             schedule.setBufferDays(prepared.bufferDays());
-            schedule.setConfirmed(false);
+            schedule.setConfirmed(confirmed);
             schedule.addScenario(toScenarioEntity(prepared.expected()));
             schedule.addScenario(toScenarioEntity(prepared.recommended()));
             schedule.addScenario(toScenarioEntity(prepared.conservative()));
@@ -469,7 +560,6 @@ public class ProjectScheduleService {
         }
         projectScheduleRepository.saveAll(scheduleByWbsId.values());
         projectScheduleRepository.flush();
-        return savedResult;
     }
 
     private ProjectScheduleScenario toScenarioEntity(ScenarioRange range) {
@@ -566,6 +656,20 @@ public class ProjectScheduleService {
         }
         if (project.getPlannedEndDate() != null
                 && endDate.isAfter(project.getPlannedEndDate())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
+        }
+    }
+
+    private void validateScheduleDateRangeAllowOverrun(
+            Project project,
+            LocalDate startDate,
+            LocalDate endDate
+    ) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
+        }
+        if (project.getPlannedStartDate() != null
+                && startDate.isBefore(project.getPlannedStartDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "project date exceeded");
         }
     }
@@ -710,8 +814,22 @@ public class ProjectScheduleService {
         }
     }
 
+    private List<ProjectScheduleResponse.ScheduleDetail> toScheduleDetails(
+            List<ProjectSchedule> schedules
+    ) {
+        Set<Long> parentIds = schedules.stream()
+                .map(ProjectSchedule::getWbsTask)
+                .filter(task -> task.getParentTask() != null)
+                .map(task -> task.getParentTask().getId())
+                .collect(java.util.stream.Collectors.toSet());
+        return schedules.stream()
+                .map(schedule -> toScheduleDetail(schedule, parentIds))
+                .toList();
+    }
+
     private ProjectScheduleResponse.ScheduleDetail toScheduleDetail(
-            ProjectSchedule schedule
+            ProjectSchedule schedule,
+            Set<Long> parentIds
     ) {
         Map<ScheduleScenarioType, ProjectScheduleScenario> scenarioByType =
                 new EnumMap<>(ScheduleScenarioType.class);
@@ -736,6 +854,12 @@ public class ProjectScheduleService {
                 schedule.getWbsTask().getId(),
                 schedule.getWbsTask().getTaskCode(),
                 schedule.getWbsTask().getTaskName(),
+                schedule.getWbsTask().getDescription(),
+                schedule.getWbsTask().getParentTask() == null
+                        ? null
+                        : schedule.getWbsTask().getParentTask().getId(),
+                resolveItemType(schedule.getWbsTask(), parentIds),
+                schedule.getWbsTask().getOrderIndex(),
                 expected,
                 recommended,
                 conservative,
@@ -817,12 +941,38 @@ public class ProjectScheduleService {
                 .toList();
     }
 
+    private List<String> withOverrunWarnings(
+            List<String> warnings,
+            List<PreparedSchedule> schedules,
+            LocalDate targetEndDate
+    ) {
+        List<String> merged = new ArrayList<>(safeWarnings(warnings).stream()
+                .filter(warning -> !warning.startsWith(
+                        "AI recommended schedule exceeds the project target end date:"))
+                .toList());
+        if (targetEndDate != null) {
+            boolean exceeded = schedules.stream().anyMatch(schedule ->
+                    schedule.expected().endDate().isAfter(targetEndDate)
+                            || schedule.recommended().endDate().isAfter(targetEndDate)
+                            || schedule.conservative().endDate().isAfter(targetEndDate));
+            if (exceeded) {
+                merged.add("AI recommended schedule exceeds the project target end date: "
+                        + targetEndDate);
+            }
+        }
+        return merged.stream().distinct().toList();
+    }
+
     private List<Long> safeIds(List<Long> ids) {
         return ids == null ? List.of() : List.copyOf(ids);
     }
 
     private String normalizeOrDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value.trim();
+    }
+
+    private String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private ApiException invalidAiResponse(String message) {
