@@ -32,6 +32,12 @@ public class PlanningAgentProperties {
     private String resourcePath = "/api/v1/planning/resources/recommend";
 
     @NotBlank
+    private String costPath = "/api/v1/planning/costs/estimate";
+
+    @NotBlank
+    private String ragQueryPath = "/api/v1/reports/deliverables/rag/query";
+
+    @NotBlank
     private String scheduleAgentVersion = "schedule-recommend-v1";
 
     private Duration connectTimeout = Duration.ofSeconds(5);

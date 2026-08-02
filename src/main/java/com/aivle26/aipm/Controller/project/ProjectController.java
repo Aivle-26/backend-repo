@@ -3,6 +3,9 @@ package com.aivle26.aipm.Controller.project;
 import com.aivle26.aipm.Dto.project.AgentRequestResult;
 import com.aivle26.aipm.Dto.project.AssignmentRecommendationRequest;
 import com.aivle26.aipm.Dto.project.AssignmentRecommendationResponse;
+import com.aivle26.aipm.Dto.project.CostEstimateRequest;
+import com.aivle26.aipm.Dto.project.CostEstimateResponse;
+import com.aivle26.aipm.Dto.project.FinalCostEstimateResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
@@ -25,6 +28,8 @@ import com.aivle26.aipm.Service.ProjectArtifactStatusService;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import com.aivle26.aipm.Service.project.ProjectCreationService;
 import com.aivle26.aipm.Service.project.AssignmentRecommendationService;
+import com.aivle26.aipm.Service.project.CostEstimateService;
+import com.aivle26.aipm.Service.project.FinalCostEstimateService;
 import com.aivle26.aipm.Service.project.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.project.ProjectDocumentExtractService;
 import com.aivle26.aipm.Service.project.ProjectDocumentService;
@@ -71,6 +76,8 @@ public class ProjectController {
     private final ProjectWbsService projectWbsService;
     private final ProjectScheduleService projectScheduleService;
     private final AssignmentRecommendationService assignmentRecommendationService;
+    private final CostEstimateService costEstimateService;
+    private final FinalCostEstimateService finalCostEstimateService;
 
     // 저장된 프로젝트를 조회해 화면용 요약 목록으로 반환한다.
     @GetMapping
@@ -260,6 +267,24 @@ public class ProjectController {
         return ResponseEntity.ok(
                 assignmentRecommendationService.recommend(projectId, request)
         );
+    }
+
+    @PostMapping("/{projectId}/costs/estimate")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<CostEstimateResponse> estimateProjectCost(
+            @PathVariable Long projectId,
+            @Valid @RequestBody CostEstimateRequest request
+    ) {
+        return ResponseEntity.ok(costEstimateService.estimate(projectId, request));
+    }
+
+    @PutMapping("/{projectId}/costs/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<FinalCostEstimateResponse> saveFinalCostEstimate(
+            @PathVariable Long projectId,
+            @Valid @RequestBody CostEstimateRequest request
+    ) {
+        return ResponseEntity.ok(finalCostEstimateService.saveFinal(projectId, request));
     }
 
     @GetMapping("/{projectId}/artifacts/status")
