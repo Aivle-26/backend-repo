@@ -15,18 +15,17 @@ import com.aivle26.aipm.Entity.project.ProjectSchedule;
 import com.aivle26.aipm.Entity.project.ProjectTaskAssignment;
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
 import com.aivle26.aipm.Entity.project.TaskProgressStatus;
-import com.aivle26.aipm.Entity.risk.RiskTeamMember;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.ProjectArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectMessageRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectTaskAssignmentRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
@@ -49,14 +48,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProjectWorkService {
-    private static final String STAFF_ROLE = "STAFF";
-
     private final ProjectAuthorizationService authorizationService;
     private final ProjectRepository projectRepository;
     private final ProjectWbsTaskRepository wbsTaskRepository;
     private final ProjectScheduleRepository scheduleRepository;
     private final ProjectTaskAssignmentRepository assignmentRepository;
-    private final RiskTeamMemberRepository teamMemberRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final ProjectDocumentRepository documentRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -74,8 +71,8 @@ public class ProjectWorkService {
         ProjectWbsTask task = requireConfirmedTask(projectId, wbsId);
         ProjectSchedule schedule = requireSchedule(projectId, wbsId);
         String employeeNumber = request.employeeNumber().trim();
-        if (!teamMemberRepository.existsByProjectIdAndMemberNameAndRoleIgnoreCase(
-                projectId, employeeNumber, STAFF_ROLE)) {
+        if (!projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
+                projectId, employeeNumber)) {
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "PROJECT_TEAM_MEMBER_NOT_FOUND",
@@ -145,9 +142,10 @@ public class ProjectWorkService {
                         LinkedHashMap::new,
                         Collectors.toList()
                 ));
-        Set<String> employeeNumbers = teamMemberRepository.findByProjectId(projectId).stream()
-                .filter(member -> STAFF_ROLE.equalsIgnoreCase(member.getRole()))
-                .map(RiskTeamMember::getMemberName)
+        Set<String> employeeNumbers = projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId)
+                .stream()
+                .map(member -> member.getUser().getEmployeeNumber())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         employeeNumbers.addAll(assignmentsByMember.keySet());
 

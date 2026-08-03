@@ -5,6 +5,7 @@ import com.aivle26.aipm.Service.SlackClient;
 import com.slack.api.model.Conversation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,6 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/slack")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('PM')")
 public class SlackConnectionController {
 
     private final SlackClient slackClient;

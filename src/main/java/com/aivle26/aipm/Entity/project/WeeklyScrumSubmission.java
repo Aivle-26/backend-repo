@@ -53,6 +53,9 @@ public class WeeklyScrumSubmission {
     @Column(length = 4000)
     private String blockers;
 
+    @Column(columnDefinition = "TEXT")
+    private String detailsJson;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -71,6 +74,11 @@ public class WeeklyScrumSubmission {
         this.completedWork = completedWork;
         this.plannedWork = plannedWork;
         this.blockers = blockers;
+    }
+
+    public void update(String completedWork, String plannedWork, String blockers, String detailsJson) {
+        update(completedWork, plannedWork, blockers);
+        this.detailsJson = detailsJson;
     }
 
     @PrePersist

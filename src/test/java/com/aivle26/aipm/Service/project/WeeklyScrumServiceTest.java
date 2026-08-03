@@ -2,12 +2,14 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Dto.project.SaveWeeklyScrumRequest;
 import com.aivle26.aipm.Entity.project.Project;
+import com.aivle26.aipm.Entity.project.ProjectMember;
 import com.aivle26.aipm.Entity.project.WeeklyScrumSubmission;
-import com.aivle26.aipm.Entity.risk.RiskTeamMember;
+import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,8 +32,9 @@ class WeeklyScrumServiceTest {
 
     @Mock ProjectAuthorizationService authorizationService;
     @Mock ProjectRepository projectRepository;
-    @Mock RiskTeamMemberRepository teamMemberRepository;
+    @Mock ProjectMemberRepository projectMemberRepository;
     @Mock WeeklyScrumSubmissionRepository submissionRepository;
+    @Mock ObjectMapper objectMapper;
     @InjectMocks WeeklyScrumService service;
 
     @Test
@@ -72,7 +75,7 @@ class WeeklyScrumServiceTest {
 
     @Test
     void pmGetsMembersWhoDidNotSubmit() {
-        when(teamMemberRepository.findByProjectId(1L)).thenReturn(List.of(
+        when(projectMemberRepository.findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(1L)).thenReturn(List.of(
                 member("E-1"), member("E-2"), member("E-3")));
         when(submissionRepository.findSubmittedEmployeeNumbers(1L, WEEK_START))
                 .thenReturn(List.of("E-1"));
@@ -104,11 +107,13 @@ class WeeklyScrumServiceTest {
         return project;
     }
 
-    private RiskTeamMember member(String employeeNumber) {
-        RiskTeamMember member = new RiskTeamMember();
-        member.setProjectId(1L);
-        member.setMemberName(employeeNumber);
-        member.setRole("STAFF");
+    private ProjectMember member(String employeeNumber) {
+        User user = new User();
+        user.setEmployeeNumber(employeeNumber);
+        ProjectMember member = new ProjectMember();
+        member.setProject(project());
+        member.setUser(user);
+        member.setActive(true);
         return member;
     }
 }

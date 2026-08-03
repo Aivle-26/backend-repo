@@ -7,9 +7,11 @@ import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.WeeklyScrumSubmission;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -31,8 +33,9 @@ public class WeeklyScrumService {
 
     private final ProjectAuthorizationService authorizationService;
     private final ProjectRepository projectRepository;
-    private final RiskTeamMemberRepository teamMemberRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final WeeklyScrumSubmissionRepository submissionRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public WeeklyScrumSubmissionResponse save(Long projectId, LocalDate weekStartDate,
@@ -50,9 +53,13 @@ public class WeeklyScrumService {
                 .orElseGet(() -> new WeeklyScrumSubmission(
                         requireProject(projectId), currentUser.employeeNumber(), weekStartDate,
                         request.completedWork().trim(), request.plannedWork().trim(), normalizeNullable(request.blockers())));
-        submission.update(request.completedWork().trim(), request.plannedWork().trim(),
-                normalizeNullable(request.blockers()));
-        return WeeklyScrumSubmissionResponse.from(submissionRepository.save(submission));
+        submission.update(
+                request.completedWork().trim(),
+                request.plannedWork().trim(),
+                normalizeNullable(request.blockers()),
+                writeDetails(request.details())
+        );
+        return toResponse(submissionRepository.save(submission));
     }
 
     @Transactional(readOnly = true)
@@ -65,7 +72,7 @@ public class WeeklyScrumService {
                         projectId, weekStartDate)
                 : submissionRepository.findByProjectIdAndWeekStartDateAndEmployeeNumberOrderByUpdatedAtDesc(
                         projectId, weekStartDate, currentUser.employeeNumber());
-        return submissions.stream().map(WeeklyScrumSubmissionResponse::from).toList();
+        return submissions.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -73,9 +80,10 @@ public class WeeklyScrumService {
         validateMonday(weekStartDate);
         authorizationService.requireProjectPm(projectId);
 
-        LinkedHashSet<String> allMembers = teamMemberRepository.findByProjectId(projectId).stream()
-                .filter(member -> STAFF_ROLE.equalsIgnoreCase(member.getRole()))
-                .map(member -> member.getMemberName().trim())
+        LinkedHashSet<String> allMembers = projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId)
+                .stream()
+                .map(member -> member.getUser().getEmployeeNumber())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         Set<String> submitted = Set.copyOf(
                 submissionRepository.findSubmittedEmployeeNumbers(projectId, weekStartDate));
@@ -102,5 +110,41 @@ public class WeeklyScrumService {
 
     private String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String writeDetails(SaveWeeklyScrumRequest.Details details) {
+        if (details == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(details);
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "WEEKLY_SCRUM_SERIALIZATION_FAILED",
+                    "주간 스크럼 상세 정보를 저장하지 못했습니다.",
+                    exception
+            );
+        }
+    }
+
+    private WeeklyScrumSubmissionResponse toResponse(WeeklyScrumSubmission submission) {
+        return WeeklyScrumSubmissionResponse.from(submission, readDetails(submission.getDetailsJson()));
+    }
+
+    private SaveWeeklyScrumRequest.Details readDetails(String detailsJson) {
+        if (detailsJson == null || detailsJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(detailsJson, SaveWeeklyScrumRequest.Details.class);
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "INVALID_WEEKLY_SCRUM_DETAILS",
+                    "저장된 주간 스크럼 상세 정보 형식이 올바르지 않습니다.",
+                    exception
+            );
+        }
     }
 }

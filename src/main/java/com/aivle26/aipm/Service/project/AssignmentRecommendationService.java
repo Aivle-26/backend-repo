@@ -5,17 +5,17 @@ import com.aivle26.aipm.Dto.project.AssignmentRecommendationResponse;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendResponse;
 import com.aivle26.aipm.Entity.project.Project;
+import com.aivle26.aipm.Entity.project.ProjectMember;
 import com.aivle26.aipm.Entity.project.ProjectSchedule;
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserCapabilityProfile;
-import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.user.UserCapabilityProfileRepository;
-import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.client.ai.PlanningResourceClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -37,15 +37,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AssignmentRecommendationService {
 
-    private static final String STAFF_ROLE = "STAFF";
-    private static final double DEFAULT_AVAILABLE_HOURS_PER_WEEK = 32.0;
     private static final String ACTIVE_ALLOCATION_STATUS = "ACTIVE";
 
     private final ProjectAuthorizationService projectAuthorizationService;
     private final ProjectRepository projectRepository;
     private final ProjectWbsTaskRepository wbsTaskRepository;
     private final ProjectScheduleRepository scheduleRepository;
-    private final UserRepository userRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final UserCapabilityProfileRepository capabilityProfileRepository;
     private final PlanningResourceClient planningResourceClient;
 
@@ -59,7 +57,7 @@ public class AssignmentRecommendationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
 
         List<TaskContext> tasks = loadLeafTasksWithSchedules(projectId);
-        CandidateSelection selection = selectCandidates(request);
+        CandidateSelection selection = selectCandidates(projectId, request);
         DateWindow allocationWindow = allocationWindow(tasks);
         Map<Long, CandidateContext> candidatesByAiId = assignTemporaryAiIds(
                 selection.candidates(),
@@ -123,29 +121,30 @@ public class AssignmentRecommendationService {
         return tasks;
     }
 
-    private CandidateSelection selectCandidates(AssignmentRecommendationRequest request) {
+    private CandidateSelection selectCandidates(
+            Long projectId,
+            AssignmentRecommendationRequest request
+    ) {
         List<AssignmentRecommendationRequest.Candidate> requested =
                 request == null || request.candidates() == null
                         ? List.of()
                         : request.candidates();
         if (requested.isEmpty()) {
-            return selectAllCandidates();
+            return selectAllCandidates(projectId);
         }
-        return selectRequestedCandidates(requested);
+        return selectRequestedCandidates(projectId, requested);
     }
 
-    private CandidateSelection selectAllCandidates() {
-        List<User> users = userRepository.findAllByRoleAndStatusOrderByNameAscEmployeeNumberAsc(
-                STAFF_ROLE,
-                UserStatus.ACTIVE
-        );
+    private CandidateSelection selectAllCandidates(Long projectId) {
+        List<ProjectMember> projectMembers = loadProjectMembers(projectId);
+        List<User> users = projectMembers.stream().map(ProjectMember::getUser).toList();
         Map<String, UserCapabilityProfile> profiles = loadProfiles(users);
-        List<CandidateData> candidates = users.stream()
-                .filter(user -> profiles.containsKey(user.getEmployeeNumber()))
-                .map(user -> new CandidateData(
-                        user,
-                        profiles.get(user.getEmployeeNumber()),
-                        DEFAULT_AVAILABLE_HOURS_PER_WEEK
+        List<CandidateData> candidates = projectMembers.stream()
+                .filter(member -> profiles.containsKey(member.getUser().getEmployeeNumber()))
+                .map(member -> new CandidateData(
+                        member.getUser(),
+                        profiles.get(member.getUser().getEmployeeNumber()),
+                        member.getAvailableHoursPerWeek()
                 ))
                 .toList();
         requireCandidates(candidates);
@@ -156,6 +155,7 @@ public class AssignmentRecommendationService {
     }
 
     private CandidateSelection selectRequestedCandidates(
+            Long projectId,
             List<AssignmentRecommendationRequest.Candidate> requested
     ) {
         Map<String, AssignmentRecommendationRequest.Candidate> requestedByEmployeeNumber =
@@ -167,25 +167,27 @@ public class AssignmentRecommendationService {
             }
         }
 
-        List<User> foundUsers = userRepository.findAllByEmployeeNumberInAndRoleAndStatus(
-                requestedByEmployeeNumber.keySet(),
-                STAFF_ROLE,
-                UserStatus.ACTIVE
+        List<ProjectMember> projectMembers = loadProjectMembers(projectId);
+        Map<String, ProjectMember> membersByEmployeeNumber = projectMembers.stream()
+                .collect(Collectors.toMap(
+                        member -> member.getUser().getEmployeeNumber(),
+                        Function.identity()
+                ));
+        Map<String, UserCapabilityProfile> profiles = loadProfiles(
+                projectMembers.stream().map(ProjectMember::getUser).toList()
         );
-        Map<String, User> usersByEmployeeNumber = foundUsers.stream()
-                .collect(Collectors.toMap(User::getEmployeeNumber, Function.identity()));
-        Map<String, UserCapabilityProfile> profiles = loadProfiles(foundUsers);
 
         List<CandidateData> candidates = new ArrayList<>();
         for (Map.Entry<String, AssignmentRecommendationRequest.Candidate> entry
                 : requestedByEmployeeNumber.entrySet()) {
-            User user = usersByEmployeeNumber.get(entry.getKey());
-            if (user == null) {
+            ProjectMember projectMember = membersByEmployeeNumber.get(entry.getKey());
+            if (projectMember == null) {
                 throw new ApiException(
                         HttpStatus.BAD_REQUEST,
-                        "active team member not found: " + entry.getKey()
+                        "active project member not found: " + entry.getKey()
                 );
             }
+            User user = projectMember.getUser();
             UserCapabilityProfile profile = profiles.get(entry.getKey());
             if (profile == null) {
                 throw new ApiException(
@@ -198,7 +200,7 @@ public class AssignmentRecommendationService {
                     user,
                     profile,
                     requestedHours == null
-                            ? DEFAULT_AVAILABLE_HOURS_PER_WEEK
+                            ? projectMember.getAvailableHoursPerWeek()
                             : requestedHours
             ));
         }
@@ -207,6 +209,15 @@ public class AssignmentRecommendationService {
                 AssignmentRecommendationResponse.CandidateMode.SELECTED,
                 List.copyOf(candidates)
         );
+    }
+
+    private List<ProjectMember> loadProjectMembers(Long projectId) {
+        List<ProjectMember> members = projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId);
+        if (members.isEmpty()) {
+            throw new ApiException(HttpStatus.CONFLICT, "active project member not found");
+        }
+        return members;
     }
 
     private Map<String, UserCapabilityProfile> loadProfiles(List<User> users) {

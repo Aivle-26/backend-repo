@@ -4,19 +4,19 @@ import com.aivle26.aipm.Dto.auth.AuthSessionResponse;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
 import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
+import com.aivle26.aipm.Entity.project.ProjectMember;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
-import com.aivle26.aipm.Entity.risk.RiskTeamMember;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthCodes;
 import com.aivle26.aipm.Service.auth.AuthService;
@@ -92,11 +92,11 @@ class ProjectControllerSecurityTest {
     private ProjectScheduleResultRepository projectScheduleResultRepository;
 
     @Autowired
-    private RiskTeamMemberRepository riskTeamMemberRepository;
+    private ProjectMemberRepository projectMemberRepository;
 
     @BeforeEach
     void setUp() {
-        riskTeamMemberRepository.deleteAll();
+        projectMemberRepository.deleteAll();
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();
@@ -236,10 +236,7 @@ class ProjectControllerSecurityTest {
         Project project = projectRepository.saveAndFlush(createProject(owner));
         ProjectDocument document =
                 projectDocumentRepository.saveAndFlush(createDocument(project));
-        riskTeamMemberRepository.save(createMembership(
-                project.getId(),
-                staff.getEmployeeNumber()
-        ));
+        projectMemberRepository.save(createMembership(project, staff));
         AuthSessionResponse session = authService.issueSession(staff);
 
         mockMvc.perform(get("/api/projects/{projectId}/documents", project.getId())
@@ -255,7 +252,7 @@ class ProjectControllerSecurityTest {
         User pm = userRepository.save(createPmUser("PM001"));
         User staff = userRepository.save(createUser("STAFF001", "STAFF"));
         Project project = projectRepository.saveAndFlush(createProject(pm));
-        riskTeamMemberRepository.save(createMembership(project.getId(), staff.getEmployeeNumber()));
+        projectMemberRepository.save(createMembership(project, staff));
         AuthSessionResponse session = authService.issueSession(staff);
 
         mockMvc.perform(get("/api/projects")
@@ -515,15 +512,13 @@ class ProjectControllerSecurityTest {
         return document;
     }
 
-    private RiskTeamMember createMembership(Long projectId, String employeeNumber) {
-        RiskTeamMember membership = new RiskTeamMember();
-        membership.setProjectId(projectId);
-        membership.setMemberName(employeeNumber);
-        membership.setRole("STAFF");
-        membership.setSkills("");
-        membership.setWorkloadRate(0);
-        membership.setOverdueTaskCount(0);
-        membership.setCurrentAssignee(true);
+    private ProjectMember createMembership(Project project, User user) {
+        ProjectMember membership = new ProjectMember();
+        membership.setProject(project);
+        membership.setUser(user);
+        membership.setAvailableHoursPerWeek(32.0);
+        membership.setActive(true);
+        membership.setSelectedBy(project.getPm().getEmployeeNumber());
         return membership;
     }
 

@@ -16,6 +16,7 @@ import com.aivle26.aipm.Repository.CommunicationRiskResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.ProjectSlackChannelRepository;
 import com.aivle26.aipm.Repository.SlackMessageThreadRepository;
+import com.aivle26.aipm.Service.project.ProjectAuthorizationService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -51,10 +52,12 @@ public class CommunicationRiskService {
     private final CommunicationRiskAgentClient agentClient;
     private final AiServerProperties aiServerProperties;
     private final ObjectMapper objectMapper;
+    private final ProjectAuthorizationService authorizationService;
 
     /** 저장된 최신 결과. 이력이 없으면 NEVER_ANALYZED를 반환한다(404 아님). */
     @Transactional(readOnly = true)
     public CommunicationRiskResponse getLatest(Long projectId) {
+        authorizationService.requireProjectPm(projectId);
         Project project = findProject(projectId);
         return communicationRiskResultRepository.findTopByProjectIdOrderByAnalyzedAtDesc(projectId)
                 .map(this::toResponse)
@@ -69,6 +72,7 @@ public class CommunicationRiskService {
      */
     @Transactional
     public CommunicationRiskResponse refresh(Long projectId) {
+        authorizationService.requireProjectPm(projectId);
         Project project = findProject(projectId);
 
         int newMessages = slackMessageSyncService.syncProject(projectId);

@@ -110,6 +110,10 @@ agent:
     resource-path: ${PLANNING_AGENT_RESOURCE_PATH:/api/v1/planning/resources/recommend}
     cost-path: ${PLANNING_AGENT_COST_PATH:/api/v1/planning/costs/estimate}
     rag-query-path: ${PLANNING_AGENT_RAG_QUERY_PATH:/api/v1/reports/deliverables/rag/query}
+    weekly-scrum-summarize-path: ${PLANNING_AGENT_WEEKLY_SCRUM_SUMMARIZE_PATH:/api/v1/reports/weekly-scrum/summarize}
+    weekly-scrum-review-path: ${PLANNING_AGENT_WEEKLY_SCRUM_REVIEW_PATH:/api/v1/reports/weekly-scrum/review}
+    weekly-scrum-recommend-path: ${PLANNING_AGENT_WEEKLY_SCRUM_RECOMMEND_PATH:/api/v1/reports/weekly-scrum/recommend-next-actions}
+    weekly-scrum-finalize-path: ${PLANNING_AGENT_WEEKLY_SCRUM_FINALIZE_PATH:/api/v1/reports/weekly-scrum/finalize}
     schedule-agent-version: ${PLANNING_AGENT_SCHEDULE_VERSION:schedule-recommend-v1}
     connect-timeout: ${PLANNING_AGENT_CONNECT_TIMEOUT:5s}
     read-timeout: ${PLANNING_AGENT_READ_TIMEOUT:120s}

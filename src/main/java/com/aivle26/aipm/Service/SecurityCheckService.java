@@ -7,6 +7,7 @@ import com.aivle26.aipm.Dto.SecurityCheckResponse;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Service.project.ProjectAuthorizationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -28,9 +29,11 @@ public class SecurityCheckService {
 
     private final ProjectRepository projectRepository;
     private final SecurityCheckAgentClient agentClient;
+    private final ProjectAuthorizationService authorizationService;
 
     @Transactional(readOnly = true)
     public SecurityCheckResponse inspect(Long projectId, Long deliverableId, SecurityCheckRequest request) {
+        authorizationService.requireProjectPm(projectId);
         Project project = findProject(projectId);
 
         if (request == null || request.textContent() == null || request.textContent().isBlank()) {

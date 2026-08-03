@@ -2,11 +2,14 @@ package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.AssignProjectTaskRequest;
 import com.aivle26.aipm.Dto.project.ProjectProgressResponse;
+import com.aivle26.aipm.Dto.project.ProjectMemberResponse;
 import com.aivle26.aipm.Dto.project.ProjectSearchResponse;
+import com.aivle26.aipm.Dto.project.SaveProjectMembersRequest;
 import com.aivle26.aipm.Dto.project.TaskAssignmentResponse;
 import com.aivle26.aipm.Dto.project.TeamProgressResponse;
 import com.aivle26.aipm.Dto.project.UpdateTaskProgressRequest;
 import com.aivle26.aipm.Service.project.ProjectWorkService;
+import com.aivle26.aipm.Service.project.ProjectMemberService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +30,24 @@ import java.util.List;
 @RequestMapping("/api/projects/{projectId}")
 public class ProjectWorkController {
     private final ProjectWorkService projectWorkService;
+    private final ProjectMemberService projectMemberService;
+
+    @PutMapping("/team-members/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<List<ProjectMemberResponse>> replaceProjectMembers(
+            @PathVariable Long projectId,
+            @Valid @RequestBody SaveProjectMembersRequest request
+    ) {
+        return ResponseEntity.ok(projectMemberService.replaceMembers(projectId, request));
+    }
+
+    @GetMapping("/team-members")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
+    public ResponseEntity<List<ProjectMemberResponse>> getProjectMembers(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(projectMemberService.getMembers(projectId));
+    }
 
     @PutMapping("/tasks/{wbsId}/assignment")
     @PreAuthorize("hasRole('PM')")
