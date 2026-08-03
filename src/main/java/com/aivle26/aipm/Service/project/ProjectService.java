@@ -5,6 +5,7 @@ import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectCostEstimateRepository;
+import com.aivle26.aipm.Repository.project.ProjectMessageRepository;
 import com.aivle26.aipm.Repository.project.ProjectKeyFeatureRepository;
 import com.aivle26.aipm.Repository.project.ProjectPlanningExtractionRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
@@ -16,6 +17,7 @@ import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleScenarioRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
+import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
 import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 
@@ -43,6 +45,8 @@ public class ProjectService {
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleScenarioRepository projectScheduleScenarioRepository;
     private final ProjectCostEstimateRepository projectCostEstimateRepository;
+    private final ProjectMessageRepository projectMessageRepository;
+    private final WeeklyScrumSubmissionRepository weeklyScrumSubmissionRepository;
     private final RiskTeamMemberRepository riskTeamMemberRepository;
 
     // 현재 PM 소유 또는 STAFF 참여 범위의 프로젝트 요약만 반환한다.
@@ -95,6 +99,8 @@ public class ProjectService {
         projectScheduleRepository.deleteAllByProjectId(projectId);
         projectScheduleResultRepository.deleteAllByProjectId(projectId);
         projectCostEstimateRepository.deleteAllByProjectId(projectId);
+        projectMessageRepository.deleteAllByProjectId(projectId);
+        weeklyScrumSubmissionRepository.deleteAllByProjectId(projectId);
 
         projectWbsTaskRepository.deleteRequirementLinksByProjectId(projectId);
         projectWbsTaskRepository.deleteSkillLinksByProjectId(projectId);
