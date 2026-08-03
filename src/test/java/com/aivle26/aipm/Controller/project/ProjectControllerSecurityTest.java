@@ -438,9 +438,12 @@ class ProjectControllerSecurityTest {
         Project project = projectRepository.saveAndFlush(createProject(pm));
         AuthSessionResponse session = authService.issueSession(pm);
 
+        // 문서 개별 삭제 기능(DeleteMapping "/{projectId}/documents/{documentId}") 추가 이후
+        // 이 경로는 DELETE 매핑 패턴에 매칭되므로, 제거된 analyze 플레이스홀더로 POST하면
+        // 404가 아니라 405(Method Not Allowed)가 반환된다. 어느 쪽이든 analyze 동작은 없다.
         mockMvc.perform(post("/api/projects/{projectId}/documents/analyze", project.getId())
                         .header("Authorization", "Bearer " + session.accessToken()))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isMethodNotAllowed());
     }
 
     @Test

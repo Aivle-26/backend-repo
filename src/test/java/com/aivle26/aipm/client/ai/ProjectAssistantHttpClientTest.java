@@ -48,7 +48,7 @@ class ProjectAssistantHttpClientTest {
                     "wbs_id": null,
                     "review_status": "APPROVED"
                   }],
-                  "generated_at": "2026-08-02T15:00:00+09:00",
+                  "generated_at": "2026-08-02T15:00:00",
                   "llm_status": "SUCCEEDED"
                 }
                 """));
