@@ -28,6 +28,18 @@ public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument
     // 문서 ID와 프로젝트 ID가 모두 일치하는 문서를 조회한다.
     Optional<ProjectDocument> findByIdAndProjectId(Long id, Long projectId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from ProjectDocument document
+            where document.id = :documentId
+              and document.project.id = :projectId
+            """)
+    Optional<ProjectDocument> findForUpdate(
+            @Param("projectId") Long projectId,
+            @Param("documentId") Long documentId
+    );
+
     List<ProjectDocument> findByProjectIdAndIdInOrderByIdAsc(
             Long projectId,
             List<Long> documentIds

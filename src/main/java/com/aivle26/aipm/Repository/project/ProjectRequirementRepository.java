@@ -20,6 +20,21 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     boolean existsByProjectId(Long projectId);
 
     @Query("""
+            select count(distinct requirement.id)
+            from ProjectRequirement requirement
+            left join requirement.evidences evidence
+            where requirement.project.id = :projectId
+              and (
+                    requirement.sourceDocument.id = :documentId
+                    or evidence.document.id = :documentId
+              )
+            """)
+    long countReferencesToDocument(
+            @Param("projectId") Long projectId,
+            @Param("documentId") Long documentId
+    );
+
+    @Query("""
             select requirement
             from ProjectRequirement requirement
             where requirement.project.id = :projectId

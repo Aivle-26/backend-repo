@@ -119,6 +119,17 @@ public class ProjectController {
                 .body(content.content());
     }
 
+    // 프로젝트에 업로드된 문서 한 건과 실제 저장 파일을 함께 삭제한다.
+    @DeleteMapping("/{projectId}/documents/{documentId}")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<Void> deleteProjectDocument(
+            @PathVariable Long projectId,
+            @PathVariable Long documentId
+    ) {
+        projectDocumentService.deleteProjectDocument(projectId, documentId);
+        return ResponseEntity.noContent().build();
+    }
+
     // 인증된 PM의 프로젝트와 연결 문서 및 저장 파일을 함께 삭제한다.
     @DeleteMapping("/{projectId}")
     @PreAuthorize("hasRole('PM')")

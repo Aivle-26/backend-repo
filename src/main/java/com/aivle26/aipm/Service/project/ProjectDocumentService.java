@@ -177,6 +177,39 @@ public class ProjectDocumentService {
         );
     }
 
+    // PM 소유의 초안 프로젝트에서 참조되지 않는 업로드 문서 한 건을 삭제한다.
+    @Transactional
+    public void deleteProjectDocument(Long projectId, Long documentId) {
+        Project project = loadDraftProject(projectId);
+        projectAuthorizationService.requireProjectPm(project);
+
+        ProjectDocument document = projectDocumentRepository
+                .findForUpdate(projectId, documentId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_DOCUMENT_NOT_FOUND",
+                        "Project document was not found."
+                ));
+
+        if (document.getStatus() == ProjectDocumentStatus.ANALYZING) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "PROJECT_DOCUMENT_ANALYSIS_IN_PROGRESS",
+                    "The project document is currently being analyzed."
+            );
+        }
+        if (projectRequirementRepository.countReferencesToDocument(projectId, documentId) > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "PROJECT_DOCUMENT_IN_USE",
+                    "The project document is referenced by project requirements."
+            );
+        }
+
+        deleteStoredFiles(List.of(document));
+        projectDocumentRepository.delete(document);
+    }
+
     // 프로젝트에 연결된 문서 DB 레코드를 일괄 삭제한다.
     @Transactional
     public void deleteProjectDocumentRecords(Long projectId) {

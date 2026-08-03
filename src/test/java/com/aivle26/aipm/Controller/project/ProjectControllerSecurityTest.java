@@ -130,6 +130,13 @@ class ProjectControllerSecurityTest {
     }
 
     @Test
+    void deleteProjectDocumentRequiresAuthentication() throws Exception {
+        mockMvc.perform(delete("/api/projects/1/documents/1"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
     void getDocumentAnalysisResultsRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/projects/1/documents/analysis-results"))
                 .andExpect(status().isUnauthorized())
@@ -184,6 +191,27 @@ class ProjectControllerSecurityTest {
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(project.getId().intValue()))
+                .andExpect(jsonPath("$.documents.length()").value(0));
+    }
+
+    @Test
+    void deleteProjectDocumentAllowsProjectOwnerPm() throws Exception {
+        User pm = userRepository.save(createPmUser("PM004"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        ProjectDocument document =
+                projectDocumentRepository.saveAndFlush(createDocument(project));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(delete(
+                        "/api/projects/{projectId}/documents/{documentId}",
+                        project.getId(),
+                        document.getId()
+                ).header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/projects/{projectId}/documents", project.getId())
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documents.length()").value(0));
     }
 

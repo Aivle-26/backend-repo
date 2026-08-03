@@ -6,6 +6,7 @@ import com.aivle26.aipm.Config.storage.DocumentStorageProperties;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
+import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
@@ -187,6 +188,79 @@ class ProjectDocumentServiceTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("Project document was not found");
         verify(s3Client, never()).getObjectAsBytes(any(GetObjectRequest.class));
+    }
+
+    @Test
+    void deleteProjectDocumentRemovesStoredObjectAndMetadata() {
+        ProjectDocument document = pdfDocument(77L);
+        when(projectDocumentRepository.findForUpdate(PROJECT_ID, 77L))
+                .thenReturn(Optional.of(document));
+        when(projectRequirementRepository.countReferencesToDocument(PROJECT_ID, 77L))
+                .thenReturn(0L);
+
+        service.deleteProjectDocument(PROJECT_ID, 77L);
+
+        ArgumentCaptor<DeleteObjectRequest> captor =
+                ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(captor.capture());
+        assertThat(captor.getValue().bucket()).isEqualTo(BUCKET);
+        assertThat(captor.getValue().key())
+                .isEqualTo("projects/42/documents/id/requirements.pdf");
+        verify(projectDocumentRepository).delete(document);
+        verify(projectAuthorizationService).requireProjectPm(project);
+    }
+
+    @Test
+    void deleteProjectDocumentRejectsDocumentFromAnotherProject() {
+        when(projectDocumentRepository.findForUpdate(PROJECT_ID, 77L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteProjectDocument(PROJECT_ID, 77L))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("PROJECT_DOCUMENT_NOT_FOUND")
+                );
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(projectDocumentRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteProjectDocumentRejectsDocumentReferencedByRequirements() {
+        ProjectDocument document = pdfDocument(77L);
+        when(projectDocumentRepository.findForUpdate(PROJECT_ID, 77L))
+                .thenReturn(Optional.of(document));
+        when(projectRequirementRepository.countReferencesToDocument(PROJECT_ID, 77L))
+                .thenReturn(1L);
+
+        assertThatThrownBy(() -> service.deleteProjectDocument(PROJECT_ID, 77L))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("PROJECT_DOCUMENT_IN_USE")
+                );
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(projectDocumentRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteProjectDocumentRejectsDocumentBeingAnalyzed() {
+        ProjectDocument document = pdfDocument(77L);
+        document.setStatus(ProjectDocumentStatus.ANALYZING);
+        when(projectDocumentRepository.findForUpdate(PROJECT_ID, 77L))
+                .thenReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service.deleteProjectDocument(PROJECT_ID, 77L))
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("PROJECT_DOCUMENT_ANALYSIS_IN_PROGRESS")
+                );
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(projectDocumentRepository, never()).delete(any());
     }
 
     @Test
