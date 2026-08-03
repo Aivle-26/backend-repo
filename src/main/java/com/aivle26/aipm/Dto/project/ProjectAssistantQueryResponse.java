@@ -2,14 +2,14 @@ package com.aivle26.aipm.Dto.project;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public record ProjectAssistantQueryResponse(
         @JsonProperty("project_id") Long projectId,
         String answer,
         List<Source> sources,
-        @JsonProperty("generated_at") OffsetDateTime generatedAt,
+        @JsonProperty("generated_at") LocalDateTime generatedAt,
         @JsonProperty("llm_status") String llmStatus
 ) {
     public record Source(
