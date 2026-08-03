@@ -89,6 +89,9 @@ public class ProjectScheduleService {
                 agentExecutionId
         );
 
+        // 재생성 = 덮어쓰기. AI 결과가 준비된 이 시점에 기존 일정을 삭제하고 새로 저장한다.
+        deleteExistingSchedule(project.getId());
+
         persistSchedules(
                 project,
                 agentExecutionId,
@@ -239,13 +242,24 @@ public class ProjectScheduleService {
         if (project.getPlannedEndDate().isBefore(project.getPlannedStartDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "invalid schedule date");
         }
-        if (projectScheduleResultRepository.existsByProjectId(projectId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "schedule already exists");
-        }
+        // 재생성(덮어쓰기)을 허용하므로 기존 일정 존재 여부로 막지 않는다.
+        // 기존 일정은 requestScheduleGeneration에서 새로 저장하기 직전에 삭제한다.
         if (!projectWbsTaskRepository.existsByProjectIdAndConfirmedTrue(projectId)) {
             throw new ApiException(HttpStatus.CONFLICT, "confirmed wbs not found");
         }
         return project;
+    }
+
+    // 재생성 시 기존 일정을 덮어쓴다: 선행관계·상세·결과를 모두 삭제한 뒤 새로 저장한다.
+    private void deleteExistingSchedule(Long projectId) {
+        if (!projectScheduleResultRepository.existsByProjectId(projectId)) {
+            return;
+        }
+        projectScheduleRepository.deletePredecessorLinksByProjectId(projectId);
+        projectScheduleRepository.deleteAllByProjectId(projectId);
+        projectScheduleRepository.flush();
+        projectScheduleResultRepository.deleteAllByProjectId(projectId);
+        projectScheduleResultRepository.flush();
     }
 
     private Project getProject(Long projectId) {
