@@ -21,7 +21,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -61,7 +61,7 @@ class ProjectAssistantServiceTest {
         when(requirementRepository.findByProjectIdOrderByIdAsc(1L)).thenReturn(List.of(requirement));
         when(wbsTaskRepository.findByProjectIdOrderByOrderIndexAscIdAsc(1L)).thenReturn(List.of());
         when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(1L)).thenReturn(List.of());
-        var aiResponse = new ProjectAssistantQueryResponse(1L, "답변", List.of(), OffsetDateTime.now(), "SUCCEEDED");
+        var aiResponse = new ProjectAssistantQueryResponse(1L, "답변", List.of(), LocalDateTime.now(), "SUCCEEDED");
         when(assistantClient.query(org.mockito.ArgumentMatchers.any())).thenReturn(aiResponse);
 
         var result = service.query(1L, new ProjectAssistantQueryRequest(" 로그인 조건은? ", null));
