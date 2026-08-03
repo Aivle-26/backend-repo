@@ -14,6 +14,8 @@ public interface ProjectMessageRepository extends JpaRepository<ProjectMessage, 
             ProjectMessageType type
     );
 
+    List<ProjectMessage> findByProjectIdOrderByCreatedAtDescIdDesc(Long projectId);
+
     List<ProjectMessage> findByProjectIdAndTypeAndRecipientEmployeeNumberOrderByCreatedAtDescIdDesc(
             Long projectId,
             ProjectMessageType type,

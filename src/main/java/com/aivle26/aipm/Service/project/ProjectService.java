@@ -15,6 +15,7 @@ import com.aivle26.aipm.Repository.project.ProjectRequirementChangeCandidateRepo
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleScenarioRepository;
+import com.aivle26.aipm.Repository.project.ProjectTaskAssignmentRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
@@ -44,6 +45,7 @@ public class ProjectService {
     private final ProjectScheduleRepository projectScheduleRepository;
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleScenarioRepository projectScheduleScenarioRepository;
+    private final ProjectTaskAssignmentRepository projectTaskAssignmentRepository;
     private final ProjectCostEstimateRepository projectCostEstimateRepository;
     private final ProjectMessageRepository projectMessageRepository;
     private final WeeklyScrumSubmissionRepository weeklyScrumSubmissionRepository;
@@ -94,6 +96,7 @@ public class ProjectService {
 
         projectDocumentService.deleteProjectDocumentFiles(projectId);
 
+        projectTaskAssignmentRepository.deleteAllByProjectId(projectId);
         projectScheduleRepository.deletePredecessorLinksByProjectId(projectId);
         projectScheduleScenarioRepository.deleteAllByProjectSchedule_Project_Id(projectId);
         projectScheduleRepository.deleteAllByProjectId(projectId);

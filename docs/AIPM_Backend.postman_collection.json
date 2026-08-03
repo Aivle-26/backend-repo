@@ -1,0 +1,886 @@
+{
+  "info": {
+    "_postman_id": "0c514ee7-80d7-47a3-8435-5c6ea55469d2",
+    "name": "AIPM Backend - 구현 순서 테스트",
+    "description": "docs/POSTMAN_API_TEST_GUIDE.md의 실행 가능한 요청 모음입니다. 01 메인 흐름은 위에서 아래 순서로 실행하세요. 문서 업로드 요청의 files에는 로컬 파일을 직접 선택해야 합니다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "projectId",
+      "value": ""
+    },
+    {
+      "key": "documentId",
+      "value": ""
+    },
+    {
+      "key": "analysisResultId",
+      "value": ""
+    },
+    {
+      "key": "requirementId",
+      "value": ""
+    },
+    {
+      "key": "wbsTaskId",
+      "value": ""
+    },
+    {
+      "key": "channelId",
+      "value": "C0123456789"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 인증",
+      "item": [
+        {
+          "name": "01 PM 로그인",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('로그인 성공', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pm@local.test\",\n  \"password\": \"local1234!\",\n  \"role\": \"PM\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/login"
+          }
+        },
+        {
+          "name": "02 현재 세션",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/session"
+          }
+        },
+        {
+          "name": "03 내 정보",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/me"
+          }
+        },
+        {
+          "name": "04 토큰 갱신",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/refresh"
+          }
+        },
+        {
+          "name": "05 로그아웃 (마지막에 실행)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 메인 흐름",
+      "item": [
+        {
+          "name": "01 프로젝트 초안 생성",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('프로젝트 생성', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('projectId', pm.response.json().projectId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"쇼핑몰 고도화 프로젝트\",\n  \"description\": \"주문·결제·배송 기능을 개선한다.\",\n  \"pmEmployeeNumber\": \"PM-0001\",\n  \"plannedStartDate\": \"2026-08-03\",\n  \"plannedEndDate\": \"2026-10-30\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/drafts"
+          }
+        },
+        {
+          "name": "02 문서 업로드 (files 직접 선택)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const docs = pm.response.json().documents || [];",
+                  "  if (docs.length) pm.collectionVariables.set('documentId', docs[0].documentId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/documents/upload"
+          }
+        },
+        {
+          "name": "03 문서 목록 및 documentId 저장",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const docs = pm.response.json().documents || [];",
+                  "pm.test('업로드 문서 존재', () => pm.expect(docs.length).to.be.above(0));",
+                  "if (docs.length) pm.collectionVariables.set('documentId', docs[0].documentId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/documents"
+          }
+        },
+        {
+          "name": "04 분석 결과 콜백 저장",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('분석 결과 저장', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('analysisResultId', pm.response.json().analysisResultId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentExecutionId\": \"analysis-postman-001\",\n  \"agentVersion\": \"document-agent-v1\",\n  \"projectGoal\": \"주문 전환율과 운영 효율 개선\",\n  \"scope\": \"주문, 결제, 배송 상태 조회\",\n  \"requirements\": [\n    {\n      \"externalReferenceId\": 1,\n      \"type\": \"FUNCTIONAL\",\n      \"title\": \"주문 생성\",\n      \"description\": \"사용자는 장바구니 상품으로 주문을 생성할 수 있다.\",\n      \"priority\": \"HIGH\",\n      \"sourceDocumentId\": {{documentId}}\n    },\n    {\n      \"externalReferenceId\": 2,\n      \"type\": \"SECURITY\",\n      \"title\": \"결제 정보 보호\",\n      \"description\": \"결제 관련 민감정보를 로그에 남기지 않는다.\",\n      \"priority\": \"HIGH\",\n      \"sourceDocumentId\": {{documentId}}\n    }\n  ],\n  \"deliverables\": [\"요구사항 정의서\", \"WBS\"],\n  \"milestones\": [{\"name\": \"MVP\", \"dueDate\": \"2026-09-15\"}],\n  \"technologyStacks\": [\"Spring Boot\", \"React\", \"MySQL\"],\n  \"constraints\": [\"기존 결제 PG 연동 유지\"],\n  \"risks\": [\"배송사 API 일정 지연\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/documents/analysis-results"
+          }
+        },
+        {
+          "name": "05 분석 결과 조회",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/documents/analysis-results"
+          }
+        },
+        {
+          "name": "06 요구사항 목록 및 requirementId 저장",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const rows = (body.aiSuggestions || []).concat(body.finalRequirements || []);",
+                  "pm.test('요구사항 존재', () => pm.expect(rows.length).to.be.above(0));",
+                  "if (rows.length) pm.collectionVariables.set('requirementId', rows[0].requirementId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements"
+          }
+        },
+        {
+          "name": "07 요구사항 전체 확정",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/confirm"
+          }
+        },
+        {
+          "name": "08 WBS 결과 콜백 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentExecutionId\": \"wbs-postman-001\",\n  \"agentVersion\": \"wbs-agent-v1\",\n  \"tasks\": [\n    {\n      \"externalTaskId\": \"TASK-001\",\n      \"parentExternalTaskId\": null,\n      \"taskCode\": \"1\",\n      \"taskName\": \"요구사항 상세 분석\",\n      \"description\": \"확정 요구사항과 수용 기준을 검토한다.\",\n      \"phase\": \"ANALYSIS\",\n      \"requiredSkills\": [\"REQUIREMENTS_ANALYSIS\"],\n      \"difficulty\": \"MEDIUM\",\n      \"estimatedHours\": 16,\n      \"orderIndex\": 1,\n      \"requirementIds\": [{{requirementId}}]\n    },\n    {\n      \"externalTaskId\": \"TASK-002\",\n      \"parentExternalTaskId\": \"TASK-001\",\n      \"taskCode\": \"2\",\n      \"taskName\": \"주문 API 구현\",\n      \"description\": \"주문 생성 API와 검증 로직을 구현한다.\",\n      \"phase\": \"DEVELOPMENT\",\n      \"requiredSkills\": [\"BACKEND_DEVELOPMENT\"],\n      \"difficulty\": \"HIGH\",\n      \"estimatedHours\": 40,\n      \"orderIndex\": 2,\n      \"requirementIds\": [{{requirementId}}]\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/wbs/results"
+          }
+        },
+        {
+          "name": "09 WBS 조회 및 taskId 저장",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const tasks = (body.finalTasks || []).length ? body.finalTasks : (body.aiSuggestionTasks || []);",
+                  "pm.test('WBS 작업 존재', () => pm.expect(tasks.length).to.be.above(0));",
+                  "if (tasks.length) pm.collectionVariables.set('wbsTaskId', tasks[0].taskId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/wbs"
+          }
+        },
+        {
+          "name": "10 최종 WBS 저장",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tasks\": [\n    {\n      \"externalTaskId\": \"TASK-001\",\n      \"parentExternalTaskId\": null,\n      \"taskCode\": \"1\",\n      \"taskName\": \"요구사항 상세 분석\",\n      \"description\": \"확정 요구사항과 수용 기준을 검토한다.\",\n      \"phase\": \"ANALYSIS\",\n      \"requiredSkills\": [\"REQUIREMENTS_ANALYSIS\"],\n      \"difficulty\": \"MEDIUM\",\n      \"estimatedHours\": 16,\n      \"orderIndex\": 1,\n      \"requirementIds\": [{{requirementId}}]\n    },\n    {\n      \"externalTaskId\": \"TASK-002\",\n      \"parentExternalTaskId\": \"TASK-001\",\n      \"taskCode\": \"2\",\n      \"taskName\": \"주문 API 구현\",\n      \"description\": \"주문 생성 API와 검증 로직을 구현한다.\",\n      \"phase\": \"DEVELOPMENT\",\n      \"requiredSkills\": [\"BACKEND_DEVELOPMENT\"],\n      \"difficulty\": \"HIGH\",\n      \"estimatedHours\": 40,\n      \"orderIndex\": 2,\n      \"requirementIds\": [{{requirementId}}]\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/wbs/final"
+          }
+        },
+        {
+          "name": "11 최종 WBS 조회 및 taskId 갱신",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const tasks = pm.response.json().finalTasks || [];",
+                  "pm.test('최종 WBS 존재', () => pm.expect(tasks.length).to.be.above(0));",
+                  "if (tasks.length) pm.collectionVariables.set('wbsTaskId', tasks[0].taskId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/wbs"
+          }
+        },
+        {
+          "name": "12 일정 결과 콜백 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentExecutionId\": \"schedule-postman-001\",\n  \"agentVersion\": \"schedule-agent-v1\",\n  \"projectStartDate\": \"2026-08-03\",\n  \"targetEndDate\": \"2026-10-30\",\n  \"schedules\": [\n    {\n      \"externalScheduleId\": \"SCH-001\",\n      \"wbsId\": {{wbsTaskId}},\n      \"startDate\": \"2026-08-03\",\n      \"endDate\": \"2026-08-05\",\n      \"estimatedDays\": 3,\n      \"predecessorWbsIds\": [],\n      \"milestone\": false,\n      \"bufferDays\": 0\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/schedules/results"
+          }
+        },
+        {
+          "name": "13 산출물 상태 조회",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/artifacts/status"
+          }
+        },
+        {
+          "name": "14 프로젝트 목록",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects"
+          }
+        },
+        {
+          "name": "99 프로젝트 삭제 (마지막에 실행)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 요구사항 CRUD 추가 테스트",
+      "item": [
+        {
+          "name": "01 요구사항 단건 생성",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('requirementId', pm.response.json().requirementId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"analysisResultId\": {{analysisResultId}},\n  \"sourceDocumentId\": {{documentId}},\n  \"externalReferenceId\": 100,\n  \"type\": \"NON_FUNCTIONAL\",\n  \"title\": \"응답 시간\",\n  \"description\": \"주문 조회 API의 95%가 2초 이내 응답해야 한다.\",\n  \"acceptanceCriteria\": \"부하 테스트 결과 p95 <= 2초\",\n  \"dueDate\": \"2026-09-30\",\n  \"deliverableName\": \"성능 테스트 결과서\",\n  \"securityCondition\": null,\n  \"sourceDocumentName\": \"requirements.txt\",\n  \"sourceExcerpt\": \"응답시간은 2초 이내로 한다.\",\n  \"priority\": \"MEDIUM\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements"
+          }
+        },
+        {
+          "name": "02 요구사항 필터 목록",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements?type=NON_FUNCTIONAL&priority=MEDIUM&status=UNCONFIRMED&confirmed=false"
+          }
+        },
+        {
+          "name": "03 요구사항 단건 조회",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/{{requirementId}}"
+          }
+        },
+        {
+          "name": "04 요구사항 부분 수정",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"주문 API 응답 시간\",\n  \"acceptanceCriteria\": \"부하 테스트 결과 p95 <= 1.5초\",\n  \"priority\": \"HIGH\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/{{requirementId}}"
+          }
+        },
+        {
+          "name": "05 요구사항 확정",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/{{requirementId}}/confirm"
+          }
+        },
+        {
+          "name": "06 요구사항 확정 취소",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/{{requirementId}}/unconfirm"
+          }
+        },
+        {
+          "name": "07 요구사항 반려",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/{{requirementId}}/reject"
+          }
+        },
+        {
+          "name": "08 요구사항 삭제",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/{{requirementId}}"
+          }
+        },
+        {
+          "name": "09 선택 문서 AI 요구사항 분석",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentIds\": [{{documentId}}]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/analyze"
+          }
+        },
+        {
+          "name": "10 최종 요구사항 전체 저장",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requirements\": [\n    {\n      \"requirementId\": {{requirementId}},\n      \"analysisResultId\": {{analysisResultId}},\n      \"sourceDocumentId\": {{documentId}},\n      \"externalReferenceId\": 1,\n      \"type\": \"FUNCTIONAL\",\n      \"title\": \"주문 생성 및 검증\",\n      \"description\": \"사용자는 장바구니 상품으로 주문을 생성할 수 있다.\",\n      \"acceptanceCriteria\": \"정상 주문 생성 시 주문번호를 반환한다.\",\n      \"dueDate\": \"2026-09-10\",\n      \"deliverableName\": \"기능 명세서\",\n      \"securityCondition\": \"민감정보 로그 금지\",\n      \"sourceDocumentName\": \"requirements.txt\",\n      \"sourceExcerpt\": \"주문 기능을 제공한다.\",\n      \"priority\": \"HIGH\"\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/requirements/final"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 외부 AI 연동",
+      "description": "AI 서버가 실행 중일 때만 성공합니다.",
+      "item": [
+        {
+          "name": "01 저장 문서 추출",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/documents/extract"
+          }
+        },
+        {
+          "name": "02 WBS 자동 생성",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/wbs/generate"
+          }
+        },
+        {
+          "name": "03 일정 자동 생성 요청",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/schedules/generate"
+          }
+        },
+        {
+          "name": "04 변경 영향도 분석",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requirementId\": {{requirementId}},\n  \"changeTitle\": \"소셜 로그인 추가\",\n  \"changeDescription\": \"Google과 Kakao 로그인을 범위에 추가한다.\",\n  \"affectedTaskCount\": 4,\n  \"affectedMemberCount\": 3,\n  \"remainingDays\": 20,\n  \"additionalWorkDays\": 7,\n  \"scopeChanged\": true,\n  \"databaseChanged\": true,\n  \"apiChanged\": true,\n  \"uiChanged\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/impact-analysis"
+          }
+        },
+        {
+          "name": "05 팀원 지연 분석",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/member-delay"
+          }
+        },
+        {
+          "name": "06 담당자 재배정 추천",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taskName\": \"주문 API 구현\",\n  \"requiredRole\": \"Backend\",\n  \"requiredSkills\": [\"Java\", \"Spring\"],\n  \"currentAssignee\": {\n    \"memberId\": 1,\n    \"memberName\": \"김개발\",\n    \"skills\": [\"Java\"],\n    \"workloadRate\": 85.0,\n    \"overdueTaskCount\": 3\n  },\n  \"candidates\": [\n    {\n      \"memberId\": 2,\n      \"memberName\": \"이수현\",\n      \"role\": \"Backend\",\n      \"skills\": [\"Java\", \"Spring\", \"AWS\"],\n      \"workloadRate\": 40.0,\n      \"overdueTaskCount\": 0\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/assignments/1001"
+          }
+        },
+        {
+          "name": "07 산출물 보안 검사",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"artifactName\": \"API 연동 명세서\",\n  \"artifactType\": \"FUNCTION_SPECIFICATION\",\n  \"textContent\": \"담당자 이메일 user@example.com, API Key: sk-test-secret\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/deliverables/5001/security-check"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Slack",
+      "description": "SLACK_BOT_TOKEN이 설정되어 있어야 합니다.",
+      "item": [
+        {
+          "name": "01 Slack 연결 상태",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/slack/connection"
+          }
+        },
+        {
+          "name": "02 채널 후보 목록",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/slack-channels/candidates"
+          }
+        },
+        {
+          "name": "03 채널 연결",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channelId\": \"{{channelId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/slack-channels"
+          }
+        },
+        {
+          "name": "04 연결 채널 목록",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/slack-channels"
+          }
+        },
+        {
+          "name": "05 커뮤니케이션 리스크 조회",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/communication-risks"
+          }
+        },
+        {
+          "name": "06 동기화 및 리스크 재분석",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/communication-risks/refresh"
+          }
+        },
+        {
+          "name": "07 채널 연결 해제",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/slack-channels/{{channelId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 회원가입·비밀번호·관리자",
+      "item": [
+        {
+          "name": "01 회원가입 시작 (SMTP 필요)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeNumber\": \"PM-0100\",\n  \"name\": \"김프로\",\n  \"email\": \"pm0100@example.com\",\n  \"password\": \"test1234!\",\n  \"role\": \"PM\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/signup"
+          }
+        },
+        {
+          "name": "02 회원가입 인증",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pm0100@example.com\",\n  \"verificationCode\": \"123456\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/signup/verify"
+          }
+        },
+        {
+          "name": "03 로그인 인증번호 재전송",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pm0100@example.com\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/login/resend"
+          }
+        },
+        {
+          "name": "04 로그인 인증번호 검증",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pm0100@example.com\",\n  \"verificationCode\": \"123456\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/login/verify"
+          }
+        },
+        {
+          "name": "05 비밀번호 인증번호 발송",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeNumber\": \"PM-0001\",\n  \"email\": \"pm@local.test\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/password/email-send"
+          }
+        },
+        {
+          "name": "06 비밀번호 인증번호 확인",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeNumber\": \"PM-0001\",\n  \"email\": \"pm@local.test\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/password/email-check"
+          }
+        },
+        {
+          "name": "07 비밀번호 변경",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeNumber\": \"PM-0001\",\n  \"resetToken\": \"reset-token-value\",\n  \"newPassword\": \"changed1234!\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/password"
+          }
+        },
+        {
+          "name": "08 관리자 사용자 생성",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeNumber\": \"ST-0100\",\n  \"name\": \"박스태프\",\n  \"role\": \"STAFF\"\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/users"
+          }
+        },
+        {
+          "name": "09 문서 기반 프로젝트 생성 (files 직접 선택)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/projects/drafts/from-documents?enableLlm=true"
+          }
+        }
+      ]
+    }
+  ]
+}
