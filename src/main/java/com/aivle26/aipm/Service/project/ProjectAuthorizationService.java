@@ -3,7 +3,7 @@ package com.aivle26.aipm.Service.project;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,7 +19,7 @@ public class ProjectAuthorizationService {
     private static final String STAFF_ROLE = "STAFF";
 
     private final ProjectRepository projectRepository;
-    private final RiskTeamMemberRepository riskTeamMemberRepository;
+    private final ProjectMemberRepository projectMemberRepository;
 
     public void requireCurrentPm(String requestedPmEmployeeNumber) {
         AuthenticatedUser currentUser = currentUser();
@@ -53,10 +53,9 @@ public class ProjectAuthorizationService {
             return;
         }
         if (STAFF_ROLE.equals(currentUser.role())
-                && riskTeamMemberRepository.existsByProjectIdAndMemberNameAndRoleIgnoreCase(
+                && projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
                         projectId,
-                        currentUser.employeeNumber(),
-                        STAFF_ROLE
+                        currentUser.employeeNumber()
                 )) {
             return;
         }

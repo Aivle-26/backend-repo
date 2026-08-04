@@ -21,6 +21,8 @@ public interface ProjectTaskAssignmentRepository extends JpaRepository<ProjectTa
     @EntityGraph(attributePaths = {"wbsTask"})
     Optional<ProjectTaskAssignment> findByProjectIdAndWbsTaskId(Long projectId, Long wbsTaskId);
 
+    boolean existsByProjectIdAndEmployeeNumber(Long projectId, String employeeNumber);
+
     @EntityGraph(attributePaths = {"wbsTask"})
     List<ProjectTaskAssignment> findByProjectIdAndDueDateBetweenOrderByDueDateAscWbsTask_OrderIndexAsc(
             Long projectId,

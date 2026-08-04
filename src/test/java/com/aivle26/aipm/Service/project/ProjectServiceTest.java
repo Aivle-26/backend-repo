@@ -3,20 +3,21 @@ package com.aivle26.aipm.Service.project;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
 import com.aivle26.aipm.Entity.project.Project;
+import com.aivle26.aipm.Entity.project.ProjectMember;
 import com.aivle26.aipm.Entity.project.ProjectStatus;
-import com.aivle26.aipm.Entity.risk.RiskTeamMember;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
+import com.aivle26.aipm.Repository.project.WeeklyScrumReportRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 
@@ -69,11 +70,15 @@ class ProjectServiceTest {
     private ProjectScheduleResultRepository projectScheduleResultRepository;
 
     @Autowired
-    private RiskTeamMemberRepository riskTeamMemberRepository;
+    private ProjectMemberRepository projectMemberRepository;
+
+    @Autowired
+    private WeeklyScrumReportRepository weeklyScrumReportRepository;
 
     @BeforeEach
     void setUp() {
-        riskTeamMemberRepository.deleteAll();
+        weeklyScrumReportRepository.deleteAll();
+        projectMemberRepository.deleteAll();
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
         projectWbsTaskRepository.deleteAll();
@@ -152,15 +157,14 @@ class ProjectServiceTest {
                 projectRepository.save(createProject("Participating Project", firstPm));
         projectRepository.save(createProject("Hidden Project", secondPm));
 
-        RiskTeamMember membership = new RiskTeamMember();
-        membership.setProjectId(participatingProject.getId());
-        membership.setMemberName("STAFF001");
-        membership.setRole("STAFF");
-        membership.setSkills("");
-        membership.setWorkloadRate(0);
-        membership.setOverdueTaskCount(0);
-        membership.setCurrentAssignee(true);
-        riskTeamMemberRepository.save(membership);
+        User staff = userRepository.save(createStaffUser("STAFF001"));
+        ProjectMember membership = new ProjectMember();
+        membership.setProject(participatingProject);
+        membership.setUser(staff);
+        membership.setAvailableHoursPerWeek(32.0);
+        membership.setActive(true);
+        membership.setSelectedBy(firstPm.getEmployeeNumber());
+        projectMemberRepository.save(membership);
 
         var projects = projectService.listProjects(
                 new AuthenticatedUser("STAFF001", "STAFF")
@@ -191,6 +195,13 @@ class ProjectServiceTest {
         user.setRole("PM");
         user.setStatus(UserStatus.ACTIVE);
         user.setEmailVerified(true);
+        return user;
+    }
+
+    private User createStaffUser(String employeeNumber) {
+        User user = createPmUser(employeeNumber);
+        user.setName("Project Staff");
+        user.setRole("STAFF");
         return user;
     }
 }

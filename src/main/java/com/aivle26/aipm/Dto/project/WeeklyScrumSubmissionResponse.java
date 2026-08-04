@@ -13,10 +13,14 @@ public record WeeklyScrumSubmissionResponse(
         String completedWork,
         String plannedWork,
         String blockers,
+        SaveWeeklyScrumRequest.Details details,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
-    public static WeeklyScrumSubmissionResponse from(WeeklyScrumSubmission submission) {
+    public static WeeklyScrumSubmissionResponse from(
+            WeeklyScrumSubmission submission,
+            SaveWeeklyScrumRequest.Details details
+    ) {
         return new WeeklyScrumSubmissionResponse(
                 submission.getId(),
                 submission.getProject().getId(),
@@ -25,6 +29,7 @@ public record WeeklyScrumSubmissionResponse(
                 submission.getCompletedWork(),
                 submission.getPlannedWork(),
                 submission.getBlockers(),
+                details,
                 submission.getCreatedAt(),
                 submission.getUpdatedAt()
         );

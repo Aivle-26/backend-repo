@@ -38,6 +38,18 @@ public class PlanningAgentProperties {
     private String ragQueryPath = "/api/v1/reports/deliverables/rag/query";
 
     @NotBlank
+    private String weeklyScrumSummarizePath = "/api/v1/reports/weekly-scrum/summarize";
+
+    @NotBlank
+    private String weeklyScrumReviewPath = "/api/v1/reports/weekly-scrum/review";
+
+    @NotBlank
+    private String weeklyScrumRecommendPath = "/api/v1/reports/weekly-scrum/recommend-next-actions";
+
+    @NotBlank
+    private String weeklyScrumFinalizePath = "/api/v1/reports/weekly-scrum/finalize";
+
+    @NotBlank
     private String scheduleAgentVersion = "schedule-recommend-v1";
 
     private Duration connectTimeout = Duration.ofSeconds(5);

@@ -3,66 +3,122 @@ package com.aivle26.aipm.Service;
 import com.aivle26.aipm.Dto.AiMemberDelayRequest;
 import com.aivle26.aipm.Dto.AiMemberDelayResponse;
 import com.aivle26.aipm.Dto.MemberDelayResponse;
-import com.aivle26.aipm.Entity.project.Project;
-import com.aivle26.aipm.Entity.risk.RiskTeamMember;
+import com.aivle26.aipm.Entity.project.ProjectMember;
+import com.aivle26.aipm.Entity.project.ProjectTaskAssignment;
+import com.aivle26.aipm.Entity.project.TaskProgressStatus;
 import com.aivle26.aipm.Exception.ApiException;
-import com.aivle26.aipm.Repository.project.ProjectRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
+import com.aivle26.aipm.Repository.project.ProjectTaskAssignmentRepository;
+import com.aivle26.aipm.Service.project.ProjectAuthorizationService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-/**
- * 팀원별 업무 진행 지연 분석.
- *
- * <p>AI 서버가 무상태 계산기라, 백엔드는 프로젝트 존재 확인 후
- * DB의 팀원(RiskTeamMember) 업무 현황을 모아 AI로 넘기고 응답을 매핑한다.
- * (아직 배정/진척 도메인이 없어 더미 팀원 데이터를 쓰며, 실제 도메인이 생기면
- *  이 조회를 그쪽 데이터로 교체한다.)
- */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MemberDelayService {
-
-    private final ProjectRepository projectRepository;
-    private final RiskTeamMemberRepository riskTeamMemberRepository;
+    private final ProjectAuthorizationService authorizationService;
+    private final ProjectMemberRepository projectMemberRepository;
+    private final ProjectTaskAssignmentRepository assignmentRepository;
     private final MemberDelayAgentClient agentClient;
 
     @Transactional(readOnly = true)
     public MemberDelayResponse analyze(Long projectId) {
-        Project project = findProject(projectId);
-
-        List<RiskTeamMember> roster = riskTeamMemberRepository.findByProjectId(project.getId());
-        if (roster.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "NO_TEAM_MEMBERS",
-                    "프로젝트에 팀원 데이터가 없습니다. (local 시드 필요)");
+        authorizationService.requireProjectPm(projectId);
+        List<ProjectMember> projectMembers = projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId);
+        if (projectMembers.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "NO_PROJECT_MEMBERS",
+                    "Project members have not been registered."
+            );
         }
 
-        List<AiMemberDelayRequest.AiMemberTaskStatus> members = roster.stream()
-                .map(m -> new AiMemberDelayRequest.AiMemberTaskStatus(
-                        m.getId(),
-                        m.getMemberName(),
-                        m.getAssignedTaskCount(),
-                        m.getCompletedTaskCount(),
-                        m.getOverdueTaskCount(),
-                        m.getInProgressTaskCount(),
-                        m.getAverageDelayDays(),
-                        m.getDaysSinceLastUpdate()))
+        Map<String, List<ProjectTaskAssignment>> assignmentsByEmployee = assignmentRepository
+                .findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(projectId)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        ProjectTaskAssignment::getEmployeeNumber,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+        LocalDate today = LocalDate.now();
+        List<AiMemberDelayRequest.AiMemberTaskStatus> members = projectMembers.stream()
+                .map(member -> toAiMember(
+                        member,
+                        assignmentsByEmployee.getOrDefault(
+                                member.getUser().getEmployeeNumber(),
+                                List.of()
+                        ),
+                        today
+                ))
                 .toList();
 
-        AiMemberDelayResponse aiResponse =
-                agentClient.analyze(new AiMemberDelayRequest(project.getId(), members));
+        AiMemberDelayResponse aiResponse = agentClient.analyze(
+                new AiMemberDelayRequest(projectId, members)
+        );
         return MemberDelayResponse.from(aiResponse);
     }
 
-    private Project findProject(Long projectId) {
-        return projectRepository.findById(projectId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND",
-                        "프로젝트를 찾을 수 없습니다."));
+    private AiMemberDelayRequest.AiMemberTaskStatus toAiMember(
+            ProjectMember member,
+            List<ProjectTaskAssignment> assignments,
+            LocalDate today
+    ) {
+        int completed = (int) assignments.stream()
+                .filter(assignment -> assignment.getStatus() == TaskProgressStatus.COMPLETED)
+                .count();
+        int inProgress = (int) assignments.stream()
+                .filter(assignment -> assignment.getStatus() == TaskProgressStatus.IN_PROGRESS
+                        || assignment.getStatus() == TaskProgressStatus.REVIEW
+                        || assignment.getStatus() == TaskProgressStatus.DELAYED)
+                .count();
+        List<ProjectTaskAssignment> overdueAssignments = assignments.stream()
+                .filter(assignment -> isOverdue(assignment, today))
+                .toList();
+        double averageDelayDays = overdueAssignments.stream()
+                .mapToLong(assignment -> Math.max(
+                        0,
+                        ChronoUnit.DAYS.between(assignment.getDueDate(), today)
+                ))
+                .average()
+                .orElse(0.0);
+        int daysSinceLastUpdate = assignments.stream()
+                .map(ProjectTaskAssignment::getUpdatedAt)
+                .filter(updatedAt -> updatedAt != null)
+                .max(LocalDateTime::compareTo)
+                .map(updatedAt -> (int) Math.max(
+                        0,
+                        ChronoUnit.DAYS.between(updatedAt.toLocalDate(), today)
+                ))
+                .orElse(0);
+
+        return new AiMemberDelayRequest.AiMemberTaskStatus(
+                member.getId(),
+                member.getUser().getName(),
+                assignments.size(),
+                completed,
+                overdueAssignments.size(),
+                inProgress,
+                averageDelayDays,
+                daysSinceLastUpdate
+        );
+    }
+
+    private boolean isOverdue(ProjectTaskAssignment assignment, LocalDate today) {
+        return assignment.getStatus() == TaskProgressStatus.DELAYED
+                || assignment.getStatus() != TaskProgressStatus.COMPLETED
+                && assignment.getDueDate() != null
+                && assignment.getDueDate().isBefore(today);
     }
 }

@@ -5,6 +5,7 @@ import com.aivle26.aipm.Dto.ReassignmentResponse;
 import com.aivle26.aipm.Service.ReassignmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('PM')")
 public class ReassignmentController {
 
     private final ReassignmentService reassignmentService;

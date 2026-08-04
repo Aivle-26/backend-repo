@@ -174,7 +174,7 @@ public class ProjectScheduleService {
     // 저장된 일정과 WBS별 P50·P80·P90 시나리오를 함께 조회한다.
     @Transactional(readOnly = true)
     public ProjectScheduleResponse getSchedules(Long projectId) {
-        projectAuthorizationService.requireProjectPm(projectId);
+        projectAuthorizationService.requireProjectAccess(projectId);
         getProject(projectId);
 
         ProjectScheduleResult result = projectScheduleResultRepository

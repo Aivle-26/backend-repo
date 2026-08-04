@@ -7,6 +7,7 @@ import com.aivle26.aipm.Entity.ProjectSlackChannel;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.ProjectSlackChannelRepository;
+import com.aivle26.aipm.Service.project.ProjectAuthorizationService;
 import com.slack.api.model.Conversation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,9 +26,11 @@ public class ProjectSlackChannelService {
     private final SlackClient slackClient;
     private final ProjectRepository projectRepository;
     private final ProjectSlackChannelRepository projectSlackChannelRepository;
+    private final ProjectAuthorizationService authorizationService;
 
     @Transactional(readOnly = true)
     public List<SlackChannelResponse> list(Long projectId) {
+        authorizationService.requireProjectPm(projectId);
         requireProject(projectId);
         return projectSlackChannelRepository.findByProjectId(projectId).stream()
                 .map(SlackChannelResponse::from)
@@ -37,6 +40,7 @@ public class ProjectSlackChannelService {
     /** 워크스페이스 채널 목록에 연결 여부를 표시해 돌려준다. */
     @Transactional(readOnly = true)
     public List<SlackChannelCandidateResponse> listCandidates(Long projectId) {
+        authorizationService.requireProjectPm(projectId);
         requireProject(projectId);
 
         Set<String> linked = projectSlackChannelRepository.findByProjectId(projectId).stream()
@@ -61,6 +65,7 @@ public class ProjectSlackChannelService {
      */
     @Transactional
     public SlackChannelResponse register(Long projectId, String channelId) {
+        authorizationService.requireProjectPm(projectId);
         Project project = requireProject(projectId);
 
         projectSlackChannelRepository.findByProjectIdAndChannelId(projectId, channelId)
@@ -96,6 +101,7 @@ public class ProjectSlackChannelService {
      */
     @Transactional
     public void unregister(Long projectId, String channelId) {
+        authorizationService.requireProjectPm(projectId);
         requireProject(projectId);
         ProjectSlackChannel channel = projectSlackChannelRepository
                 .findByProjectIdAndChannelId(projectId, channelId)

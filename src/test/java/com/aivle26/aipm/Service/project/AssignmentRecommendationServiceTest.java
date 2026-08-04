@@ -5,16 +5,17 @@ import com.aivle26.aipm.Dto.project.AssignmentRecommendationResponse;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendResponse;
 import com.aivle26.aipm.Entity.project.Project;
+import com.aivle26.aipm.Entity.project.ProjectMember;
 import com.aivle26.aipm.Entity.project.ProjectSchedule;
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserCapabilityProfile;
 import com.aivle26.aipm.Entity.user.UserSkill;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.user.UserCapabilityProfileRepository;
-import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.client.ai.PlanningResourceClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,7 @@ class AssignmentRecommendationServiceTest {
     @Mock private ProjectRepository projectRepository;
     @Mock private ProjectWbsTaskRepository wbsTaskRepository;
     @Mock private ProjectScheduleRepository scheduleRepository;
-    @Mock private UserRepository userRepository;
+    @Mock private ProjectMemberRepository projectMemberRepository;
     @Mock private UserCapabilityProfileRepository capabilityProfileRepository;
     @Mock private PlanningResourceClient planningResourceClient;
 
@@ -84,8 +85,9 @@ class AssignmentRecommendationServiceTest {
 
     @Test
     void selectedCandidateUsesDefaultAvailabilityAndMapsAiIdBackToUser() {
-        when(userRepository.findAllByEmployeeNumberInAndRoleAndStatus(any(), any(), any()))
-                .thenReturn(List.of(registeredUser));
+        when(projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(101L))
+                .thenReturn(List.of(member(registeredUser, 28.0)));
         when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
                 .thenReturn(List.of(profile));
 
@@ -101,7 +103,7 @@ class AssignmentRecommendationServiceTest {
 
         assertThat(aiMember.projectMemberId()).isEqualTo(1L);
         assertThat(aiMember.allocations().getFirst().availableHoursPerWeek())
-                .isEqualTo(32.0);
+                .isEqualTo(28.0);
         assertThat(aiMember.allocations().getFirst().allocationStartDate())
                 .isEqualTo(LocalDate.of(2026, 8, 10));
         assertThat(aiMember.allocations().getFirst().allocationEndDate())
@@ -117,8 +119,12 @@ class AssignmentRecommendationServiceTest {
     @Test
     void emptySelectionUsesAllRegisteredActiveStaffOnly() {
         User unregistered = user("STAFF002", "No Capabilities");
-        when(userRepository.findAllByRoleAndStatusOrderByNameAscEmployeeNumberAsc(any(), any()))
-                .thenReturn(List.of(registeredUser, unregistered));
+        when(projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(101L))
+                .thenReturn(List.of(
+                        member(registeredUser, 28.0),
+                        member(unregistered, 24.0)
+                ));
         when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
                 .thenReturn(List.of(profile));
 
@@ -133,7 +139,7 @@ class AssignmentRecommendationServiceTest {
                 .extracting(AssignmentRecommendationResponse.Candidate::employeeNumber)
                 .containsExactly("STAFF001");
         assertThat(response.candidates().getFirst().availableHoursPerWeek())
-                .isEqualTo(32.0);
+                .isEqualTo(28.0);
     }
 
     private PlanningResourceRecommendResponse aiResponse() {
@@ -190,5 +196,15 @@ class AssignmentRecommendationServiceTest {
         profile.setRoles(new LinkedHashSet<>(List.of(role)));
         profile.setSkills(List.of(skill));
         return profile;
+    }
+
+    private ProjectMember member(User user, double availableHoursPerWeek) {
+        ProjectMember member = new ProjectMember();
+        member.setProject(project);
+        member.setUser(user);
+        member.setAvailableHoursPerWeek(availableHoursPerWeek);
+        member.setActive(true);
+        member.setSelectedBy("PM001");
+        return member;
     }
 }

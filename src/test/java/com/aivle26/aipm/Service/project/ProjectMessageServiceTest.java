@@ -7,8 +7,8 @@ import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectMessage;
 import com.aivle26.aipm.Entity.project.ProjectMessageType;
 import com.aivle26.aipm.Repository.project.ProjectMessageRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,7 +30,7 @@ class ProjectMessageServiceTest {
 
     @Mock ProjectAuthorizationService authorizationService;
     @Mock ProjectRepository projectRepository;
-    @Mock RiskTeamMemberRepository teamMemberRepository;
+    @Mock ProjectMemberRepository projectMemberRepository;
     @Mock ProjectMessageRepository messageRepository;
     @InjectMocks ProjectMessageService service;
 
@@ -55,7 +55,7 @@ class ProjectMessageServiceTest {
         Project project = project();
         when(projectRepository.findWithPmById(1L)).thenReturn(Optional.of(project));
         when(authorizationService.currentUser()).thenReturn(new AuthenticatedUser("PM-1", "PM"));
-        when(teamMemberRepository.existsByProjectIdAndMemberNameAndRoleIgnoreCase(1L, "E-1", "STAFF"))
+        when(projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(1L, "E-1"))
                 .thenReturn(true);
         when(messageRepository.save(any(ProjectMessage.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -86,8 +86,8 @@ class ProjectMessageServiceTest {
         LocalDate monday = LocalDate.of(2026, 8, 3);
         when(projectRepository.findWithPmById(1L)).thenReturn(Optional.of(project));
         when(authorizationService.currentUser()).thenReturn(new AuthenticatedUser("PM-1", "PM"));
-        when(teamMemberRepository.existsByProjectIdAndMemberNameAndRoleIgnoreCase(
-                1L, "E-1", "STAFF")).thenReturn(true);
+        when(projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
+                1L, "E-1")).thenReturn(true);
         when(messageRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = service.createScrumRequests(1L,

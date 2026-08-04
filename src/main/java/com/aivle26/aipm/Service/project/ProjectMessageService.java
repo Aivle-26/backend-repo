@@ -10,7 +10,7 @@ import com.aivle26.aipm.Entity.project.ProjectMessageType;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectMessageRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,12 +25,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProjectMessageService {
 
-    private static final String STAFF_ROLE = "STAFF";
     private static final String DEFAULT_SCRUM_REQUEST_MESSAGE = "이번 주 주간 스크럼을 작성해 주세요.";
 
     private final ProjectAuthorizationService authorizationService;
     private final ProjectRepository projectRepository;
-    private final RiskTeamMemberRepository teamMemberRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final ProjectMessageRepository messageRepository;
 
     @Transactional
@@ -117,8 +116,8 @@ public class ProjectMessageService {
 
     private String normalizeAndValidateMember(Long projectId, String employeeNumber) {
         String normalized = employeeNumber.trim();
-        if (!teamMemberRepository.existsByProjectIdAndMemberNameAndRoleIgnoreCase(
-                projectId, normalized, STAFF_ROLE)) {
+        if (!projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
+                projectId, normalized)) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "PROJECT_TEAM_MEMBER_NOT_FOUND",
                     "프로젝트 팀원을 찾을 수 없습니다. employeeNumber=" + normalized);
         }

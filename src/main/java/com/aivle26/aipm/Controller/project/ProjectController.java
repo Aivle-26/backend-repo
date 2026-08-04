@@ -253,7 +253,7 @@ public class ProjectController {
 
     // 저장된 WBS별 P50·P80·P90 일정과 선행 관계를 모두 반환한다.
     @GetMapping("/{projectId}/schedules")
-    @PreAuthorize("hasRole('PM')")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<ProjectScheduleResponse> getSchedules(
             @PathVariable Long projectId
     ) {

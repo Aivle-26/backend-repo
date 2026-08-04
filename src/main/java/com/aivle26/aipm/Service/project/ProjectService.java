@@ -6,6 +6,7 @@ import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectCostEstimateRepository;
 import com.aivle26.aipm.Repository.project.ProjectMessageRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectKeyFeatureRepository;
 import com.aivle26.aipm.Repository.project.ProjectPlanningExtractionRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
@@ -19,6 +20,7 @@ import com.aivle26.aipm.Repository.project.ProjectTaskAssignmentRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
+import com.aivle26.aipm.Repository.project.WeeklyScrumReportRepository;
 import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 
@@ -46,9 +48,11 @@ public class ProjectService {
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleScenarioRepository projectScheduleScenarioRepository;
     private final ProjectTaskAssignmentRepository projectTaskAssignmentRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final ProjectCostEstimateRepository projectCostEstimateRepository;
     private final ProjectMessageRepository projectMessageRepository;
     private final WeeklyScrumSubmissionRepository weeklyScrumSubmissionRepository;
+    private final WeeklyScrumReportRepository weeklyScrumReportRepository;
     private final RiskTeamMemberRepository riskTeamMemberRepository;
 
     // 현재 PM 소유 또는 STAFF 참여 범위의 프로젝트 요약만 반환한다.
@@ -61,7 +65,7 @@ public class ProjectService {
             );
         } else if ("STAFF".equals(user.role())) {
             List<Long> participatingProjectIds =
-                    riskTeamMemberRepository.findParticipatingProjectIds(user.employeeNumber());
+                    projectMemberRepository.findActiveProjectIds(user.employeeNumber());
             projects = participatingProjectIds.isEmpty()
                     ? List.of()
                     : projectRepository.findAllByIdInOrderByCreatedAtDesc(participatingProjectIds);
@@ -97,12 +101,14 @@ public class ProjectService {
         projectDocumentService.deleteProjectDocumentFiles(projectId);
 
         projectTaskAssignmentRepository.deleteAllByProjectId(projectId);
+        projectMemberRepository.deleteAllByProjectId(projectId);
         projectScheduleRepository.deletePredecessorLinksByProjectId(projectId);
         projectScheduleScenarioRepository.deleteAllByProjectSchedule_Project_Id(projectId);
         projectScheduleRepository.deleteAllByProjectId(projectId);
         projectScheduleResultRepository.deleteAllByProjectId(projectId);
         projectCostEstimateRepository.deleteAllByProjectId(projectId);
         projectMessageRepository.deleteAllByProjectId(projectId);
+        weeklyScrumReportRepository.deleteAllByProjectId(projectId);
         weeklyScrumSubmissionRepository.deleteAllByProjectId(projectId);
 
         projectWbsTaskRepository.deleteRequirementLinksByProjectId(projectId);

@@ -11,12 +11,12 @@ import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.ProjectArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectMessageRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectTaskAssignmentRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
-import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ class ProjectWorkServiceTest {
     @Mock private ProjectWbsTaskRepository wbsTaskRepository;
     @Mock private ProjectScheduleRepository scheduleRepository;
     @Mock private ProjectTaskAssignmentRepository assignmentRepository;
-    @Mock private RiskTeamMemberRepository teamMemberRepository;
+    @Mock private ProjectMemberRepository projectMemberRepository;
     @Mock private UserRepository userRepository;
     @Mock private ProjectDocumentRepository documentRepository;
     @Mock private ProjectRequirementRepository requirementRepository;
@@ -63,8 +63,8 @@ class ProjectWorkServiceTest {
         when(wbsTaskRepository.findById(WBS_ID)).thenReturn(Optional.of(task));
         when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(PROJECT_ID))
                 .thenReturn(List.of(schedule));
-        when(teamMemberRepository.existsByProjectIdAndMemberNameAndRoleIgnoreCase(
-                PROJECT_ID, "STAFF001", "STAFF")).thenReturn(true);
+        when(projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
+                PROJECT_ID, "STAFF001")).thenReturn(true);
         when(assignmentRepository.findByProjectIdAndWbsTaskId(PROJECT_ID, WBS_ID))
                 .thenReturn(Optional.empty());
         when(assignmentRepository.save(any())).thenAnswer(invocation -> {
