@@ -1,12 +1,15 @@
 package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Dto.project.AssignProjectTaskRequest;
+import com.aivle26.aipm.Dto.project.SaveFinalTaskAssignmentsRequest;
 import com.aivle26.aipm.Dto.project.UpdateTaskProgressRequest;
 import com.aivle26.aipm.Entity.project.Project;
+import com.aivle26.aipm.Entity.project.ProjectMember;
 import com.aivle26.aipm.Entity.project.ProjectSchedule;
 import com.aivle26.aipm.Entity.project.ProjectTaskAssignment;
 import com.aivle26.aipm.Entity.project.ProjectWbsTask;
 import com.aivle26.aipm.Entity.project.TaskProgressStatus;
+import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.ProjectArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
@@ -67,6 +70,8 @@ class ProjectWorkServiceTest {
                 PROJECT_ID, "STAFF001")).thenReturn(true);
         when(assignmentRepository.findByProjectIdAndWbsTaskId(PROJECT_ID, WBS_ID))
                 .thenReturn(Optional.empty());
+        when(authorizationService.currentUser())
+                .thenReturn(new AuthenticatedUser("PM001", "PM"));
         when(assignmentRepository.save(any())).thenAnswer(invocation -> {
             ProjectTaskAssignment assignment = invocation.getArgument(0);
             assignment.setId(30L);
@@ -83,6 +88,99 @@ class ProjectWorkServiceTest {
         assertThat(response.employeeNumber()).isEqualTo("STAFF001");
         assertThat(response.status()).isEqualTo(TaskProgressStatus.TODO);
         assertThat(response.dueDate()).isEqualTo(schedule.getEndDate());
+        assertThat(response.assignedHours()).isEqualTo(40.0);
+        verify(authorizationService).requireProjectPm(PROJECT_ID);
+    }
+
+    @Test
+    void replaceFinalAssignmentsValidatesAndStoresEveryLeafTask() {
+        Project project = project();
+        ProjectWbsTask first = task(project, 21L, 30);
+        ProjectWbsTask second = task(project, 22L, 10);
+        ProjectSchedule firstSchedule = schedule(project, first);
+        ProjectSchedule secondSchedule = schedule(project, second);
+        User firstStaff = user("STAFF001");
+        User secondStaff = user("STAFF002");
+
+        when(projectRepository.findForUpdate(PROJECT_ID)).thenReturn(Optional.of(project));
+        when(wbsTaskRepository.findByProjectIdAndConfirmedTrue(PROJECT_ID))
+                .thenReturn(List.of(first, second));
+        when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(PROJECT_ID))
+                .thenReturn(List.of(firstSchedule, secondSchedule));
+        when(projectMemberRepository.findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(
+                PROJECT_ID)).thenReturn(List.of(member(project, firstStaff), member(project, secondStaff)));
+        when(assignmentRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(PROJECT_ID))
+                .thenReturn(List.of());
+        when(authorizationService.currentUser())
+                .thenReturn(new AuthenticatedUser("PM001", "PM"));
+        when(assignmentRepository.saveAll(any())).thenAnswer(invocation -> {
+            List<ProjectTaskAssignment> assignments = invocation.getArgument(0);
+            for (int index = 0; index < assignments.size(); index++) {
+                assignments.get(index).setId(100L + index);
+            }
+            return assignments;
+        });
+
+        var response = service.replaceFinalAssignments(
+                PROJECT_ID,
+                new SaveFinalTaskAssignmentsRequest(List.of(
+                        new SaveFinalTaskAssignmentsRequest.Assignment(
+                                first.getId(), "STAFF001", 24.0, null),
+                        new SaveFinalTaskAssignmentsRequest.Assignment(
+                                second.getId(), "STAFF002", null, secondSchedule.getEndDate())
+                ))
+        );
+
+        assertThat(response).hasSize(2);
+        assertThat(response.getFirst().employeeNumber()).isEqualTo("STAFF001");
+        assertThat(response.getFirst().assignedHours()).isEqualTo(24.0);
+        assertThat(response.getFirst().assignedBy()).isEqualTo("PM001");
+        assertThat(response.getLast().assignedHours()).isEqualTo(10.0);
+        assertThat(response).allMatch(item -> item.status() == TaskProgressStatus.TODO);
+        verify(authorizationService).requireProjectPm(project);
+    }
+
+    @Test
+    void replaceFinalAssignmentsRejectsMissingLeafTaskWithoutChangingAssignments() {
+        Project project = project();
+        ProjectWbsTask first = task(project, 21L, 30);
+        ProjectWbsTask second = task(project, 22L, 10);
+        when(projectRepository.findForUpdate(PROJECT_ID)).thenReturn(Optional.of(project));
+        when(wbsTaskRepository.findByProjectIdAndConfirmedTrue(PROJECT_ID))
+                .thenReturn(List.of(first, second));
+
+        assertThatThrownBy(() -> service.replaceFinalAssignments(
+                PROJECT_ID,
+                new SaveFinalTaskAssignmentsRequest(List.of(
+                        new SaveFinalTaskAssignmentsRequest.Assignment(
+                                first.getId(), "STAFF001", 30.0, null)
+                ))
+        )).isInstanceOfSatisfying(
+                ApiException.class,
+                exception -> assertThat(exception.getCode()).isEqualTo("INCOMPLETE_FINAL_ASSIGNMENTS")
+        );
+    }
+
+    @Test
+    void getAssignmentsReturnsAllAssignmentsForProjectPm() {
+        Project project = project();
+        ProjectWbsTask task = task(project, WBS_ID, 40);
+        ProjectSchedule schedule = schedule(project, task);
+        ProjectTaskAssignment assignment = assignment(project, task, "STAFF001", 20);
+        assignment.setAssignedHours(32.0);
+        assignment.setAssignedBy("PM001");
+        when(assignmentRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(PROJECT_ID))
+                .thenReturn(List.of(assignment));
+        when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(PROJECT_ID))
+                .thenReturn(List.of(schedule));
+
+        var response = service.getAssignments(PROJECT_ID);
+
+        assertThat(response).singleElement().satisfies(item -> {
+            assertThat(item.wbsId()).isEqualTo(WBS_ID);
+            assertThat(item.employeeNumber()).isEqualTo("STAFF001");
+            assertThat(item.assignedHours()).isEqualTo(32.0);
+        });
         verify(authorizationService).requireProjectPm(PROJECT_ID);
     }
 
@@ -207,5 +305,20 @@ class ProjectWorkServiceTest {
         assignment.setProgressRate(progressRate);
         assignment.setDueDate(LocalDate.now().plusDays(5));
         return assignment;
+    }
+
+    private User user(String employeeNumber) {
+        User user = new User();
+        user.setEmployeeNumber(employeeNumber);
+        user.setName(employeeNumber);
+        return user;
+    }
+
+    private ProjectMember member(Project project, User user) {
+        ProjectMember member = new ProjectMember();
+        member.setProject(project);
+        member.setUser(user);
+        member.setActive(true);
+        return member;
     }
 }

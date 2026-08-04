@@ -4,6 +4,7 @@ import com.aivle26.aipm.Dto.project.AssignProjectTaskRequest;
 import com.aivle26.aipm.Dto.project.ProjectProgressResponse;
 import com.aivle26.aipm.Dto.project.ProjectMemberResponse;
 import com.aivle26.aipm.Dto.project.ProjectSearchResponse;
+import com.aivle26.aipm.Dto.project.SaveFinalTaskAssignmentsRequest;
 import com.aivle26.aipm.Dto.project.SaveProjectMembersRequest;
 import com.aivle26.aipm.Dto.project.TaskAssignmentResponse;
 import com.aivle26.aipm.Dto.project.TeamProgressResponse;
@@ -57,6 +58,23 @@ public class ProjectWorkController {
             @Valid @RequestBody AssignProjectTaskRequest request
     ) {
         return ResponseEntity.ok(projectWorkService.assignTask(projectId, wbsId, request));
+    }
+
+    @PutMapping("/assignments/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<List<TaskAssignmentResponse>> replaceFinalAssignments(
+            @PathVariable Long projectId,
+            @Valid @RequestBody SaveFinalTaskAssignmentsRequest request
+    ) {
+        return ResponseEntity.ok(projectWorkService.replaceFinalAssignments(projectId, request));
+    }
+
+    @GetMapping("/assignments")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<List<TaskAssignmentResponse>> getAssignments(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(projectWorkService.getAssignments(projectId));
     }
 
     @GetMapping("/progress")

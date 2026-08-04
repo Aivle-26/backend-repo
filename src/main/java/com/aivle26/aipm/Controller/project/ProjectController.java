@@ -11,6 +11,7 @@ import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentAnalysisResultsResponse;
 import com.aivle26.aipm.Dto.project.ProjectDocumentUploadResponse;
+import com.aivle26.aipm.Dto.project.ProjectDetailResponse;
 import com.aivle26.aipm.Dto.project.ProjectScheduleResponse;
 import com.aivle26.aipm.Dto.project.ProjectSummaryResponse;
 import com.aivle26.aipm.Dto.project.ProjectWbsResponse;
@@ -33,6 +34,7 @@ import com.aivle26.aipm.Service.project.FinalCostEstimateService;
 import com.aivle26.aipm.Service.project.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.project.ProjectDocumentExtractService;
 import com.aivle26.aipm.Service.project.ProjectDocumentService;
+import com.aivle26.aipm.Service.project.ProjectLifecycleService;
 import com.aivle26.aipm.Service.project.ProjectScheduleService;
 import com.aivle26.aipm.Service.project.ProjectService;
 import com.aivle26.aipm.Service.project.ProjectWbsService;
@@ -68,6 +70,7 @@ import java.nio.charset.StandardCharsets;
 @RequestMapping("/api/projects")
 public class ProjectController {
     private final ProjectService projectService;
+    private final ProjectLifecycleService projectLifecycleService;
     private final ProjectArtifactStatusService projectArtifactStatusService;
     private final ProjectCreationService projectCreationService;
     private final ProjectDocumentService projectDocumentService;
@@ -84,6 +87,18 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<List<ProjectSummaryResponse>> listProjects(Authentication authentication) {
         return ResponseEntity.ok(projectService.listProjects(requireAuthenticatedUser(authentication)));
+    }
+
+    @GetMapping("/{projectId:\\d+}")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
+    public ResponseEntity<ProjectDetailResponse> getProjectDetail(@PathVariable Long projectId) {
+        return ResponseEntity.ok(projectLifecycleService.getDetail(projectId));
+    }
+
+    @PutMapping("/{projectId}/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<ProjectDetailResponse> finalizeProject(@PathVariable Long projectId) {
+        return ResponseEntity.ok(projectLifecycleService.finalizeProject(projectId));
     }
 
     // 접근 가능한 한 프로젝트의 저장 문서 메타데이터만 반환한다.
@@ -287,6 +302,14 @@ public class ProjectController {
             @Valid @RequestBody CostEstimateRequest request
     ) {
         return ResponseEntity.ok(costEstimateService.estimate(projectId, request));
+    }
+
+    @GetMapping("/{projectId}/costs/final")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<FinalCostEstimateResponse> getFinalCostEstimate(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(finalCostEstimateService.getFinal(projectId));
     }
 
     @PutMapping("/{projectId}/costs/final")
