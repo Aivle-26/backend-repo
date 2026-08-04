@@ -14,6 +14,9 @@ public record CreateProjectDraftRequest(
         @Size(max = 2000)
         String description,
 
+        @Size(max = 200)
+        String clientOrganization,
+
         @NotBlank
         @Size(max = 50)
         String pmEmployeeNumber,

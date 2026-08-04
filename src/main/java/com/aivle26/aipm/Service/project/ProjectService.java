@@ -78,6 +78,7 @@ public class ProjectService {
                         project.getId(),
                         project.getName(),
                         project.getDescription(),
+                        project.getClientOrganization(),
                         project.getPm().getEmployeeNumber(),
                         project.getStatus(),
                         project.getPlannedStartDate(),

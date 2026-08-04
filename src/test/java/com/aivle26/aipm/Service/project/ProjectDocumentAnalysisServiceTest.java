@@ -844,6 +844,7 @@ class ProjectDocumentAnalysisServiceTest {
         return projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project",
                 "draft description",
+                null,
                 employeeNumber,
                 LocalDate.of(2026, 7, 13),
                 LocalDate.of(2026, 7, 31)

@@ -11,6 +11,7 @@ public record ProjectSummaryResponse(
         Long projectId,
         String name,
         String description,
+        String clientOrganization,
         String pmEmployeeNumber,
         ProjectStatus status,
         LocalDate plannedStartDate,

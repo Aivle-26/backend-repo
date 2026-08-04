@@ -493,6 +493,7 @@ class ProjectScheduleServiceTest {
         Long projectId = projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project " + analysisExecutionId,
                 "draft description",
+                null,
                 "PM001",
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 10, 31)

@@ -73,6 +73,10 @@ public class ProjectCreationService {
         Project project = new Project();
         project.setName(request.name().trim());
         project.setDescription(request.description() == null ? null : request.description().trim());
+        project.setClientOrganization(
+                request.clientOrganization() == null || request.clientOrganization().isBlank()
+                        ? null
+                        : request.clientOrganization().trim());
         project.setPm(resolvePm(request.pmEmployeeNumber()));
         project.setStatus(ProjectStatus.DRAFT);
         project.setPlannedStartDate(plannedStartDate);
@@ -84,6 +88,7 @@ public class ProjectCreationService {
         return new CreateProjectDraftResponse(
                 savedProject.getId(),
                 savedProject.getName(),
+                savedProject.getClientOrganization(),
                 savedProject.getPm().getEmployeeNumber(),
                 savedProject.getStatus(),
                 savedProject.getPlannedStartDate(),

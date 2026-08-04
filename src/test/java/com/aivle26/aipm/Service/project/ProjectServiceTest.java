@@ -97,6 +97,7 @@ class ProjectServiceTest {
         CreateProjectDraftResponse response = projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project",
                 "draft description",
+                null,
                 "PM001",
                 LocalDate.of(2026, 7, 13),
                 LocalDate.of(2026, 7, 31)
@@ -114,6 +115,7 @@ class ProjectServiceTest {
         assertThatThrownBy(() -> projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project",
                 "draft description",
+                null,
                 "PM404",
                 LocalDate.of(2026, 7, 13),
                 LocalDate.of(2026, 7, 31)
@@ -131,6 +133,7 @@ class ProjectServiceTest {
         projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project",
                 "draft description",
+                null,
                 "PM001",
                 LocalDate.of(2026, 7, 13),
                 LocalDate.of(2026, 7, 31)

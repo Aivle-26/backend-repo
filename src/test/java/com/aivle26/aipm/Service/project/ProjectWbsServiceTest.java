@@ -439,6 +439,7 @@ class ProjectWbsServiceTest {
         Long projectId = projectCreationService.createProjectDraft(new CreateProjectDraftRequest(
                 "New PM Project " + agentExecutionId,
                 "draft description",
+                null,
                 "PM001",
                 LocalDate.of(2026, 7, 13),
                 LocalDate.of(2026, 7, 31)

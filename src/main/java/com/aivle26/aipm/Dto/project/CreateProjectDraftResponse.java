@@ -9,6 +9,7 @@ import java.time.LocalDate;
 public record CreateProjectDraftResponse(
         Long projectId,
         String name,
+        String clientOrganization,
         String pmEmployeeNumber,
         ProjectStatus status,
         LocalDate plannedStartDate,
