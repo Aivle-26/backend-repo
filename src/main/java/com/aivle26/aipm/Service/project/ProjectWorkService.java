@@ -3,6 +3,7 @@ package com.aivle26.aipm.Service.project;
 import com.aivle26.aipm.Dto.project.AssignProjectTaskRequest;
 import com.aivle26.aipm.Dto.project.ProjectProgressResponse;
 import com.aivle26.aipm.Dto.project.ProjectSearchResponse;
+import com.aivle26.aipm.Dto.project.SaveFinalTaskAssignmentsRequest;
 import com.aivle26.aipm.Dto.project.TaskAssignmentResponse;
 import com.aivle26.aipm.Dto.project.TeamProgressResponse;
 import com.aivle26.aipm.Dto.project.UpdateTaskProgressRequest;
@@ -97,10 +98,129 @@ public class ProjectWorkService {
             assignment.setWbsTask(task);
             assignment.setStatus(TaskProgressStatus.TODO);
             assignment.setProgressRate(0);
+        } else if (!employeeNumber.equals(assignment.getEmployeeNumber())) {
+            assignment.setStatus(TaskProgressStatus.TODO);
+            assignment.setProgressRate(0);
         }
         assignment.setEmployeeNumber(employeeNumber);
         assignment.setDueDate(dueDate);
+        assignment.setAssignedHours((double) Math.max(1, task.getEstimatedHours()));
+        assignment.setAssignedBy(authorizationService.currentUser().employeeNumber());
         return toResponse(assignmentRepository.save(assignment), schedule, LocalDate.now());
+    }
+
+    @Transactional
+    public List<TaskAssignmentResponse> replaceFinalAssignments(
+            Long projectId,
+            SaveFinalTaskAssignmentsRequest request
+    ) {
+        Project project = projectRepository.findForUpdate(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "Project was not found."
+                ));
+        authorizationService.requireProjectPm(project);
+
+        List<ProjectWbsTask> tasks = leafTasks(projectId);
+        if (tasks.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "CONFIRMED_WBS_TASK_NOT_FOUND",
+                    "Confirmed leaf WBS tasks were not found."
+            );
+        }
+
+        Map<Long, ProjectWbsTask> tasksById = tasks.stream()
+                .collect(Collectors.toMap(
+                        ProjectWbsTask::getId,
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<Long, SaveFinalTaskAssignmentsRequest.Assignment> requestedByWbsId =
+                normalizeFinalAssignments(request.assignments());
+        validateCompleteAssignmentSet(tasksById.keySet(), requestedByWbsId.keySet());
+
+        Map<Long, ProjectSchedule> schedulesByWbsId = scheduleRepository
+                .findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(projectId)
+                .stream()
+                .collect(Collectors.toMap(
+                        schedule -> schedule.getWbsTask().getId(),
+                        Function.identity()
+                ));
+        Set<String> activeMembers = projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId)
+                .stream()
+                .map(member -> member.getUser().getEmployeeNumber())
+                .collect(Collectors.toSet());
+        Map<Long, ProjectTaskAssignment> existingByWbsId = assignmentRepository
+                .findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(projectId)
+                .stream()
+                .collect(Collectors.toMap(
+                        assignment -> assignment.getWbsTask().getId(),
+                        Function.identity()
+                ));
+
+        String assignedBy = authorizationService.currentUser().employeeNumber();
+        List<ProjectTaskAssignment> finalAssignments = new ArrayList<>();
+        for (ProjectWbsTask task : tasks) {
+            SaveFinalTaskAssignmentsRequest.Assignment requested = requestedByWbsId.get(task.getId());
+            String employeeNumber = requested.employeeNumber().trim();
+            if (!activeMembers.contains(employeeNumber)) {
+                throw new ApiException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "PROJECT_TEAM_MEMBER_NOT_FOUND",
+                        "Project team member was not found. employeeNumber=" + employeeNumber
+                );
+            }
+
+            ProjectSchedule schedule = schedulesByWbsId.get(task.getId());
+            if (schedule == null) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "PROJECT_SCHEDULE_NOT_FOUND",
+                        "Project schedule was not found. wbsId=" + task.getId()
+                );
+            }
+            LocalDate dueDate = requested.dueDate() == null
+                    ? schedule.getEndDate()
+                    : requested.dueDate();
+            validateDueDate(schedule, dueDate);
+            double assignedHours = resolveAssignedHours(task, requested.assignedHours());
+
+            ProjectTaskAssignment assignment = existingByWbsId.remove(task.getId());
+            if (assignment == null) {
+                assignment = new ProjectTaskAssignment();
+                assignment.setProject(project);
+                assignment.setWbsTask(task);
+                assignment.setStatus(TaskProgressStatus.TODO);
+                assignment.setProgressRate(0);
+            } else if (!employeeNumber.equals(assignment.getEmployeeNumber())) {
+                assignment.setStatus(TaskProgressStatus.TODO);
+                assignment.setProgressRate(0);
+            }
+            assignment.setEmployeeNumber(employeeNumber);
+            assignment.setDueDate(dueDate);
+            assignment.setAssignedHours(assignedHours);
+            assignment.setAssignedBy(assignedBy);
+            finalAssignments.add(assignment);
+        }
+
+        if (!existingByWbsId.isEmpty()) {
+            assignmentRepository.deleteAll(existingByWbsId.values());
+        }
+        List<ProjectTaskAssignment> saved = assignmentRepository.saveAll(finalAssignments);
+        return mapAssignments(projectId, saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaskAssignmentResponse> getAssignments(Long projectId) {
+        authorizationService.requireProjectPm(projectId);
+        return mapAssignments(
+                projectId,
+                assignmentRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(projectId)
+        );
     }
 
     @Transactional(readOnly = true)
@@ -280,6 +400,62 @@ public class ProjectWorkService {
                 .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "PROJECT_SCHEDULE_NOT_FOUND", "Project schedule was not found."));
     }
 
+    private Map<Long, SaveFinalTaskAssignmentsRequest.Assignment> normalizeFinalAssignments(
+            List<SaveFinalTaskAssignmentsRequest.Assignment> assignments
+    ) {
+        Map<Long, SaveFinalTaskAssignmentsRequest.Assignment> normalized = new LinkedHashMap<>();
+        for (SaveFinalTaskAssignmentsRequest.Assignment assignment : assignments) {
+            if (normalized.putIfAbsent(assignment.wbsId(), assignment) != null) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "DUPLICATE_WBS_ASSIGNMENT",
+                        "Duplicate WBS assignment. wbsId=" + assignment.wbsId()
+                );
+            }
+        }
+        return normalized;
+    }
+
+    private void validateCompleteAssignmentSet(Set<Long> requiredWbsIds, Set<Long> requestedWbsIds) {
+        Set<Long> missingWbsIds = new LinkedHashSet<>(requiredWbsIds);
+        missingWbsIds.removeAll(requestedWbsIds);
+        Set<Long> invalidWbsIds = new LinkedHashSet<>(requestedWbsIds);
+        invalidWbsIds.removeAll(requiredWbsIds);
+        if (!missingWbsIds.isEmpty() || !invalidWbsIds.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INCOMPLETE_FINAL_ASSIGNMENTS",
+                    "Final assignments must contain every confirmed leaf WBS exactly once. "
+                            + "missingWbsIds=" + missingWbsIds
+                            + ", invalidWbsIds=" + invalidWbsIds
+            );
+        }
+    }
+
+    private void validateDueDate(ProjectSchedule schedule, LocalDate dueDate) {
+        if (dueDate.isBefore(schedule.getStartDate())) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INVALID_TASK_DUE_DATE",
+                    "Task due date cannot be before its schedule start date."
+            );
+        }
+    }
+
+    private double resolveAssignedHours(ProjectWbsTask task, Double requestedHours) {
+        double assignedHours = requestedHours == null
+                ? Math.max(1, task.getEstimatedHours())
+                : requestedHours;
+        if (!Double.isFinite(assignedHours) || assignedHours <= 0 || assignedHours > 100_000) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INVALID_ASSIGNED_HOURS",
+                    "Assigned hours must be greater than 0 and at most 100000."
+            );
+        }
+        return assignedHours;
+    }
+
     private List<ProjectWbsTask> leafTasks(Long projectId) {
         List<ProjectWbsTask> tasks = wbsTaskRepository.findByProjectIdAndConfirmedTrue(projectId);
         Set<Long> parentIds = tasks.stream()
@@ -351,7 +527,10 @@ public class ProjectWorkService {
                 assignment.getId(), assignment.getProject().getId(), task.getId(), task.getTaskCode(),
                 task.getTaskName(), task.getDescription(), assignment.getEmployeeNumber(), assignment.getStatus(),
                 assignment.getProgressRate(), schedule == null ? null : schedule.getStartDate(), assignment.getDueDate(),
-                task.getEstimatedHours(), schedule != null && schedule.isMilestone(),
+                task.getEstimatedHours(), assignment.getAssignedHours() == null
+                        ? Math.max(1, task.getEstimatedHours())
+                        : assignment.getAssignedHours(),
+                assignment.getAssignedBy(), schedule != null && schedule.isMilestone(),
                 schedule == null ? 0 : schedule.getBufferDays(), isDelayed(assignment, today),
                 assignment.getAssignedAt(), assignment.getUpdatedAt()
         );

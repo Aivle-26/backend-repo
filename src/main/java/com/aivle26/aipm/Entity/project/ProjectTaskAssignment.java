@@ -58,6 +58,13 @@ public class ProjectTaskAssignment {
     @Column(nullable = false)
     private LocalDate dueDate;
 
+    // Nullable for backward compatibility with assignments created before this field existed.
+    @Column(name = "assigned_hours")
+    private Double assignedHours;
+
+    @Column(name = "assigned_by", length = 50)
+    private String assignedBy;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime assignedAt;
 

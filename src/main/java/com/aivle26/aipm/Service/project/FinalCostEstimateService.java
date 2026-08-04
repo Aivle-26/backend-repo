@@ -9,6 +9,7 @@ import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectCostEstimateRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,7 @@ public class FinalCostEstimateService {
     private static final boolean DEFAULT_INCLUDE_VAT = true;
 
     private final CostEstimateService costEstimateService;
+    private final ProjectAuthorizationService authorizationService;
     private final ProjectRepository projectRepository;
     private final ProjectCostEstimateRepository costEstimateRepository;
     private final ObjectMapper objectMapper;
@@ -45,6 +47,29 @@ public class FinalCostEstimateService {
         applyCalculatedResult(entity, calculated);
         ProjectCostEstimate saved = costEstimateRepository.saveAndFlush(entity);
         return toResponse(saved, request.wbsEfforts(), calculated);
+    }
+
+    @Transactional(readOnly = true)
+    public FinalCostEstimateResponse getFinal(Long projectId) {
+        authorizationService.requireProjectPm(projectId);
+        ProjectCostEstimate entity = costEstimateRepository.findByProjectId(projectId)
+                .filter(ProjectCostEstimate::isConfirmed)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "FINAL_COST_ESTIMATE_NOT_FOUND",
+                        "Final cost estimate was not found."
+                ));
+        List<CostEstimateRequest.WbsEffort> wbsEfforts = readJson(
+                entity.getWbsEffortsJson(),
+                new TypeReference<List<CostEstimateRequest.WbsEffort>>() {
+                }
+        );
+        List<String> unpricedItems = readJson(
+                entity.getUnpricedItemsJson(),
+                new TypeReference<List<String>>() {
+                }
+        );
+        return toResponse(entity, wbsEfforts, calculatedFrom(entity, unpricedItems));
     }
 
     private void applyRequest(
@@ -117,6 +142,55 @@ public class FinalCostEstimateService {
                 calculated.llmStatus(),
                 entity.getUpdatedAt()
         );
+    }
+
+    private CostEstimateResponse calculatedFrom(
+            ProjectCostEstimate entity,
+            List<String> unpricedItems
+    ) {
+        return new CostEstimateResponse(
+                entity.getProject().getId(),
+                entity.getCurrency(),
+                entity.getTotalEstimatedMm(),
+                new CostEstimateResponse.CostSummary(
+                        entity.getLaborCost(),
+                        entity.getServerCost(),
+                        entity.getLicenseCost(),
+                        entity.getAiApiCost(),
+                        entity.getBaseCost()
+                ),
+                new CostEstimateResponse.Estimate(
+                        entity.getContingencyRate(),
+                        entity.getContingencyAmount(),
+                        entity.getSupplyAmount(),
+                        entity.getVat(),
+                        entity.getTotalAmount()
+                ),
+                List.copyOf(unpricedItems),
+                entity.getWarning(),
+                entity.getLlmStatus()
+        );
+    }
+
+    private <T> T readJson(String json, TypeReference<T> type) {
+        try {
+            T value = objectMapper.readValue(json, type);
+            if (value == null) {
+                throw new ApiException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "COST_ESTIMATE_DESERIALIZATION_ERROR",
+                        "Stored final cost estimate is invalid."
+                );
+            }
+            return value;
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "COST_ESTIMATE_DESERIALIZATION_ERROR",
+                    "Stored final cost estimate could not be read.",
+                    exception
+            );
+        }
     }
 
     private String writeJson(Object value) {

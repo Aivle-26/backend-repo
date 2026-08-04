@@ -44,6 +44,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -139,6 +140,24 @@ class ProjectControllerSecurityTest {
     @Test
     void getDocumentAnalysisResultsRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/projects/1/documents/analysis-results"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
+    void getAssignmentsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/projects/1/assignments"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
+    void replaceFinalAssignmentsRequiresAuthentication() throws Exception {
+        mockMvc.perform(put("/api/projects/1/assignments/final")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"assignments":[{"wbsId":1,"employeeNumber":"STAFF001"}]}
+                                """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
     }

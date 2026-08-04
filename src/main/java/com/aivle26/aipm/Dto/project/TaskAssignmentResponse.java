@@ -18,6 +18,8 @@ public record TaskAssignmentResponse(
         LocalDate startDate,
         LocalDate dueDate,
         int estimatedHours,
+        double assignedHours,
+        String assignedBy,
         boolean milestone,
         int bufferDays,
         boolean overdue,
