@@ -7,13 +7,11 @@ import com.aivle26.aipm.Entity.ArtifactCheckStatus;
 import com.aivle26.aipm.Entity.ProjectArtifact;
 import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.ProjectRequiredArtifact;
-import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.ProjectArtifactRepository;
-import com.aivle26.aipm.Repository.project.ProjectRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
+import com.aivle26.aipm.Service.project.OrganizationChartArtifactPolicy;
 import com.aivle26.aipm.Service.project.ProjectAuthorizationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,18 +26,16 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ProjectArtifactStatusService {
-    private final ProjectRepository projectRepository;
     private final ProjectRequiredArtifactRepository requiredArtifactRepository;
     private final ProjectArtifactRepository artifactRepository;
     private final ProjectAuthorizationService projectAuthorizationService;
     private final ArtifactVersionComparator versionComparator;
+    private final OrganizationChartArtifactPolicy organizationChartArtifactPolicy;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ProjectArtifactStatusResponse getStatus(Long projectId) {
-        if (!projectRepository.existsById(projectId)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "project not found");
-        }
         projectAuthorizationService.requireProjectPm(projectId);
+        organizationChartArtifactPolicy.ensureForProject(projectId);
 
         List<ProjectRequiredArtifact> requiredArtifacts =
                 requiredArtifactRepository.findByProjectIdOrderByArtifactTypeAsc(projectId);

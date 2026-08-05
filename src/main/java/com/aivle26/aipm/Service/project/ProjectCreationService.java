@@ -58,6 +58,7 @@ public class ProjectCreationService {
     private final ProjectAuthorizationService projectAuthorizationService;
     private final PlanningDocumentExtractionValidator extractionValidator;
     private final ProjectRequirementImportService requirementImportService;
+    private final OrganizationChartArtifactPolicy organizationChartArtifactPolicy;
 
     // 프로젝트 입력값과 PM을 검증해 DRAFT 프로젝트를 저장하고 생성 결과를 반환한다.
     @Transactional
@@ -83,6 +84,7 @@ public class ProjectCreationService {
         project.setPlannedEndDate(plannedEndDate);
 
         Project savedProject = projectRepository.save(project);
+        organizationChartArtifactPolicy.ensure(savedProject);
 
         // 저장된 프로젝트를 생성 응답 DTO로 매핑
         return new CreateProjectDraftResponse(
@@ -129,6 +131,7 @@ public class ProjectCreationService {
         project.setPm(resolvePm(pmEmployeeNumber));
 
         Project savedProject = projectRepository.save(project);
+        organizationChartArtifactPolicy.ensure(savedProject);
         projectDocumentService.replaceProjectDocuments(savedProject, files, ProjectDocumentStatus.UPLOADED);
         return new DraftProjectContext(savedProject.getId());
     }
@@ -138,6 +141,7 @@ public class ProjectCreationService {
         List<ProjectDocument> documents = projectDocumentService.getProjectDocuments(projectId);
         projectDocumentService.cleanupStoredFiles(documents);
         projectDocumentService.deleteProjectDocumentRecords(projectId);
+        requiredArtifactRepository.deleteAllByProjectId(projectId);
         projectRepository.deleteById(projectId);
     }
 
@@ -189,6 +193,9 @@ public class ProjectCreationService {
         List<ProjectRequiredArtifact> artifacts = new ArrayList<>();
         for (int i = 0; i < projectInfo.requiredArtifacts().size(); i++) {
             PlanningDocumentExtractResponse.RequiredArtifact artifactResponse = projectInfo.requiredArtifacts().get(i);
+            if (result.artifactTypes().get(i) == OrganizationChartArtifactPolicy.TYPE) {
+                continue;
+            }
             ProjectRequiredArtifact artifact = new ProjectRequiredArtifact();
             artifact.setProject(project);
             artifact.setArtifactType(result.artifactTypes().get(i));
@@ -197,6 +204,10 @@ public class ProjectCreationService {
             artifacts.add(artifact);
         }
         requiredArtifactRepository.saveAll(artifacts);
+        organizationChartArtifactPolicy.ensure(project);
+        int requiredArtifactCount = requiredArtifactRepository
+                .findByProjectIdOrderByIdAsc(projectId)
+                .size();
 
         List<ProjectRequirement> requirements = requirementImportService.importRequirements(
                 project,
@@ -210,7 +221,7 @@ public class ProjectCreationService {
         extraction.setLlmStatus(result.llmStatus());
         extraction.setDocumentCount(savedDocuments.size());
         extraction.setRequirementCount(requirements.size());
-        extraction.setRequiredArtifactCount(artifacts.size());
+        extraction.setRequiredArtifactCount(requiredArtifactCount);
         extractionRepository.save(extraction);
 
         return new CreateProjectDraftFromDocumentsResponse(
@@ -219,7 +230,7 @@ public class ProjectCreationService {
                 project.getStatus(),
                 result.llmStatus(),
                 requirements.size(),
-                artifacts.size(),
+                requiredArtifactCount,
                 savedDocuments.size(),
                 "Project draft created from analyzed documents."
         );

@@ -168,7 +168,7 @@ class ProjectDraftFromDocumentsIntegrationTest {
                 .andExpect(jsonPath("$.status").value(ProjectStatus.DRAFT.name()))
                 .andExpect(jsonPath("$.llmStatus").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.requirementCount").value(2))
-                .andExpect(jsonPath("$.requiredArtifactCount").value(2))
+                .andExpect(jsonPath("$.requiredArtifactCount").value(3))
                 .andExpect(jsonPath("$.documentCount").value(2))
                 .andReturn()
                 .getResponse()
@@ -180,7 +180,7 @@ class ProjectDraftFromDocumentsIntegrationTest {
         assertThat(projectRepository.count()).isEqualTo(1);
         assertThat(analysisResultRepository.count()).isEqualTo(1);
         assertThat(projectRequirementRepository.count()).isEqualTo(2);
-        assertThat(requiredArtifactRepository.count()).isEqualTo(2);
+        assertThat(requiredArtifactRepository.count()).isEqualTo(3);
         assertThat(keyFeatureRepository.count()).isEqualTo(3);
         assertThat(extractionRepository.count()).isEqualTo(1);
 

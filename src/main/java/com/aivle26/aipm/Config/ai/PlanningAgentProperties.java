@@ -32,6 +32,10 @@ public class PlanningAgentProperties {
     private String resourcePath = "/api/v1/planning/resources/recommend";
 
     @NotBlank
+    private String organizationChartPath =
+            "/api/v1/planning/resources/organization-chart/generate";
+
+    @NotBlank
     private String costPath = "/api/v1/planning/costs/estimate";
 
     @NotBlank

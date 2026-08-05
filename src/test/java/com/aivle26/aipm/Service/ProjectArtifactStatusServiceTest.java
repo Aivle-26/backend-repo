@@ -63,12 +63,13 @@ class ProjectArtifactStatusServiceTest {
         saveRequired(ProjectArtifactType.ERD, "ERD", "2.0");
         saveArtifact(ProjectArtifactType.REQUIREMENTS_DEFINITION, "Requirements", "1.0", ArtifactApprovalStatus.APPROVED);
         saveArtifact(ProjectArtifactType.ERD, "ERD", "2.1", ArtifactApprovalStatus.APPROVED);
+        saveArtifact(ProjectArtifactType.ORGANIZATION_CHART, "조직도", "1.0", ArtifactApprovalStatus.APPROVED);
 
         ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
 
-        assertThat(response.totalRequiredCount()).isEqualTo(2);
-        assertThat(response.registeredCount()).isEqualTo(2);
-        assertThat(response.approvedCount()).isEqualTo(2);
+        assertThat(response.totalRequiredCount()).isEqualTo(3);
+        assertThat(response.registeredCount()).isEqualTo(3);
+        assertThat(response.approvedCount()).isEqualTo(3);
         assertThat(response.registrationRate()).isEqualTo(100.0);
         assertThat(response.approvalCompletionRate()).isEqualTo(100.0);
         assertThat(response.artifactRegister())
@@ -85,15 +86,16 @@ class ProjectArtifactStatusServiceTest {
 
         ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
 
+        assertThat(response.totalRequiredCount()).isEqualTo(3);
         assertThat(response.registeredCount()).isEqualTo(1);
         assertThat(response.approvedCount()).isEqualTo(1);
-        assertThat(response.registrationRate()).isEqualTo(50.0);
+        assertThat(response.registrationRate()).isEqualTo(33.33);
         assertThat(response.missingArtifacts())
-                .singleElement()
-                .satisfies(item -> {
-                    assertThat(item.artifactType()).isEqualTo(ProjectArtifactType.ERD);
-                    assertThat(item.status()).isEqualTo(ArtifactCheckStatus.MISSING);
-                });
+                .extracting(item -> item.artifactType())
+                .containsExactlyInAnyOrder(
+                        ProjectArtifactType.ERD,
+                        ProjectArtifactType.ORGANIZATION_CHART
+                );
     }
 
     @Test
@@ -105,7 +107,11 @@ class ProjectArtifactStatusServiceTest {
 
         assertThat(response.approvedCount()).isZero();
         assertThat(response.outdatedArtifacts()).hasSize(1);
-        assertThat(response.artifactRegister().get(0).status()).isEqualTo(ArtifactCheckStatus.INCOMPLETE);
+        assertThat(response.artifactRegister())
+                .filteredOn(item -> item.artifactType() == ProjectArtifactType.FUNCTION_SPECIFICATION)
+                .singleElement()
+                .extracting(item -> item.status())
+                .isEqualTo(ArtifactCheckStatus.INCOMPLETE);
     }
 
     @Test
@@ -129,21 +135,34 @@ class ProjectArtifactStatusServiceTest {
 
         assertThat(response.outdatedArtifacts()).hasSize(1);
         assertThat(response.unapprovedArtifacts()).hasSize(1);
-        assertThat(response.recommendations()).hasSize(2);
+        assertThat(response.recommendations()).hasSize(3);
     }
 
     @Test
-    void returnsZeroRatesWhenNoRequiredArtifactsExist() {
+    void repairsOrganizationChartRequirementForExistingProject() {
         saveArtifact(ProjectArtifactType.ERD, "Optional ERD", "1.0", ArtifactApprovalStatus.APPROVED);
 
         ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
 
-        assertThat(response.totalRequiredCount()).isZero();
+        assertThat(response.totalRequiredCount()).isEqualTo(1);
         assertThat(response.registeredCount()).isZero();
         assertThat(response.approvedCount()).isZero();
         assertThat(response.registrationRate()).isEqualTo(0.0);
         assertThat(response.approvalCompletionRate()).isEqualTo(0.0);
-        assertThat(response.artifactRegister()).isEmpty();
+        assertThat(response.artifactRegister())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.artifactType())
+                            .isEqualTo(ProjectArtifactType.ORGANIZATION_CHART);
+                    assertThat(item.status()).isEqualTo(ArtifactCheckStatus.MISSING);
+                });
+
+        artifactStatusService.getStatus(project.getId());
+        assertThat(requiredArtifactRepository
+                .findByProjectIdOrderByArtifactTypeAsc(project.getId()))
+                .filteredOn(required -> required.getArtifactType()
+                        == ProjectArtifactType.ORGANIZATION_CHART)
+                .hasSize(1);
     }
 
     @Test
@@ -154,7 +173,7 @@ class ProjectArtifactStatusServiceTest {
         ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
 
         assertThat(response.registeredCount()).isZero();
-        assertThat(response.missingArtifacts()).hasSize(2);
+        assertThat(response.missingArtifacts()).hasSize(3);
         assertThat(response.artifactRegister())
                 .allMatch(item -> item.status() == ArtifactCheckStatus.MISSING);
     }
@@ -168,6 +187,8 @@ class ProjectArtifactStatusServiceTest {
         ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
 
         assertThat(response.artifactRegister())
+                .filteredOn(item -> item.artifactType()
+                        == ProjectArtifactType.REQUIREMENTS_DEFINITION)
                 .singleElement()
                 .satisfies(item -> {
                     assertThat(item.version()).isEqualTo("1.10");
@@ -176,12 +197,50 @@ class ProjectArtifactStatusServiceTest {
     }
 
     @Test
+    void reportsGeneratedOrganizationChartAsIncompleteUntilApproved() {
+        saveArtifact(
+                ProjectArtifactType.ORGANIZATION_CHART,
+                "조직도",
+                "1.0",
+                ArtifactApprovalStatus.PENDING
+        );
+
+        ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
+
+        assertThat(response.artifactRegister())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.artifactType())
+                            .isEqualTo(ProjectArtifactType.ORGANIZATION_CHART);
+                    assertThat(item.status()).isEqualTo(ArtifactCheckStatus.INCOMPLETE);
+                });
+    }
+
+    @Test
+    void reportsApprovedOrganizationChartAsCompleted() {
+        saveArtifact(
+                ProjectArtifactType.ORGANIZATION_CHART,
+                "조직도",
+                "1.0",
+                ArtifactApprovalStatus.APPROVED
+        );
+
+        ProjectArtifactStatusResponse response = artifactStatusService.getStatus(project.getId());
+
+        assertThat(response.artifactRegister())
+                .singleElement()
+                .satisfies(item -> assertThat(item.status())
+                        .isEqualTo(ArtifactCheckStatus.COMPLETED));
+    }
+
+    @Test
     void rejectsMissingProjectWithExistingNotFoundRule() {
         assertThatThrownBy(() -> artifactStatusService.getStatus(Long.MAX_VALUE))
                 .isInstanceOf(ApiException.class)
                 .satisfies(exception -> assertThat(((ApiException) exception).getStatus())
                         .isEqualTo(HttpStatus.NOT_FOUND))
-                .hasMessage("project not found");
+                .extracting("code")
+                .isEqualTo("PROJECT_NOT_FOUND");
     }
 
     @Test
