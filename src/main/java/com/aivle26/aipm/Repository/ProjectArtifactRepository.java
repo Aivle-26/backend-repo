@@ -15,4 +15,6 @@ public interface ProjectArtifactRepository extends JpaRepository<ProjectArtifact
             Long projectId,
             ProjectArtifactType artifactType
     );
+
+    void deleteAllByProjectId(Long projectId);
 }

@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface CommunicationRiskResultRepository extends JpaRepository<CommunicationRiskResult, Long> {
 
     Optional<CommunicationRiskResult> findTopByProjectIdOrderByAnalyzedAtDesc(Long projectId);
+
+    void deleteAllByProjectId(Long projectId);
 }
