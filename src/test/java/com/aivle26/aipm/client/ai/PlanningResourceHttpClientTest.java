@@ -1,18 +1,23 @@
 package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
+import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
+import com.aivle26.aipm.Exception.ApiException;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PlanningResourceHttpClientTest {
 
@@ -25,6 +30,9 @@ class PlanningResourceHttpClientTest {
         server.start();
         PlanningAgentProperties properties = new PlanningAgentProperties();
         properties.setResourcePath("/api/v1/planning/resources/recommend");
+        properties.setOrganizationChartPath(
+                "/api/v1/planning/resources/organization-chart/generate"
+        );
         client = new PlanningResourceHttpClient(
                 RestClient.builder().baseUrl(server.url("/").toString()).build(),
                 properties
@@ -65,6 +73,106 @@ class PlanningResourceHttpClientTest {
         assertThat(body).contains("\"available_hours_per_week\":32.0");
         assertThat(response.llmStatus()).isEqualTo("FALLBACK");
         assertThat(response.unassignedWbsIds()).containsExactly(3L);
+    }
+
+    @Test
+    void decodesValidOrganizationChartJpeg() throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueOrganizationChart(Base64.getEncoder().encodeToString(jpeg));
+
+        var response = client.generateOrganizationChart(organizationRequest());
+        var recorded = server.takeRequest();
+
+        assertThat(recorded.getPath()).isEqualTo(
+                "/api/v1/planning/resources/organization-chart/generate"
+        );
+        assertThat(recorded.getBody().readUtf8())
+                .contains("\"project_manager_member_id\":1")
+                .contains("\"project_name\":\"Test Project\"");
+        assertThat(response.image()).containsExactly(jpeg);
+        assertThat(response.response().contentType()).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void rejectsInvalidOrganizationChartBase64() {
+        enqueueOrganizationChart("%%%not-base64%%%");
+
+        assertApiError("INVALID_ORGANIZATION_CHART_BASE64");
+    }
+
+    @Test
+    void rejectsEmptyOrganizationChartImage() {
+        enqueueOrganizationChart("   ");
+
+        assertApiError("EMPTY_ORGANIZATION_CHART_IMAGE");
+    }
+
+    @Test
+    void rejectsOversizedOrganizationChartImage() {
+        String oversized = "A".repeat(
+                ((PlanningResourceHttpClient.MAX_ORGANIZATION_CHART_BYTES + 2) / 3) * 4 + 8
+        );
+        enqueueOrganizationChart(oversized);
+
+        assertApiError("ORGANIZATION_CHART_IMAGE_TOO_LARGE");
+    }
+
+    @Test
+    void mapsOrganizationChartClientAndServerErrors() {
+        server.enqueue(new MockResponse().setResponseCode(422));
+        assertApiError("ORGANIZATION_CHART_AI_CLIENT_ERROR");
+
+        server.enqueue(new MockResponse().setResponseCode(500));
+        assertApiError("ORGANIZATION_CHART_AI_SERVER_ERROR");
+    }
+
+    @Test
+    void mapsOrganizationChartConnectionFailure() {
+        server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START));
+
+        assertApiError("ORGANIZATION_CHART_AI_UNAVAILABLE");
+    }
+
+    private void enqueueOrganizationChart(String imageBase64) {
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "organization": {
+                            "project_id": 101,
+                            "project_manager": 1,
+                            "teams": [],
+                            "role_gaps": [],
+                            "unassigned_wbs_ids": [],
+                            "generated_at": "2026-08-05T10:00:00Z"
+                          },
+                          "file_name": "project-101-organization-chart.jpg",
+                          "content_type": "image/jpeg",
+                          "image_base64": "%s",
+                          "width": 1200,
+                          "height": 900
+                        }
+                        """.formatted(imageBase64)));
+    }
+
+    private void assertApiError(String code) {
+        assertThatThrownBy(() -> client.generateOrganizationChart(organizationRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(code);
+    }
+
+    private OrganizationChartGenerateRequest organizationRequest() {
+        PlanningResourceRecommendRequest planningRequest = new PlanningResourceRecommendRequest(
+                101L,
+                "Test Project",
+                request().wbsTasks(),
+                request().projectMembers()
+        );
+        return new OrganizationChartGenerateRequest(
+                planningRequest,
+                new OrganizationChartGenerateRequest.OrganizationMetadata(1L, List.of())
+        );
     }
 
     private PlanningResourceRecommendRequest request() {

@@ -21,7 +21,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -45,7 +44,6 @@ class AssignmentRecommendationServiceTest {
     @Mock private UserCapabilityProfileRepository capabilityProfileRepository;
     @Mock private PlanningResourceClient planningResourceClient;
 
-    @InjectMocks
     private AssignmentRecommendationService service;
 
     private Project project;
@@ -56,8 +54,23 @@ class AssignmentRecommendationServiceTest {
 
     @BeforeEach
     void setUp() {
+        PlanningResourceContextAssembler contextAssembler =
+                new PlanningResourceContextAssembler(
+                        projectRepository,
+                        wbsTaskRepository,
+                        scheduleRepository,
+                        projectMemberRepository,
+                        capabilityProfileRepository
+                );
+        service = new AssignmentRecommendationService(
+                projectAuthorizationService,
+                contextAssembler,
+                planningResourceClient
+        );
+
         project = new Project();
         project.setId(101L);
+        project.setName("Test Project");
 
         task = new ProjectWbsTask();
         task.setId(3L);
@@ -74,7 +87,7 @@ class AssignmentRecommendationServiceTest {
         registeredUser = user("STAFF001", "Backend Developer");
         profile = profile(registeredUser, "BACKEND", "JAVA", 4, 36);
 
-        when(projectRepository.findById(101L)).thenReturn(Optional.of(project));
+        when(projectRepository.findWithPmById(101L)).thenReturn(Optional.of(project));
         when(wbsTaskRepository.findByProjectIdAndConfirmedTrue(101L))
                 .thenReturn(List.of(task));
         when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(101L))

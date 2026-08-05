@@ -12,6 +12,7 @@ import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultReposito
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
@@ -47,6 +48,9 @@ class ProjectServiceTest {
 
     @Autowired
     private ProjectRepository projectRepository;
+
+    @Autowired
+    private ProjectRequiredArtifactRepository requiredArtifactRepository;
 
     @Autowired
     private ProjectDocumentRepository projectDocumentRepository;
@@ -86,6 +90,7 @@ class ProjectServiceTest {
         projectRequirementRepository.deleteAll();
         analysisResultRepository.deleteAll();
         projectDocumentRepository.deleteAll();
+        requiredArtifactRepository.deleteAll();
         projectRepository.deleteAll();
         userRepository.deleteAll();
     }

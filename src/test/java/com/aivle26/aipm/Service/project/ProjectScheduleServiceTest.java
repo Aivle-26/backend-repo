@@ -19,6 +19,7 @@ import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
@@ -79,6 +80,9 @@ class ProjectScheduleServiceTest {
     private ProjectRepository projectRepository;
 
     @Autowired
+    private ProjectRequiredArtifactRepository requiredArtifactRepository;
+
+    @Autowired
     private ProjectDocumentRepository projectDocumentRepository;
 
     @Autowired
@@ -115,6 +119,7 @@ class ProjectScheduleServiceTest {
         projectRequirementRepository.deleteAll();
         analysisResultRepository.deleteAll();
         projectDocumentRepository.deleteAll();
+        requiredArtifactRepository.deleteAll();
         projectRepository.deleteAll();
         userRepository.deleteAll();
         userRepository.save(createPmUser("PM001"));

@@ -1,6 +1,9 @@
 package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.auth.AuthSessionResponse;
+import com.aivle26.aipm.Entity.ArtifactApprovalStatus;
+import com.aivle26.aipm.Entity.ProjectArtifact;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
 import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
@@ -17,6 +20,8 @@ import com.aivle26.aipm.Repository.project.ProjectScheduleRepository;
 import com.aivle26.aipm.Repository.project.ProjectScheduleResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
+import com.aivle26.aipm.Repository.ProjectArtifactRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
 import com.aivle26.aipm.Service.auth.AuthCodes;
 import com.aivle26.aipm.Service.auth.AuthService;
@@ -95,8 +100,16 @@ class ProjectControllerSecurityTest {
     @Autowired
     private ProjectMemberRepository projectMemberRepository;
 
+    @Autowired
+    private ProjectArtifactRepository projectArtifactRepository;
+
+    @Autowired
+    private ProjectRequiredArtifactRepository projectRequiredArtifactRepository;
+
     @BeforeEach
     void setUp() {
+        projectArtifactRepository.deleteAll();
+        projectRequiredArtifactRepository.deleteAll();
         projectMemberRepository.deleteAll();
         projectScheduleRepository.deleteAll();
         projectScheduleResultRepository.deleteAll();
@@ -291,9 +304,12 @@ class ProjectControllerSecurityTest {
                         .header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(project.getId().intValue()))
-                .andExpect(jsonPath("$.totalRequiredCount").value(0))
+                .andExpect(jsonPath("$.totalRequiredCount").value(1))
                 .andExpect(jsonPath("$.registrationRate").value(0.0))
-                .andExpect(jsonPath("$.approvalCompletionRate").value(0.0));
+                .andExpect(jsonPath("$.approvalCompletionRate").value(0.0))
+                .andExpect(jsonPath("$.artifactRegister[0].artifactType")
+                        .value("ORGANIZATION_CHART"))
+                .andExpect(jsonPath("$.artifactRegister[0].status").value("MISSING"));
     }
 
     @Test
@@ -305,6 +321,78 @@ class ProjectControllerSecurityTest {
 
         mockMvc.perform(get("/api/projects/{projectId}/artifacts/status", project.getId())
                         .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void organizationChartGenerationRequiresAuthentication() throws Exception {
+        mockMvc.perform(post(
+                        "/api/projects/{projectId}/artifacts/organization-chart/generate",
+                        1L
+                ))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(AuthCodes.AUTH_UNAUTHORIZED));
+    }
+
+    @Test
+    void organizationChartGenerationRejectsStaff() throws Exception {
+        User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        AuthSessionResponse session = authService.issueSession(staff);
+
+        mockMvc.perform(post(
+                        "/api/projects/{projectId}/artifacts/organization-chart/generate",
+                        1L
+                ).header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void organizationChartGenerationReturnsNotFoundForMissingProject() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        AuthSessionResponse session = authService.issueSession(pm);
+
+        mockMvc.perform(post(
+                        "/api/projects/{projectId}/artifacts/organization-chart/generate",
+                        999999L
+                ).header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
+    }
+
+    @Test
+    void organizationChartMetadataAllowsActiveStaffMember() throws Exception {
+        User pm = userRepository.save(createPmUser("PM001"));
+        User staff = userRepository.save(createUser("STAFF001", "STAFF"));
+        Project project = projectRepository.saveAndFlush(createProject(pm));
+        projectMemberRepository.saveAndFlush(createMembership(project, staff));
+        ProjectArtifact artifact = projectArtifactRepository.saveAndFlush(
+                createOrganizationChartArtifact(project)
+        );
+        AuthSessionResponse session = authService.issueSession(staff);
+
+        mockMvc.perform(get(
+                        "/api/projects/{projectId}/artifacts/organization-chart/latest",
+                        project.getId()
+                ).header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.artifactId").value(artifact.getId().intValue()))
+                .andExpect(jsonPath("$.artifactType").value("ORGANIZATION_CHART"));
+    }
+
+    @Test
+    void organizationChartDownloadRejectsDifferentProjectOwner() throws Exception {
+        User owner = userRepository.save(createPmUser("PM001"));
+        User otherPm = userRepository.save(createPmUser("PM002"));
+        Project project = projectRepository.saveAndFlush(createProject(owner));
+        projectArtifactRepository.saveAndFlush(createOrganizationChartArtifact(project));
+        AuthSessionResponse session = authService.issueSession(otherPm);
+
+        mockMvc.perform(get(
+                        "/api/projects/{projectId}/artifacts/organization-chart/latest/download",
+                        project.getId()
+                ).header("Authorization", "Bearer " + session.accessToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     }
@@ -529,6 +617,33 @@ class ProjectControllerSecurityTest {
         document.setContentType("application/pdf");
         document.setFileSize(2048L);
         return document;
+    }
+
+    private ProjectArtifact createOrganizationChartArtifact(Project project) {
+        ProjectDocument document = new ProjectDocument();
+        document.setProject(project);
+        document.setStatus(ProjectDocumentStatus.UPLOADED);
+        document.setOriginalFileName("조직도.jpg");
+        document.setStoredFileName("organization-chart.jpg");
+        document.setStoragePath(
+                "projects/" + project.getId()
+                        + "/artifacts/organization-chart/test.jpg"
+        );
+        document.setExtension("jpg");
+        document.setContentType("image/jpeg");
+        document.setFileSize(3L);
+        document.setFileType("ORGANIZATION_CHART");
+        document.setProcessingMode("AI_GENERATED");
+        ProjectDocument savedDocument = projectDocumentRepository.saveAndFlush(document);
+
+        ProjectArtifact artifact = new ProjectArtifact();
+        artifact.setProject(project);
+        artifact.setDocument(savedDocument);
+        artifact.setArtifactType(ProjectArtifactType.ORGANIZATION_CHART);
+        artifact.setArtifactName("조직도");
+        artifact.setVersion("1.0");
+        artifact.setApprovalStatus(ArtifactApprovalStatus.PENDING);
+        return artifact;
     }
 
     private ProjectMember createMembership(Project project, User user) {
