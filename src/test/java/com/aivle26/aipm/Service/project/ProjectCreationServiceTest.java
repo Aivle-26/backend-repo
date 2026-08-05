@@ -122,7 +122,7 @@ class ProjectCreationServiceTest {
         assertThat(response.status()).isEqualTo(ProjectStatus.DRAFT);
         assertThat(response.llmStatus().name()).isEqualTo("SUCCEEDED");
         assertThat(response.requirementCount()).isEqualTo(2);
-        assertThat(response.requiredArtifactCount()).isEqualTo(2);
+        assertThat(response.requiredArtifactCount()).isEqualTo(3);
         assertThat(response.documentCount()).isEqualTo(2);
         assertThat(projectRepository.count()).isEqualTo(1);
         assertThat(projectDocumentRepository.count()).isEqualTo(2);
@@ -131,7 +131,13 @@ class ProjectCreationServiceTest {
         assertThat(projectRequirementRepository.findAll())
                 .extracting(ProjectRequirement::getPriority)
                 .containsExactlyInAnyOrder(RequirementPriority.HIGH, RequirementPriority.UNSPECIFIED);
-        assertThat(requiredArtifactRepository.count()).isEqualTo(2);
+        assertThat(requiredArtifactRepository.count()).isEqualTo(3);
+        assertThat(requiredArtifactRepository
+                .existsByProjectIdAndArtifactTypeAndArtifactName(
+                        response.projectId(),
+                        com.aivle26.aipm.Entity.ProjectArtifactType.ORGANIZATION_CHART,
+                        "조직도"
+                )).isTrue();
         assertThat(keyFeatureRepository.count()).isEqualTo(2);
         assertThat(extractionRepository.count()).isEqualTo(1);
 

@@ -25,6 +25,7 @@ import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.project.ProjectDocumentRepository;
 import com.aivle26.aipm.Repository.project.ProjectDocumentAnalysisResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectRepository;
+import com.aivle26.aipm.Repository.project.ProjectRequiredArtifactRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementChangeCandidateRepository;
 import com.aivle26.aipm.Repository.project.ProjectRequirementRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
@@ -86,6 +87,9 @@ class ProjectRequirementReadjustmentServiceTest {
     @MockitoSpyBean
     private ProjectRepository projectRepository;
 
+    @Autowired
+    private ProjectRequiredArtifactRepository requiredArtifactRepository;
+
     @MockitoSpyBean
     private ProjectDocumentRepository documentRepository;
 
@@ -107,6 +111,7 @@ class ProjectRequirementReadjustmentServiceTest {
         requirementRepository.deleteAll();
         analysisResultRepository.deleteAll();
         documentRepository.deleteAll();
+        requiredArtifactRepository.deleteAll();
         projectRepository.deleteAll();
         userRepository.deleteAll();
     }
