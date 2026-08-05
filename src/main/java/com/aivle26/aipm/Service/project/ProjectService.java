@@ -87,6 +87,7 @@ public class ProjectService {
                         project.getClientOrganization(),
                         project.getPm().getEmployeeNumber(),
                         project.getStatus(),
+                        project.getProgressRate(),
                         project.getPlannedStartDate(),
                         project.getPlannedEndDate(),
                         project.getCreatedAt(),

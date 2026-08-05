@@ -2,6 +2,7 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Dto.project.AssignProjectTaskRequest;
 import com.aivle26.aipm.Dto.project.ProjectProgressResponse;
+import com.aivle26.aipm.Dto.project.ProjectProgressRateResponse;
 import com.aivle26.aipm.Dto.project.ProjectSearchResponse;
 import com.aivle26.aipm.Dto.project.SaveFinalTaskAssignmentsRequest;
 import com.aivle26.aipm.Dto.project.TaskAssignmentResponse;
@@ -106,7 +107,9 @@ public class ProjectWorkService {
         assignment.setDueDate(dueDate);
         assignment.setAssignedHours((double) Math.max(1, task.getEstimatedHours()));
         assignment.setAssignedBy(authorizationService.currentUser().employeeNumber());
-        return toResponse(assignmentRepository.save(assignment), schedule, LocalDate.now());
+        ProjectTaskAssignment saved = assignmentRepository.save(assignment);
+        updateStoredProjectProgress(project, leafTasks(projectId));
+        return toResponse(saved, schedule, LocalDate.now());
     }
 
     @Transactional
@@ -211,6 +214,7 @@ public class ProjectWorkService {
             assignmentRepository.deleteAll(existingByWbsId.values());
         }
         List<ProjectTaskAssignment> saved = assignmentRepository.saveAll(finalAssignments);
+        updateStoredProjectProgress(project, tasks);
         return mapAssignments(projectId, saved);
     }
 
@@ -232,6 +236,17 @@ public class ProjectWorkService {
                 .stream()
                 .collect(Collectors.toMap(a -> a.getWbsTask().getId(), Function.identity()));
         return calculateProgress(projectId, null, tasks, assignments);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectProgressRateResponse getStoredProjectProgressRate(Long projectId) {
+        authorizationService.requireProjectAccess(projectId);
+        Project project = requireProject(projectId);
+        return new ProjectProgressRateResponse(
+                project.getId(),
+                project.getProgressRate(),
+                project.getUpdatedAt()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -339,8 +354,10 @@ public class ProjectWorkService {
         assignment.setProgressRate(request.status() == TaskProgressStatus.COMPLETED
                 ? 100
                 : request.progressRate());
+        ProjectTaskAssignment saved = assignmentRepository.save(assignment);
+        updateStoredProjectProgress(assignment.getProject(), leafTasks(projectId));
         return toResponse(
-                assignmentRepository.save(assignment),
+                saved,
                 requireSchedule(projectId, wbsId),
                 LocalDate.now()
         );
@@ -476,11 +493,7 @@ public class ProjectWorkService {
             Map<Long, ProjectTaskAssignment> assignments
     ) {
         int totalHours = tasks.stream().mapToInt(task -> Math.max(1, task.getEstimatedHours())).sum();
-        long weighted = tasks.stream().mapToLong(task -> {
-            ProjectTaskAssignment assignment = assignments.get(task.getId());
-            return (long) Math.max(1, task.getEstimatedHours()) * (assignment == null ? 0 : assignment.getProgressRate());
-        }).sum();
-        int progress = totalHours == 0 ? 0 : (int) Math.round((double) weighted / totalHours);
+        int progress = calculateProgressRate(tasks, assignments);
         LocalDate today = LocalDate.now();
         int completed = (int) assignments.values().stream().filter(a -> a.getStatus() == TaskProgressStatus.COMPLETED).count();
         int delayed = (int) assignments.values().stream().filter(a -> isDelayed(a, today)).count();
@@ -490,6 +503,38 @@ public class ProjectWorkService {
                 .sum();
         return new ProjectProgressResponse(projectId, employeeNumber, progress, tasks.size(), assignments.size(),
                 completed, delayed, totalHours, completedHours);
+    }
+
+    private void updateStoredProjectProgress(Project project, List<ProjectWbsTask> tasks) {
+        Map<Long, ProjectTaskAssignment> assignments = assignmentRepository
+                .findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(project.getId())
+                .stream()
+                .collect(Collectors.toMap(
+                        assignment -> assignment.getWbsTask().getId(),
+                        Function.identity()
+                ));
+        project.setProgressRate(calculateProgressRate(tasks, assignments));
+        projectRepository.save(project);
+    }
+
+    private int calculateProgressRate(
+            List<ProjectWbsTask> tasks,
+            Map<Long, ProjectTaskAssignment> assignments
+    ) {
+        int totalHours = tasks.stream()
+                .mapToInt(task -> Math.max(1, task.getEstimatedHours()))
+                .sum();
+        if (totalHours == 0) {
+            return 0;
+        }
+        long weightedProgress = tasks.stream()
+                .mapToLong(task -> {
+                    ProjectTaskAssignment assignment = assignments.get(task.getId());
+                    int taskProgressRate = assignment == null ? 0 : assignment.getProgressRate();
+                    return (long) Math.max(1, task.getEstimatedHours()) * taskProgressRate;
+                })
+                .sum();
+        return (int) Math.round((double) weightedProgress / totalHours);
     }
 
     private TeamProgressResponse.MemberProgress memberProgress(

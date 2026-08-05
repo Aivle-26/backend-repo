@@ -50,6 +50,9 @@ public class Project {
     @Column(nullable = false, length = 30)
     private ProjectStatus status;
 
+    @Column(nullable = false)
+    private int progressRate = 0;
+
     private LocalDate plannedStartDate;
 
     private LocalDate plannedEndDate;
@@ -73,6 +76,7 @@ public class Project {
     @PrePersist
     public void onCreate() {
         LocalDateTime now = LocalDateTime.now();
+        this.progressRate = Math.max(0, Math.min(100, this.progressRate));
         this.createdAt = now;
         this.updatedAt = now;
     }

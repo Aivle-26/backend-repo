@@ -14,6 +14,7 @@ public record ProjectDetailResponse(
         String pmEmployeeNumber,
         String pmName,
         ProjectStatus status,
+        int progressRate,
         LocalDate plannedStartDate,
         LocalDate plannedEndDate,
         List<String> acceptanceConditions,
