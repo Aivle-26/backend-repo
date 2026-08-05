@@ -2,6 +2,7 @@ package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.AssignProjectTaskRequest;
 import com.aivle26.aipm.Dto.project.ProjectProgressResponse;
+import com.aivle26.aipm.Dto.project.ProjectProgressRateResponse;
 import com.aivle26.aipm.Dto.project.ProjectMemberResponse;
 import com.aivle26.aipm.Dto.project.ProjectSearchResponse;
 import com.aivle26.aipm.Dto.project.SaveFinalTaskAssignmentsRequest;
@@ -81,6 +82,14 @@ public class ProjectWorkController {
     @PreAuthorize("hasAnyRole('PM', 'STAFF')")
     public ResponseEntity<ProjectProgressResponse> getProjectProgress(@PathVariable Long projectId) {
         return ResponseEntity.ok(projectWorkService.getProjectProgress(projectId));
+    }
+
+    @GetMapping("/progress-rate")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
+    public ResponseEntity<ProjectProgressRateResponse> getProjectProgressRate(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(projectWorkService.getStoredProjectProgressRate(projectId));
     }
 
     @GetMapping("/progress/me")

@@ -14,6 +14,7 @@ public record ProjectSummaryResponse(
         String clientOrganization,
         String pmEmployeeNumber,
         ProjectStatus status,
+        int progressRate,
         LocalDate plannedStartDate,
         LocalDate plannedEndDate,
         LocalDateTime createdAt,

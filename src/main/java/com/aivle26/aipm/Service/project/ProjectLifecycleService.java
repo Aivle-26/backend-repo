@@ -194,6 +194,7 @@ public class ProjectLifecycleService {
                 project.getPm().getEmployeeNumber(),
                 project.getPm().getName(),
                 project.getStatus(),
+                project.getProgressRate(),
                 project.getPlannedStartDate(),
                 project.getPlannedEndDate(),
                 readStringList(project.getAcceptanceConditionsJson()),
