@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface ProjectArtifactRepository extends JpaRepository<ProjectArtifact, Long> {
     List<ProjectArtifact> findByProjectId(Long projectId);
+
+    void deleteAllByProjectId(Long projectId);
 }

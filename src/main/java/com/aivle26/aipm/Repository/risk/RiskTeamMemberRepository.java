@@ -11,6 +11,8 @@ import java.util.List;
 public interface RiskTeamMemberRepository extends JpaRepository<RiskTeamMember, Long> {
     List<RiskTeamMember> findByProjectId(Long projectId);
 
+    void deleteAllByProjectId(Long projectId);
+
     @Query("""
             select distinct member.projectId
             from RiskTeamMember member

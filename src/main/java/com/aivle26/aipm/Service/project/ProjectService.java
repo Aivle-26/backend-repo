@@ -21,6 +21,9 @@ import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumReportRepository;
+import com.aivle26.aipm.Repository.CommunicationRiskResultRepository;
+import com.aivle26.aipm.Repository.ProjectArtifactRepository;
+import com.aivle26.aipm.Repository.ProjectSlackChannelRepository;
 import com.aivle26.aipm.Repository.risk.RiskTeamMemberRepository;
 import com.aivle26.aipm.Service.auth.AuthenticatedUser;
 
@@ -53,6 +56,9 @@ public class ProjectService {
     private final ProjectMessageRepository projectMessageRepository;
     private final WeeklyScrumSubmissionRepository weeklyScrumSubmissionRepository;
     private final WeeklyScrumReportRepository weeklyScrumReportRepository;
+    private final CommunicationRiskResultRepository communicationRiskResultRepository;
+    private final ProjectArtifactRepository projectArtifactRepository;
+    private final ProjectSlackChannelRepository projectSlackChannelRepository;
     private final RiskTeamMemberRepository riskTeamMemberRepository;
 
     // 현재 PM 소유 또는 STAFF 참여 범위의 프로젝트 요약만 반환한다.
@@ -111,6 +117,10 @@ public class ProjectService {
         projectMessageRepository.deleteAllByProjectId(projectId);
         weeklyScrumReportRepository.deleteAllByProjectId(projectId);
         weeklyScrumSubmissionRepository.deleteAllByProjectId(projectId);
+        communicationRiskResultRepository.deleteAllByProjectId(projectId);
+        projectArtifactRepository.deleteAllByProjectId(projectId);
+        projectSlackChannelRepository.deleteAllByProjectId(projectId);
+        riskTeamMemberRepository.deleteAllByProjectId(projectId);
 
         projectWbsTaskRepository.deleteRequirementLinksByProjectId(projectId);
         projectWbsTaskRepository.deleteSkillLinksByProjectId(projectId);

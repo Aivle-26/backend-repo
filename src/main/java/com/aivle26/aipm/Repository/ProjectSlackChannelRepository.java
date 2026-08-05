@@ -11,4 +11,6 @@ public interface ProjectSlackChannelRepository extends JpaRepository<ProjectSlac
     List<ProjectSlackChannel> findByProjectId(Long projectId);
 
     Optional<ProjectSlackChannel> findByProjectIdAndChannelId(Long projectId, String channelId);
+
+    void deleteAllByProjectId(Long projectId);
 }
