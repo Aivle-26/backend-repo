@@ -8,8 +8,10 @@ import com.aivle26.aipm.Dto.project.SaveDocumentAnalysisResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultResponse;
 import com.aivle26.aipm.Dto.project.WbsTaskResultRequest;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
+import com.aivle26.aipm.Entity.project.ProjectRequiredArtifact;
 import com.aivle26.aipm.Entity.project.ProjectWbsResult;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
 import com.aivle26.aipm.Entity.user.User;
@@ -154,6 +156,12 @@ class ProjectWbsServiceTest {
         Project project = projectRepository.findAll().getFirst();
         Long projectId = project.getId();
         String projectName = project.getName();
+        ProjectRequiredArtifact wbsArtifact = new ProjectRequiredArtifact();
+        wbsArtifact.setProject(project);
+        wbsArtifact.setArtifactType(ProjectArtifactType.WBS);
+        wbsArtifact.setArtifactName("Project WBS");
+        wbsArtifact.setRequiredVersion("1.0");
+        requiredArtifactRepository.saveAndFlush(wbsArtifact);
         when(planningWbsClient.generateWbs(any())).thenReturn(
                 new PlanningWbsGenerationResponse(
                         projectName,
@@ -223,6 +231,15 @@ class ProjectWbsServiceTest {
         PlanningWbsGenerationRequest request = requestCaptor.getValue();
         assertThat(request.projectInfo().projectName())
                 .isEqualTo(projectName);
+        assertThat(request.projectInfo().requiredArtifacts())
+                .extracting(PlanningWbsGenerationRequest.RequiredArtifact::artifactType)
+                .containsExactly(ProjectArtifactType.WBS.name());
+        assertThat(requiredArtifactRepository.findByProjectIdOrderByIdAsc(projectId))
+                .extracting(ProjectRequiredArtifact::getArtifactType)
+                .containsExactlyInAnyOrder(
+                        ProjectArtifactType.ORGANIZATION_CHART,
+                        ProjectArtifactType.WBS
+                );
         assertThat(request.requirementCandidates()).singleElement().satisfies(candidate -> {
             assertThat(candidate.requirementId()).isEqualTo(requirement.getId());
             assertThat(candidate.functionName()).isEqualTo(requirement.getTitle());

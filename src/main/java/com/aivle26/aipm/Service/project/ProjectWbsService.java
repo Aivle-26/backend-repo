@@ -7,6 +7,7 @@ import com.aivle26.aipm.Dto.project.SaveFinalWbsRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultResponse;
 import com.aivle26.aipm.Dto.project.WbsTaskResultRequest;
+import com.aivle26.aipm.Entity.ProjectArtifactType;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectKeyFeature;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
@@ -298,6 +299,8 @@ public class ProjectWbsService {
                 projectRequiredArtifactRepository
                         .findByProjectIdOrderByIdAsc(project.getId())
                         .stream()
+                        .filter(artifact -> artifact.getArtifactType()
+                                != ProjectArtifactType.ORGANIZATION_CHART)
                         .map(this::toRequiredArtifact)
                         .toList();
 
