@@ -211,7 +211,8 @@ class OrganizationChartArtifactServiceTest {
                 List.of(),
                 java.util.Map.of(),
                 aiRequest,
-                7L
+                7L,
+                List.of()
         );
         when(contextAssembler.assembleForOrganizationChart(1L)).thenReturn(context);
         when(planningResourceClient.generateOrganizationChart(any()))

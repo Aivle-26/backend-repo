@@ -62,7 +62,8 @@ public class PlanningResourceContextAssembler {
                 tasks,
                 candidatesByAiId,
                 toAiRequest(project, tasks, candidatesByAiId),
-                null
+                null,
+                selection.excludedCandidateNames()
         );
     }
 
@@ -129,7 +130,8 @@ public class PlanningResourceContextAssembler {
                 tasks,
                 immutableCandidates,
                 toAiRequest(project, tasks, immutableCandidates),
-                projectManagerAiId
+                projectManagerAiId,
+                List.of()
         );
     }
 
@@ -211,18 +213,27 @@ public class PlanningResourceContextAssembler {
         Map<String, UserCapabilityProfile> profiles = loadProfiles(
                 projectMembers.stream().map(ProjectMember::getUser).toList()
         );
-        List<CandidateData> candidates = projectMembers.stream()
-                .filter(member -> profiles.containsKey(member.getUser().getEmployeeNumber()))
-                .map(member -> new CandidateData(
-                        member.getUser(),
-                        profiles.get(member.getUser().getEmployeeNumber()),
-                        member.getAvailableHoursPerWeek()
-                ))
-                .toList();
+        List<CandidateData> candidates = new ArrayList<>();
+        List<String> excludedNames = new ArrayList<>();
+        for (ProjectMember member : projectMembers) {
+            UserCapabilityProfile profile = profiles.get(member.getUser().getEmployeeNumber());
+            if (profile == null) {
+                // 역량(역할) 미등록 팀원은 AI가 필요 역할과 매칭할 수 없어 후보에서 제외한다.
+                // 조용히 빼면 "추천이 전부 같은 사람"으로 보이므로 warnings로 알린다.
+                excludedNames.add(member.getUser().getName());
+                continue;
+            }
+            candidates.add(new CandidateData(
+                    member.getUser(),
+                    profile,
+                    member.getAvailableHoursPerWeek()
+            ));
+        }
         requireCandidates(candidates);
         return new CandidateSelection(
                 AssignmentRecommendationResponse.CandidateMode.ALL,
-                candidates
+                List.copyOf(candidates),
+                List.copyOf(excludedNames)
         );
     }
 
@@ -284,7 +295,8 @@ public class PlanningResourceContextAssembler {
         requireCandidates(candidates);
         return new CandidateSelection(
                 AssignmentRecommendationResponse.CandidateMode.SELECTED,
-                List.copyOf(candidates)
+                List.copyOf(candidates),
+                List.of()
         );
     }
 
@@ -419,7 +431,8 @@ public class PlanningResourceContextAssembler {
             List<TaskContext> tasks,
             Map<Long, CandidateContext> candidatesByAiId,
             PlanningResourceRecommendRequest aiRequest,
-            Long projectManagerAiId
+            Long projectManagerAiId,
+            List<String> excludedCandidateNames
     ) {
     }
 
@@ -444,7 +457,8 @@ public class PlanningResourceContextAssembler {
 
     private record CandidateSelection(
             AssignmentRecommendationResponse.CandidateMode mode,
-            List<CandidateData> candidates
+            List<CandidateData> candidates,
+            List<String> excludedCandidateNames
     ) {
     }
 

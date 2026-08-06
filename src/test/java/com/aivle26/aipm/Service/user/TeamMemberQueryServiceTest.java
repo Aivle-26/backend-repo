@@ -2,6 +2,7 @@ package com.aivle26.aipm.Service.user;
 
 import com.aivle26.aipm.Dto.user.SaveUserCapabilitiesRequest;
 import com.aivle26.aipm.Entity.user.User;
+import com.aivle26.aipm.Entity.user.UserCapabilityProfile;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Repository.user.UserCapabilityProfileRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
@@ -12,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import software.amazon.awssdk.services.s3.S3Client;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,6 +74,25 @@ class TeamMemberQueryServiceTest {
         assertThat(unregistered.capabilityRegistered()).isFalse();
         assertThat(unregistered.roles()).isEmpty();
         assertThat(unregistered.skills()).isEmpty();
+    }
+
+    @Test
+    void treatsProfileWithoutRolesAsUnregistered() {
+        // 역할이 없는 프로필은 담당자 추천 후보에서 제외되므로(PlanningResourceContextAssembler),
+        // 화면에도 "미등록"으로 보여야 한다. 그렇지 않으면 "등록됨인데 추천에 안 나온다"가 된다.
+        UserCapabilityProfile emptyRoles = new UserCapabilityProfile();
+        emptyRoles.setUser(userRepository.findById("STAFF002").orElseThrow());
+        emptyRoles.setRoles(new LinkedHashSet<>());
+        capabilityProfileRepository.save(emptyRoles);
+
+        var members = teamMemberQueryService.getAllActiveTeamMembers();
+        var staff002 = members.stream()
+                .filter(member -> member.employeeNumber().equals("STAFF002"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(staff002.capabilityRegistered()).isFalse();
+        assertThat(staff002.roles()).isEmpty();
     }
 
     private User user(

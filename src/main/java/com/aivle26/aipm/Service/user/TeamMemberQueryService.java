@@ -65,7 +65,12 @@ public class TeamMemberQueryService {
             );
         }
 
+        // 담당자 추천은 "역할이 1개 이상 등록된" 프로필만 후보로 인정한다
+        // (PlanningResourceContextAssembler.loadProfiles 참고).
+        // 여기서 프로필 존재만으로 등록됨 처리하면 화면엔 "등록됨"인데 추천 후보에선
+        // 조용히 빠지는 불일치가 생기므로, 판정 기준을 동일하게 맞춘다.
         List<String> roles = profile.getRoles().stream().sorted().toList();
+        boolean capabilityRegistered = !roles.isEmpty();
         List<TeamMemberResponse.Skill> skills = profile.getSkills().stream()
                 .map(skill -> new TeamMemberResponse.Skill(
                         skill.getSkillCode(),
@@ -77,7 +82,7 @@ public class TeamMemberQueryService {
                 member.getEmployeeNumber(),
                 member.getName(),
                 member.getEmail(),
-                true,
+                capabilityRegistered,
                 roles,
                 skills
         );
