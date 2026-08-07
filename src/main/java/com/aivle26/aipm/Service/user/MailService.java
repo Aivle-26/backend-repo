@@ -3,19 +3,15 @@ package com.aivle26.aipm.Service.user;
 import com.aivle26.aipm.Exception.ApiException;
 
 import jakarta.annotation.PostConstruct;
-import jakarta.activation.DataHandler;
 import jakarta.mail.MessagingException;
-import jakarta.mail.Part;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.util.ByteArrayDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailException;
@@ -25,8 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.HtmlUtils;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 
@@ -40,12 +34,6 @@ public class MailService {
     private static final String REPRESENTATIVE = "TEAM26";
     private static final String COMPANY_ADDRESS = "부산광역시 동구 초량중로 29, 3층";
     private static final String CONTACT_EMAIL = "aivleschool1@gmail.com";
-    private static final String BACKGROUND_CID = "pm-agent-background";
-    private static final String CLOCK_CID = "pm-agent-clock";
-    private static final String SHIELD_CID = "pm-agent-shield";
-    private static final String BACKGROUND_RESOURCE = "mail/verification-background.png";
-    private static final String CLOCK_RESOURCE = "mail/verification-clock.png";
-    private static final String SHIELD_RESOURCE = "mail/verification-shield.png";
 
     private final JavaMailSender javaMailSender;
 
@@ -78,6 +66,9 @@ public class MailService {
 
     @Value("${app.mail.retry-delay-ms:500}")
     private long retryDelayMs;
+
+    @Value("${app.mail.asset-base-url}")
+    private String assetBaseUrl;
 
     @PostConstruct
     void validateStartupConfiguration() {
@@ -198,6 +189,9 @@ public class MailService {
         String escapedHeadline = HtmlUtils.htmlEscape(headline);
         String escapedInstruction = HtmlUtils.htmlEscape(instruction);
         String escapedVerificationCode = HtmlUtils.htmlEscape(verificationCode);
+        String backgroundUrl = mailAssetUrl("verification-background.png");
+        String clockUrl = mailAssetUrl("verification-clock.png");
+        String shieldUrl = mailAssetUrl("verification-shield.png");
         return """
                 <!doctype html>
                 <html lang="ko">
@@ -219,7 +213,7 @@ public class MailService {
                   <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#eef5ff;border-collapse:collapse">
                     <tr>
                       <td align="center" style="padding:24px 12px">
-                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" background="cid:pm-agent-background" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('cid:pm-agent-background');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
+                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" background="%s" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('%s');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
                           <tr>
                             <td align="center" style="padding:34px 24px;background-color:#ffffff;font-size:38px;font-weight:800;line-height:1.2;letter-spacing:-1px;color:#08265e">
                               PM Agent
@@ -259,7 +253,7 @@ public class MailService {
                                     <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                       <tr>
                                         <td width="58" valign="middle" style="width:58px;padding:0 0 18px">
-                                          <img src="cid:pm-agent-clock" width="46" height="46" alt="유효시간" style="display:block;width:46px;height:46px;border:0">
+                                          <img src="%s" width="46" height="46" alt="유효시간" style="display:block;width:46px;height:46px;border:0">
                                         </td>
                                         <td valign="middle" style="padding:0 0 18px 4px;font-size:16px;line-height:1.6;color:#173768">
                                           인증번호는 <strong style="color:#1466d9">%d분</strong> 동안 유효합니다.
@@ -270,7 +264,7 @@ public class MailService {
                                       </tr>
                                       <tr>
                                         <td width="58" valign="top" style="width:58px;padding:22px 0 0">
-                                          <img src="cid:pm-agent-shield" width="46" height="46" alt="보안 안내" style="display:block;width:46px;height:46px;border:0">
+                                          <img src="%s" width="46" height="46" alt="보안 안내" style="display:block;width:46px;height:46px;border:0">
                                         </td>
                                         <td valign="top" style="padding:22px 0 0 4px;font-size:15px;line-height:1.7;color:#173768">
                                           본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
@@ -305,10 +299,14 @@ public class MailService {
                 </body>
                 </html>
                 """.formatted(
+                backgroundUrl,
+                backgroundUrl,
                 escapedHeadline,
                 escapedInstruction,
                 escapedVerificationCode,
+                clockUrl,
                 expiresInMinutes,
+                shieldUrl,
                 SERVICE_NAME,
                 REPRESENTATIVE,
                 COMPANY_ADDRESS,
@@ -339,7 +337,7 @@ public class MailService {
                 message.setHeader("X-Auto-Response-Suppress", "All");
                 javaMailSender.send(message);
                 return;
-            } catch (MessagingException | IOException exception) {
+            } catch (MessagingException | UnsupportedEncodingException exception) {
                 log.warn("Mail message creation failed. type={}, causeType={}",
                         exception.getClass().getSimpleName(),
                         exception.getCause() == null ? "none" : exception.getCause().getClass().getSimpleName());
@@ -371,7 +369,7 @@ public class MailService {
             MimeMessage message,
             String plainText,
             String htmlText
-    ) throws MessagingException, IOException {
+    ) throws MessagingException {
         MimeBodyPart plainTextPart = new MimeBodyPart();
         plainTextPart.setText(plainText, StandardCharsets.UTF_8.name(), "plain");
 
@@ -381,36 +379,17 @@ public class MailService {
         MimeMultipart alternative = new MimeMultipart("alternative");
         alternative.addBodyPart(plainTextPart);
         alternative.addBodyPart(htmlTextPart);
-
-        MimeBodyPart alternativePart = new MimeBodyPart();
-        alternativePart.setContent(alternative);
-
-        MimeMultipart related = new MimeMultipart("related");
-        related.addBodyPart(alternativePart);
-        addInlineImage(related, BACKGROUND_CID, BACKGROUND_RESOURCE);
-        addInlineImage(related, CLOCK_CID, CLOCK_RESOURCE);
-        addInlineImage(related, SHIELD_CID, SHIELD_RESOURCE);
-        message.setContent(related);
+        message.setContent(alternative);
     }
 
-    private void addInlineImage(
-            MimeMultipart related,
-            String contentId,
-            String resourcePath
-    ) throws MessagingException, IOException {
-        ClassPathResource resource = new ClassPathResource(resourcePath);
-        if (!resource.exists()) {
-            throw new IOException("mail inline image not found: " + resourcePath);
+    private String mailAssetUrl(String fileName) {
+        String normalizedBaseUrl = assetBaseUrl == null
+                ? ""
+                : assetBaseUrl.trim().replaceAll("/+$", "");
+        if (!StringUtils.hasText(normalizedBaseUrl)) {
+            throw new IllegalStateException("app.mail.asset-base-url must not be blank");
         }
-
-        MimeBodyPart imagePart = new MimeBodyPart();
-        try (InputStream inputStream = resource.getInputStream()) {
-            imagePart.setDataHandler(new DataHandler(new ByteArrayDataSource(inputStream, "image/png")));
-        }
-        imagePart.setHeader("Content-ID", "<" + contentId + ">");
-        imagePart.setDisposition(Part.INLINE);
-        imagePart.setHeader("Content-Location", "cid:" + contentId);
-        related.addBodyPart(imagePart);
+        return HtmlUtils.htmlEscape(normalizedBaseUrl + "/" + fileName);
     }
 
     private String resolveSubject(String subject) {

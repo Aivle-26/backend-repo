@@ -42,6 +42,7 @@ class MailServiceTest {
         ReflectionTestUtils.setField(mailService, "subjectPrefix", "[PM Agent]");
         ReflectionTestUtils.setField(mailService, "maxAttempts", 1);
         ReflectionTestUtils.setField(mailService, "retryDelayMs", 0L);
+        ReflectionTestUtils.setField(mailService, "assetBaseUrl", "https://assets.example.com/mail/");
         given(javaMailSender.createMimeMessage())
                 .willAnswer(invocation -> new MimeMessage(Session.getInstance(new Properties())));
     }
@@ -104,15 +105,11 @@ class MailServiceTest {
         assertThat(message.getSubject()).doesNotContain("[PM Agent] [PM Agent]");
         assertThat(message.getHeader("Auto-Submitted", null)).isEqualTo("auto-generated");
         assertThat(message.getHeader("X-Auto-Response-Suppress", null)).isEqualTo("All");
-        assertThat(message.getContentType()).startsWith("multipart/related");
+        assertThat(message.getContentType()).startsWith("multipart/alternative");
 
         Object content = message.getContent();
         assertThat(content).isInstanceOf(MimeMultipart.class);
-        Multipart related = (Multipart) content;
-        assertThat(related.getCount()).isEqualTo(4);
-        assertThat(related.getBodyPart(0).getContent()).isInstanceOf(MimeMultipart.class);
-
-        Multipart alternative = (Multipart) related.getBodyPart(0).getContent();
+        Multipart alternative = (Multipart) content;
         assertThat(alternative.getCount()).isEqualTo(2);
         assertThat(alternative.getBodyPart(0).getContentType()).startsWith("text/plain");
         assertThat(alternative.getBodyPart(1).getContentType()).startsWith("text/html");
@@ -121,10 +118,6 @@ class MailServiceTest {
 
         String plainText = (String) alternative.getBodyPart(0).getContent();
         String htmlText = (String) alternative.getBodyPart(1).getContent();
-
-        assertInlineImage(related, 1, "<pm-agent-background>", "cid:pm-agent-background");
-        assertInlineImage(related, 2, "<pm-agent-clock>", "cid:pm-agent-clock");
-        assertInlineImage(related, 3, "<pm-agent-shield>", "cid:pm-agent-shield");
 
         assertThat(plainText)
                 .contains(expectedSubject)
@@ -153,9 +146,10 @@ class MailServiceTest {
                 .contains("mailto:aivleschool1@gmail.com")
                 .contains("aivleschool1@gmail.com")
                 .contains("class=\"verification-code\"")
-                .contains("background=\"cid:pm-agent-background\"")
-                .contains("src=\"cid:pm-agent-clock\"")
-                .contains("src=\"cid:pm-agent-shield\"")
+                .contains("background=\"https://assets.example.com/mail/verification-background.png\"")
+                .contains("src=\"https://assets.example.com/mail/verification-clock.png\"")
+                .contains("src=\"https://assets.example.com/mail/verification-shield.png\"")
+                .doesNotContain("cid:")
                 .doesNotContain("대표: 홍길동")
                 .doesNotContain("test-password")
                 .doesNotContain("쿠팡")
@@ -167,20 +161,6 @@ class MailServiceTest {
         assertThat(countOccurrences(htmlText, "부산광역시 동구 초량중로 29, 3층")).isOne();
         assertThat(countOccurrences(htmlText, "mailto:aivleschool1@gmail.com")).isOne();
         assertThat(countOccurrences(htmlText, "본 메일은 발신 전용으로 회신되지 않습니다.")).isOne();
-    }
-
-    private void assertInlineImage(
-            Multipart related,
-            int index,
-            String expectedContentId,
-            String expectedContentLocation
-    ) throws Exception {
-        assertThat(related.getBodyPart(index).getContentType()).startsWith("image/png");
-        assertThat(related.getBodyPart(index).getDisposition()).isEqualTo("inline");
-        assertThat(related.getBodyPart(index).getHeader("Content-ID")[0]).isEqualTo(expectedContentId);
-        assertThat(related.getBodyPart(index).getHeader("Content-Location")[0])
-                .isEqualTo(expectedContentLocation);
-        assertThat(related.getBodyPart(index).getFileName()).isNull();
     }
 
     private int countOccurrences(String text, String expected) {
