@@ -409,7 +409,7 @@ public class MailService {
         }
         imagePart.setHeader("Content-ID", "<" + contentId + ">");
         imagePart.setDisposition(Part.INLINE);
-        imagePart.setFileName(resource.getFilename());
+        imagePart.setHeader("Content-Location", "cid:" + contentId);
         related.addBodyPart(imagePart);
     }
 

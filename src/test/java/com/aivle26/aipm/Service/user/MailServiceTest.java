@@ -122,9 +122,9 @@ class MailServiceTest {
         String plainText = (String) alternative.getBodyPart(0).getContent();
         String htmlText = (String) alternative.getBodyPart(1).getContent();
 
-        assertInlineImage(related, 1, "<pm-agent-background>", "verification-background.png");
-        assertInlineImage(related, 2, "<pm-agent-clock>", "verification-clock.png");
-        assertInlineImage(related, 3, "<pm-agent-shield>", "verification-shield.png");
+        assertInlineImage(related, 1, "<pm-agent-background>", "cid:pm-agent-background");
+        assertInlineImage(related, 2, "<pm-agent-clock>", "cid:pm-agent-clock");
+        assertInlineImage(related, 3, "<pm-agent-shield>", "cid:pm-agent-shield");
 
         assertThat(plainText)
                 .contains(expectedSubject)
@@ -173,12 +173,14 @@ class MailServiceTest {
             Multipart related,
             int index,
             String expectedContentId,
-            String expectedFileName
+            String expectedContentLocation
     ) throws Exception {
         assertThat(related.getBodyPart(index).getContentType()).startsWith("image/png");
         assertThat(related.getBodyPart(index).getDisposition()).isEqualTo("inline");
         assertThat(related.getBodyPart(index).getHeader("Content-ID")[0]).isEqualTo(expectedContentId);
-        assertThat(related.getBodyPart(index).getFileName()).isEqualTo(expectedFileName);
+        assertThat(related.getBodyPart(index).getHeader("Content-Location")[0])
+                .isEqualTo(expectedContentLocation);
+        assertThat(related.getBodyPart(index).getFileName()).isNull();
     }
 
     private int countOccurrences(String text, String expected) {
