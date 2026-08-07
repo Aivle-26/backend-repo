@@ -30,6 +30,10 @@ import java.nio.charset.StandardCharsets;
 public class MailService {
     private static final int MAX_ALLOWED_ATTEMPTS = 5;
     private static final long MAX_ALLOWED_RETRY_DELAY_MS = 10_000;
+    private static final String SERVICE_NAME = "PM Agent";
+    private static final String REPRESENTATIVE = "TEAM26";
+    private static final String COMPANY_ADDRESS = "부산광역시 동구 초량중로 29, 3층";
+    private static final String CONTACT_EMAIL = "aivleschool1@gmail.com";
 
     private final JavaMailSender javaMailSender;
 
@@ -84,6 +88,7 @@ public class MailService {
                 email,
                 "회원가입 이메일 인증",
                 "회원가입을 완료하려면 아래 인증번호를 입력해 주세요.",
+                "아래 인증번호를 회원가입 화면에 입력하시면 인증이 완료됩니다.",
                 code,
                 5
         );
@@ -94,7 +99,8 @@ public class MailService {
         sendVerificationMail(
                 email,
                 "비밀번호 재설정 인증",
-                "비밀번호 재설정을 요청하셨습니다. 아래 인증번호를 입력해 주세요.",
+                "비밀번호 재설정을 완료하려면 아래 인증번호를 입력해 주세요.",
+                "아래 인증번호를 비밀번호 재설정 화면에 입력해 주세요.",
                 code,
                 5
         );
@@ -106,28 +112,44 @@ public class MailService {
                 email,
                 "로그인 인증",
                 "로그인을 계속하려면 아래 인증번호를 입력해 주세요.",
+                "아래 인증번호를 로그인 화면에 입력하시면 인증이 완료됩니다.",
                 code,
                 3
         );
     }
 
-    private void sendVerificationMail(String email, String subject, String description, String code, int expiresInMinutes) {
+    private void sendVerificationMail(
+            String email,
+            String subject,
+            String headline,
+            String instruction,
+            String code,
+            int expiresInMinutes
+    ) {
         String resolvedSubject = resolveSubject(subject);
-        String plainText = buildVerificationText(resolvedSubject, description, code, expiresInMinutes);
-        String htmlText = buildVerificationHtml(description, code, expiresInMinutes);
+        String plainText = buildVerificationText(
+                resolvedSubject,
+                headline,
+                instruction,
+                code,
+                expiresInMinutes
+        );
+        String htmlText = buildVerificationHtml(headline, instruction, code, expiresInMinutes);
 
         sendMail(email, resolvedSubject, plainText, htmlText);
     }
 
     private String buildVerificationText(
             String subject,
-            String description,
+            String headline,
+            String instruction,
             String verificationCode,
             int expiresInMinutes
     ) {
         return """
                 %s
 
+                %s
                 %s
 
                 인증번호: %s
@@ -136,17 +158,33 @@ public class MailService {
                 본인이 요청하지 않았다면 이 메일을 무시해 주세요.
                 이 메일은 발신 전용입니다.
 
-                PM Agent
-                대표: 홍길동
-                주소: 부산광역시 동구 초량중로 29, 3층
-                이메일: aivleschool1@gmail.com
+                %s
+                대표: %s
+                주소: %s
+                이메일: %s
 
                 본 메일은 발신 전용으로 회신되지 않습니다.
-                """.formatted(subject, description, verificationCode, expiresInMinutes);
+                """.formatted(
+                subject,
+                headline,
+                instruction,
+                verificationCode,
+                expiresInMinutes,
+                SERVICE_NAME,
+                REPRESENTATIVE,
+                COMPANY_ADDRESS,
+                CONTACT_EMAIL
+        );
     }
 
-    private String buildVerificationHtml(String description, String verificationCode, int expiresInMinutes) {
-        String escapedDescription = HtmlUtils.htmlEscape(description);
+    private String buildVerificationHtml(
+            String headline,
+            String instruction,
+            String verificationCode,
+            int expiresInMinutes
+    ) {
+        String escapedHeadline = HtmlUtils.htmlEscape(headline);
+        String escapedInstruction = HtmlUtils.htmlEscape(instruction);
         String escapedVerificationCode = HtmlUtils.htmlEscape(verificationCode);
         return """
                 <!doctype html>
@@ -155,65 +193,98 @@ public class MailService {
                   <meta charset="UTF-8">
                   <meta name="viewport" content="width=device-width, initial-scale=1.0">
                   <title>PM Agent 이메일 인증</title>
+                  <style>
+                    @media only screen and (max-width: 620px) {
+                      .email-shell { width: 100%% !important; }
+                      .main-padding { padding: 38px 22px !important; }
+                      .headline { font-size: 27px !important; }
+                      .verification-code { font-size: 38px !important; letter-spacing: 10px !important; }
+                      .footer-padding { padding: 30px 22px !important; }
+                      .footer-ai { display: none !important; }
+                    }
+                  </style>
                 </head>
-                <body style="margin:0;padding:0;background-color:#f4f6f8;color:#0f172a;font-family:Arial,'Noto Sans KR',sans-serif">
-                  <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#f4f6f8;border-collapse:collapse">
+                <body style="margin:0;padding:0;background-color:#eef5ff;color:#0b285f;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+                  <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#eef5ff;border-collapse:collapse">
                     <tr>
-                      <td align="center" style="padding:24px">
-                        <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;max-width:560px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate">
+                      <td align="center" style="padding:24px 12px">
+                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background-color:#f3f8ff;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
                           <tr>
-                            <td style="padding:32px">
+                            <td align="center" style="padding:34px 24px;background-color:#ffffff;font-size:38px;font-weight:800;line-height:1.2;letter-spacing:-1px;color:#08265e">
+                              PM Agent
+                            </td>
+                          </tr>
+                          <tr>
+                            <td class="main-padding" style="padding:52px 48px 46px;background-color:#f3f8ff;background-image:linear-gradient(145deg,#f7fbff 0%%,#eaf3ff 100%%)">
                               <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                 <tr>
-                                  <td align="left" style="padding:0 0 20px;font-size:22px;font-weight:700;line-height:1.3;color:#172554">
-                                    PM Agent
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td align="left" style="padding:0 0 24px;font-size:16px;line-height:1.6;color:#0f172a">
+                                  <td class="headline" align="center" style="padding:0 0 18px;font-size:34px;font-weight:800;line-height:1.35;letter-spacing:-1.2px;color:#0b285f">
                                     %s
                                   </td>
                                 </tr>
                                 <tr>
-                                  <td align="center" style="padding:20px;background-color:#f8fafc;border-radius:8px">
+                                  <td align="center" style="padding:0 0 32px;font-size:16px;line-height:1.7;color:#2e4772">
+                                    %s
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td align="center" style="padding:26px 24px;background-color:#ffffff;border:1px solid #e5edf9;border-radius:16px;box-shadow:0 8px 22px rgba(27,70,132,0.07)">
                                     <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                       <tr>
-                                        <td align="center" style="padding:0 0 10px;font-size:13px;line-height:1.4;color:#64748b">
+                                        <td align="center" style="padding:0 0 13px;font-size:17px;line-height:1.4;color:#19386d">
                                           인증번호
                                         </td>
                                       </tr>
                                       <tr>
-                                        <td align="center" style="padding:0;font-size:32px;font-weight:700;line-height:1.2;color:#172554">
-                                          <span style="display:inline-block;padding-left:8px;letter-spacing:8px">%s</span>
+                                        <td class="verification-code" align="center" style="padding:0;font-size:46px;font-weight:700;line-height:1.2;letter-spacing:14px;color:#08265e">
+                                          %s
                                         </td>
                                       </tr>
                                     </table>
                                   </td>
                                 </tr>
                                 <tr>
-                                  <td align="left" style="padding:20px 0 8px;font-size:14px;line-height:1.5;color:#0f172a">
-                                    인증번호는 <strong>%d분</strong> 동안 유효합니다.
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td align="left" style="padding:0;font-size:13px;line-height:1.5;color:#64748b">
-                                    본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
-                                    이 메일은 발신 전용입니다.
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td style="padding:24px 0 0">
-                                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse;border-top:1px solid #e2e8f0">
+                                  <td style="padding:28px 0 0">
+                                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                       <tr>
-                                        <td align="left" style="padding:20px 0 0;font-size:12px;line-height:1.6;color:#64748b">
-                                          <strong style="color:#475569">PM Agent</strong><br>
-                                          대표: 홍길동<br>
-                                          주소: 부산광역시 동구 초량중로 29, 3층<br>
-                                          이메일: <a href="mailto:aivleschool1@gmail.com" style="color:#64748b;text-decoration:none">aivleschool1@gmail.com</a><br><br>
-                                          본 메일은 발신 전용으로 회신되지 않습니다.
+                                        <td width="58" valign="middle" style="width:58px;padding:0 0 18px">
+                                          <div style="width:46px;height:46px;border-radius:50%%;background-color:#dceaff;color:#0a3982;font-size:25px;line-height:46px;text-align:center">&#9201;</div>
+                                        </td>
+                                        <td valign="middle" style="padding:0 0 18px 4px;font-size:16px;line-height:1.6;color:#173768">
+                                          인증번호는 <strong style="color:#1466d9">%d분</strong> 동안 유효합니다.
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td colspan="2" style="height:1px;background-color:#cbdcf3;font-size:0;line-height:0">&nbsp;</td>
+                                      </tr>
+                                      <tr>
+                                        <td width="58" valign="top" style="width:58px;padding:22px 0 0">
+                                          <div style="width:46px;height:46px;border-radius:50%%;background-color:#dceaff;color:#0a3982;font-size:23px;font-weight:700;line-height:46px;text-align:center">&#10003;</div>
+                                        </td>
+                                        <td valign="top" style="padding:22px 0 0 4px;font-size:15px;line-height:1.7;color:#173768">
+                                          본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
+                                          이 메일은 발신 전용입니다.
                                         </td>
                                       </tr>
                                     </table>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td class="footer-padding" style="padding:34px 48px;background-color:#f9fbff;border-top:1px solid #cdddf2">
+                              <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
+                                <tr>
+                                  <td valign="top" style="font-size:13px;line-height:1.75;color:#344b70">
+                                    <strong style="font-size:17px;color:#0b285f">%s</strong><br>
+                                    대표: %s<br>
+                                    주소: %s<br>
+                                    이메일: <a href="mailto:%s" style="color:#344b70;text-decoration:none">%s</a><br><br>
+                                    본 메일은 발신 전용으로 회신되지 않습니다.
+                                  </td>
+                                  <td class="footer-ai" width="112" align="right" valign="middle" style="width:112px">
+                                    <div style="display:inline-block;width:78px;height:78px;border:2px solid #c6daf7;border-radius:18px;background-color:#e7f1ff;color:#ffffff;font-size:31px;font-weight:800;line-height:78px;text-align:center;text-shadow:0 1px 8px rgba(38,102,184,0.35);box-shadow:0 8px 20px rgba(49,105,180,0.12)">AI</div>
                                   </td>
                                 </tr>
                               </table>
@@ -225,7 +296,17 @@ public class MailService {
                   </table>
                 </body>
                 </html>
-                """.formatted(escapedDescription, escapedVerificationCode, expiresInMinutes);
+                """.formatted(
+                escapedHeadline,
+                escapedInstruction,
+                escapedVerificationCode,
+                expiresInMinutes,
+                SERVICE_NAME,
+                REPRESENTATIVE,
+                COMPANY_ADDRESS,
+                CONTACT_EMAIL,
+                CONTACT_EMAIL
+        );
     }
 
     // 메일 설정을 검증하고 일시적인 SMTP 장애에 한해 제한적으로 재시도한다.

@@ -54,6 +54,7 @@ class MailServiceTest {
                 captureSentMessage(),
                 "[PM Agent] 회원가입 이메일 인증",
                 "회원가입을 완료하려면 아래 인증번호를 입력해 주세요.",
+                "아래 인증번호를 회원가입 화면에 입력하시면 인증이 완료됩니다.",
                 5
         );
     }
@@ -65,7 +66,8 @@ class MailServiceTest {
         assertVerificationMail(
                 captureSentMessage(),
                 "[PM Agent] 비밀번호 재설정 인증",
-                "비밀번호 재설정을 요청하셨습니다. 아래 인증번호를 입력해 주세요.",
+                "비밀번호 재설정을 완료하려면 아래 인증번호를 입력해 주세요.",
+                "아래 인증번호를 비밀번호 재설정 화면에 입력해 주세요.",
                 5
         );
     }
@@ -78,6 +80,7 @@ class MailServiceTest {
                 captureSentMessage(),
                 "[PM Agent] 로그인 인증",
                 "로그인을 계속하려면 아래 인증번호를 입력해 주세요.",
+                "아래 인증번호를 로그인 화면에 입력하시면 인증이 완료됩니다.",
                 3
         );
     }
@@ -93,7 +96,8 @@ class MailServiceTest {
     private void assertVerificationMail(
             MimeMessage message,
             String expectedSubject,
-            String expectedDescription,
+            String expectedHeadline,
+            String expectedInstruction,
             int expectedExpirationMinutes
     ) throws Exception {
         assertThat(message.getSubject()).isEqualTo(expectedSubject);
@@ -116,34 +120,40 @@ class MailServiceTest {
 
         assertThat(plainText)
                 .contains(expectedSubject)
-                .contains(expectedDescription)
+                .contains(expectedHeadline)
+                .contains(expectedInstruction)
                 .contains("인증번호: " + VERIFICATION_CODE)
                 .contains("인증번호는 " + expectedExpirationMinutes + "분 동안 유효합니다.")
                 .contains("PM Agent")
-                .contains("대표: 홍길동")
+                .contains("대표: TEAM26")
                 .contains("주소: 부산광역시 동구 초량중로 29, 3층")
                 .contains("이메일: aivleschool1@gmail.com")
+                .doesNotContain("대표: 홍길동")
                 .doesNotContain("test-password");
 
         assertThat(htmlText)
                 .contains("<!doctype html>")
                 .contains("<html lang=\"ko\">")
                 .contains("role=\"presentation\"")
-                .contains(expectedDescription)
+                .contains(expectedHeadline)
+                .contains(expectedInstruction)
                 .contains(VERIFICATION_CODE)
-                .contains("<strong>" + expectedExpirationMinutes + "분</strong>")
+                .contains(">" + expectedExpirationMinutes + "분</strong>")
                 .contains("PM Agent")
-                .contains("대표: 홍길동")
+                .contains("대표: TEAM26")
                 .contains("주소: 부산광역시 동구 초량중로 29, 3층")
                 .contains("mailto:aivleschool1@gmail.com")
                 .contains("aivleschool1@gmail.com")
+                .contains("class=\"verification-code\"")
+                .contains("background-image:linear-gradient")
+                .doesNotContain("대표: 홍길동")
                 .doesNotContain("test-password")
                 .doesNotContain("쿠팡")
                 .doesNotContain("gmail_quote")
                 .doesNotContain("gmail_extra")
                 .doesNotContain("<blockquote");
 
-        assertThat(countOccurrences(htmlText, "대표: 홍길동")).isOne();
+        assertThat(countOccurrences(htmlText, "대표: TEAM26")).isOne();
         assertThat(countOccurrences(htmlText, "부산광역시 동구 초량중로 29, 3층")).isOne();
         assertThat(countOccurrences(htmlText, "mailto:aivleschool1@gmail.com")).isOne();
         assertThat(countOccurrences(htmlText, "본 메일은 발신 전용으로 회신되지 않습니다.")).isOne();
