@@ -3,15 +3,19 @@ package com.aivle26.aipm.Service.user;
 import com.aivle26.aipm.Exception.ApiException;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.activation.DataHandler;
 import jakarta.mail.MessagingException;
+import jakarta.mail.Part;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.util.ByteArrayDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailException;
@@ -21,6 +25,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.HtmlUtils;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 
@@ -34,6 +40,12 @@ public class MailService {
     private static final String REPRESENTATIVE = "TEAM26";
     private static final String COMPANY_ADDRESS = "부산광역시 동구 초량중로 29, 3층";
     private static final String CONTACT_EMAIL = "aivleschool1@gmail.com";
+    private static final String BACKGROUND_CID = "pm-agent-background";
+    private static final String CLOCK_CID = "pm-agent-clock";
+    private static final String SHIELD_CID = "pm-agent-shield";
+    private static final String BACKGROUND_RESOURCE = "mail/verification-background.png";
+    private static final String CLOCK_RESOURCE = "mail/verification-clock.png";
+    private static final String SHIELD_RESOURCE = "mail/verification-shield.png";
 
     private final JavaMailSender javaMailSender;
 
@@ -200,7 +212,6 @@ public class MailService {
                       .headline { font-size: 27px !important; }
                       .verification-code { font-size: 38px !important; letter-spacing: 10px !important; }
                       .footer-padding { padding: 30px 22px !important; }
-                      .footer-ai { display: none !important; }
                     }
                   </style>
                 </head>
@@ -208,14 +219,14 @@ public class MailService {
                   <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#eef5ff;border-collapse:collapse">
                     <tr>
                       <td align="center" style="padding:24px 12px">
-                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background-color:#f3f8ff;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
+                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" background="cid:pm-agent-background" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('cid:pm-agent-background');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
                           <tr>
                             <td align="center" style="padding:34px 24px;background-color:#ffffff;font-size:38px;font-weight:800;line-height:1.2;letter-spacing:-1px;color:#08265e">
                               PM Agent
                             </td>
                           </tr>
                           <tr>
-                            <td class="main-padding" style="padding:52px 48px 46px;background-color:#f3f8ff;background-image:linear-gradient(145deg,#f7fbff 0%%,#eaf3ff 100%%)">
+                            <td class="main-padding" style="padding:52px 48px 46px;background-color:rgba(243,248,255,0.86)">
                               <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                 <tr>
                                   <td class="headline" align="center" style="padding:0 0 18px;font-size:34px;font-weight:800;line-height:1.35;letter-spacing:-1.2px;color:#0b285f">
@@ -248,7 +259,7 @@ public class MailService {
                                     <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                       <tr>
                                         <td width="58" valign="middle" style="width:58px;padding:0 0 18px">
-                                          <div style="width:46px;height:46px;border-radius:50%%;background-color:#dceaff;color:#0a3982;font-size:25px;line-height:46px;text-align:center">&#9201;</div>
+                                          <img src="cid:pm-agent-clock" width="46" height="46" alt="유효시간" style="display:block;width:46px;height:46px;border:0">
                                         </td>
                                         <td valign="middle" style="padding:0 0 18px 4px;font-size:16px;line-height:1.6;color:#173768">
                                           인증번호는 <strong style="color:#1466d9">%d분</strong> 동안 유효합니다.
@@ -259,7 +270,7 @@ public class MailService {
                                       </tr>
                                       <tr>
                                         <td width="58" valign="top" style="width:58px;padding:22px 0 0">
-                                          <div style="width:46px;height:46px;border-radius:50%%;background-color:#dceaff;color:#0a3982;font-size:23px;font-weight:700;line-height:46px;text-align:center">&#10003;</div>
+                                          <img src="cid:pm-agent-shield" width="46" height="46" alt="보안 안내" style="display:block;width:46px;height:46px;border:0">
                                         </td>
                                         <td valign="top" style="padding:22px 0 0 4px;font-size:15px;line-height:1.7;color:#173768">
                                           본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
@@ -273,7 +284,7 @@ public class MailService {
                             </td>
                           </tr>
                           <tr>
-                            <td class="footer-padding" style="padding:34px 48px;background-color:#f9fbff;border-top:1px solid #cdddf2">
+                            <td class="footer-padding" style="padding:34px 48px 46px;background-color:rgba(249,251,255,0.76);border-top:1px solid #cdddf2">
                               <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                 <tr>
                                   <td valign="top" style="font-size:13px;line-height:1.75;color:#344b70">
@@ -282,9 +293,6 @@ public class MailService {
                                     주소: %s<br>
                                     이메일: <a href="mailto:%s" style="color:#344b70;text-decoration:none">%s</a><br><br>
                                     본 메일은 발신 전용으로 회신되지 않습니다.
-                                  </td>
-                                  <td class="footer-ai" width="112" align="right" valign="middle" style="width:112px">
-                                    <div style="display:inline-block;width:78px;height:78px;border:2px solid #c6daf7;border-radius:18px;background-color:#e7f1ff;color:#ffffff;font-size:31px;font-weight:800;line-height:78px;text-align:center;text-shadow:0 1px 8px rgba(38,102,184,0.35);box-shadow:0 8px 20px rgba(49,105,180,0.12)">AI</div>
                                   </td>
                                 </tr>
                               </table>
@@ -331,7 +339,7 @@ public class MailService {
                 message.setHeader("X-Auto-Response-Suppress", "All");
                 javaMailSender.send(message);
                 return;
-            } catch (MessagingException | UnsupportedEncodingException exception) {
+            } catch (MessagingException | IOException exception) {
                 log.warn("Mail message creation failed. type={}, causeType={}",
                         exception.getClass().getSimpleName(),
                         exception.getCause() == null ? "none" : exception.getCause().getClass().getSimpleName());
@@ -359,7 +367,11 @@ public class MailService {
         }
     }
 
-    private void setAlternativeBody(MimeMessage message, String plainText, String htmlText) throws MessagingException {
+    private void setAlternativeBody(
+            MimeMessage message,
+            String plainText,
+            String htmlText
+    ) throws MessagingException, IOException {
         MimeBodyPart plainTextPart = new MimeBodyPart();
         plainTextPart.setText(plainText, StandardCharsets.UTF_8.name(), "plain");
 
@@ -369,7 +381,36 @@ public class MailService {
         MimeMultipart alternative = new MimeMultipart("alternative");
         alternative.addBodyPart(plainTextPart);
         alternative.addBodyPart(htmlTextPart);
-        message.setContent(alternative);
+
+        MimeBodyPart alternativePart = new MimeBodyPart();
+        alternativePart.setContent(alternative);
+
+        MimeMultipart related = new MimeMultipart("related");
+        related.addBodyPart(alternativePart);
+        addInlineImage(related, BACKGROUND_CID, BACKGROUND_RESOURCE);
+        addInlineImage(related, CLOCK_CID, CLOCK_RESOURCE);
+        addInlineImage(related, SHIELD_CID, SHIELD_RESOURCE);
+        message.setContent(related);
+    }
+
+    private void addInlineImage(
+            MimeMultipart related,
+            String contentId,
+            String resourcePath
+    ) throws MessagingException, IOException {
+        ClassPathResource resource = new ClassPathResource(resourcePath);
+        if (!resource.exists()) {
+            throw new IOException("mail inline image not found: " + resourcePath);
+        }
+
+        MimeBodyPart imagePart = new MimeBodyPart();
+        try (InputStream inputStream = resource.getInputStream()) {
+            imagePart.setDataHandler(new DataHandler(new ByteArrayDataSource(inputStream, "image/png")));
+        }
+        imagePart.setHeader("Content-ID", "<" + contentId + ">");
+        imagePart.setDisposition(Part.INLINE);
+        imagePart.setFileName(resource.getFilename());
+        related.addBodyPart(imagePart);
     }
 
     private String resolveSubject(String subject) {
