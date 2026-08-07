@@ -42,6 +42,11 @@ class MailServiceTest {
         ReflectionTestUtils.setField(mailService, "subjectPrefix", "[PM Agent]");
         ReflectionTestUtils.setField(mailService, "maxAttempts", 1);
         ReflectionTestUtils.setField(mailService, "retryDelayMs", 0L);
+        ReflectionTestUtils.setField(
+                mailService,
+                "backgroundImageUrl",
+                "https://assets.example.com/mail/verification-background.png"
+        );
         given(javaMailSender.createMimeMessage())
                 .willAnswer(invocation -> new MimeMessage(Session.getInstance(new Properties())));
     }
@@ -147,10 +152,11 @@ class MailServiceTest {
                 .contains("class=\"verification-code\"")
                 .contains("&#9719;")
                 .contains("&#10003;")
-                .contains(">AI</td>")
+                .contains("background-image:url('https://assets.example.com/mail/verification-background.png')")
                 .doesNotContain("<img")
                 .doesNotContain("background=\"")
                 .doesNotContain("cid:")
+                .doesNotContain(">AI</td>")
                 .doesNotContain("대표: 홍길동")
                 .doesNotContain("test-password")
                 .doesNotContain("쿠팡")

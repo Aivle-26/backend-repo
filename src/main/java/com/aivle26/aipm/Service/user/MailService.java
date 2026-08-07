@@ -67,6 +67,9 @@ public class MailService {
     @Value("${app.mail.retry-delay-ms:500}")
     private long retryDelayMs;
 
+    @Value("${app.mail.background-image-url}")
+    private String backgroundImageUrl;
+
     @PostConstruct
     void validateStartupConfiguration() {
         if (!enabled) {
@@ -186,6 +189,7 @@ public class MailService {
         String escapedHeadline = HtmlUtils.htmlEscape(headline);
         String escapedInstruction = HtmlUtils.htmlEscape(instruction);
         String escapedVerificationCode = HtmlUtils.htmlEscape(verificationCode);
+        String escapedBackgroundImageUrl = HtmlUtils.htmlEscape(backgroundImageUrl.trim());
         return """
                 <!doctype html>
                 <html lang="ko">
@@ -207,7 +211,7 @@ public class MailService {
                   <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#eef5ff;border-collapse:collapse">
                     <tr>
                       <td align="center" style="padding:24px 12px">
-                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background-color:#f3f8ff;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
+                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('%s');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
                           <tr>
                             <td align="center" style="padding:34px 24px;background-color:#ffffff;font-size:38px;font-weight:800;line-height:1.2;letter-spacing:-1px;color:#08265e">
                               PM Agent
@@ -286,11 +290,6 @@ public class MailService {
                                     이메일: <a href="mailto:%s" style="color:#344b70;text-decoration:none">%s</a><br><br>
                                     본 메일은 발신 전용으로 회신되지 않습니다.
                                   </td>
-                                  <td width="110" align="right" valign="middle" style="width:110px">
-                                    <table role="presentation" width="78" height="78" cellspacing="0" cellpadding="0" border="0" style="width:78px;height:78px;background-color:#dceaff;border:2px solid #c6daf7;border-radius:18px;border-collapse:separate">
-                                      <tr><td align="center" valign="middle" style="font-size:30px;font-weight:800;line-height:78px;color:#ffffff;text-shadow:0 1px 8px rgba(38,102,184,0.35)">AI</td></tr>
-                                    </table>
-                                  </td>
                                 </tr>
                               </table>
                             </td>
@@ -302,6 +301,7 @@ public class MailService {
                 </body>
                 </html>
                 """.formatted(
+                escapedBackgroundImageUrl,
                 escapedHeadline,
                 escapedInstruction,
                 escapedVerificationCode,
