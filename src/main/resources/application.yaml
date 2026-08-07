@@ -72,7 +72,7 @@ app:
     subject-prefix: ${MAIL_SUBJECT_PREFIX:[PM Agent]}
     max-attempts: ${MAIL_MAX_ATTEMPTS:3}
     retry-delay-ms: ${MAIL_RETRY_DELAY_MS:500}
-    asset-base-url: ${MAIL_ASSET_BASE_URL:https://raw.githubusercontent.com/Aivle-26/backend-repo/dev/src/main/resources/mail}
+    asset-base-url: ${MAIL_ASSET_BASE_URL:https://cdn.jsdelivr.net/gh/Aivle-26/backend-repo@5e2b763/src/main/resources/mail}
   document:
     storage-type: ${DOCUMENT_STORAGE_TYPE:s3}
     storage-path: ${DOCUMENT_STORAGE_PATH:uploads/documents}

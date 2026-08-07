@@ -253,7 +253,7 @@ public class MailService {
                                     <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                       <tr>
                                         <td width="58" valign="middle" style="width:58px;padding:0 0 18px">
-                                          <img src="%s" width="46" height="46" alt="유효시간" style="display:block;width:46px;height:46px;border:0">
+                                          <img src="%s" width="46" height="46" alt="" aria-hidden="true" style="display:block;width:46px;height:46px;border:0">
                                         </td>
                                         <td valign="middle" style="padding:0 0 18px 4px;font-size:16px;line-height:1.6;color:#173768">
                                           인증번호는 <strong style="color:#1466d9">%d분</strong> 동안 유효합니다.
@@ -264,7 +264,7 @@ public class MailService {
                                       </tr>
                                       <tr>
                                         <td width="58" valign="top" style="width:58px;padding:22px 0 0">
-                                          <img src="%s" width="46" height="46" alt="보안 안내" style="display:block;width:46px;height:46px;border:0">
+                                          <img src="%s" width="46" height="46" alt="" aria-hidden="true" style="display:block;width:46px;height:46px;border:0">
                                         </td>
                                         <td valign="top" style="padding:22px 0 0 4px;font-size:15px;line-height:1.7;color:#173768">
                                           본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
