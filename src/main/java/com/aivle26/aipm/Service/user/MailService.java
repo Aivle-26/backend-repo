@@ -211,7 +211,7 @@ public class MailService {
                   <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#eef5ff;border-collapse:collapse">
                     <tr>
                       <td align="center" style="padding:24px 12px">
-                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('%s');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
+                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" background="%s" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('%s');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
                           <tr>
                             <td align="center" style="padding:34px 24px;background-color:#ffffff;font-size:38px;font-weight:800;line-height:1.2;letter-spacing:-1px;color:#08265e">
                               PM Agent
@@ -301,6 +301,7 @@ public class MailService {
                 </body>
                 </html>
                 """.formatted(
+                escapedBackgroundImageUrl,
                 escapedBackgroundImageUrl,
                 escapedHeadline,
                 escapedInstruction,
