@@ -218,7 +218,7 @@ public class MailService {
                             </td>
                           </tr>
                           <tr>
-                            <td class="main-padding" style="padding:52px 48px 46px;background-color:rgba(243,248,255,0.86)">
+                            <td class="main-padding" style="padding:52px 48px 46px;background-color:transparent">
                               <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                 <tr>
                                   <td class="headline" align="center" style="padding:0 0 18px;font-size:34px;font-weight:800;line-height:1.35;letter-spacing:-1.2px;color:#0b285f">
@@ -280,7 +280,7 @@ public class MailService {
                             </td>
                           </tr>
                           <tr>
-                            <td class="footer-padding" style="padding:34px 48px 46px;background-color:rgba(249,251,255,0.76);border-top:1px solid #cdddf2">
+                            <td class="footer-padding" style="padding:34px 48px 46px;background-color:transparent;border-top:1px solid #cdddf2">
                               <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                 <tr>
                                   <td valign="top" style="font-size:13px;line-height:1.75;color:#344b70">
