@@ -67,9 +67,6 @@ public class MailService {
     @Value("${app.mail.retry-delay-ms:500}")
     private long retryDelayMs;
 
-    @Value("${app.mail.asset-base-url}")
-    private String assetBaseUrl;
-
     @PostConstruct
     void validateStartupConfiguration() {
         if (!enabled) {
@@ -189,9 +186,6 @@ public class MailService {
         String escapedHeadline = HtmlUtils.htmlEscape(headline);
         String escapedInstruction = HtmlUtils.htmlEscape(instruction);
         String escapedVerificationCode = HtmlUtils.htmlEscape(verificationCode);
-        String backgroundUrl = mailAssetUrl("verification-background.png");
-        String clockUrl = mailAssetUrl("verification-clock.png");
-        String shieldUrl = mailAssetUrl("verification-shield.png");
         return """
                 <!doctype html>
                 <html lang="ko">
@@ -213,7 +207,7 @@ public class MailService {
                   <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background-color:#eef5ff;border-collapse:collapse">
                     <tr>
                       <td align="center" style="padding:24px 12px">
-                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" background="%s" style="width:680px;max-width:680px;background-color:#f3f8ff;background-image:url('%s');background-repeat:no-repeat;background-position:center bottom;background-size:cover;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
+                        <table class="email-shell" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background-color:#f3f8ff;border:1px solid #d7e4f7;border-collapse:separate;box-shadow:0 12px 36px rgba(20,58,112,0.10)">
                           <tr>
                             <td align="center" style="padding:34px 24px;background-color:#ffffff;font-size:38px;font-weight:800;line-height:1.2;letter-spacing:-1px;color:#08265e">
                               PM Agent
@@ -253,7 +247,9 @@ public class MailService {
                                     <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;border-collapse:collapse">
                                       <tr>
                                         <td width="58" valign="middle" style="width:58px;padding:0 0 18px">
-                                          <img src="%s" width="46" height="46" alt="" aria-hidden="true" style="display:block;width:46px;height:46px;border:0">
+                                          <table role="presentation" width="46" height="46" cellspacing="0" cellpadding="0" border="0" style="width:46px;height:46px;background-color:#dceaff;border-radius:23px;border-collapse:separate">
+                                            <tr><td align="center" valign="middle" style="font-size:28px;line-height:46px;color:#0a3982">&#9719;</td></tr>
+                                          </table>
                                         </td>
                                         <td valign="middle" style="padding:0 0 18px 4px;font-size:16px;line-height:1.6;color:#173768">
                                           인증번호는 <strong style="color:#1466d9">%d분</strong> 동안 유효합니다.
@@ -264,7 +260,9 @@ public class MailService {
                                       </tr>
                                       <tr>
                                         <td width="58" valign="top" style="width:58px;padding:22px 0 0">
-                                          <img src="%s" width="46" height="46" alt="" aria-hidden="true" style="display:block;width:46px;height:46px;border:0">
+                                          <table role="presentation" width="46" height="46" cellspacing="0" cellpadding="0" border="0" style="width:46px;height:46px;background-color:#dceaff;border-radius:23px;border-collapse:separate">
+                                            <tr><td align="center" valign="middle" style="font-size:25px;font-weight:700;line-height:46px;color:#0a3982">&#10003;</td></tr>
+                                          </table>
                                         </td>
                                         <td valign="top" style="padding:22px 0 0 4px;font-size:15px;line-height:1.7;color:#173768">
                                           본인이 요청하지 않았다면 이 메일을 무시해 주세요.<br>
@@ -288,6 +286,11 @@ public class MailService {
                                     이메일: <a href="mailto:%s" style="color:#344b70;text-decoration:none">%s</a><br><br>
                                     본 메일은 발신 전용으로 회신되지 않습니다.
                                   </td>
+                                  <td width="110" align="right" valign="middle" style="width:110px">
+                                    <table role="presentation" width="78" height="78" cellspacing="0" cellpadding="0" border="0" style="width:78px;height:78px;background-color:#dceaff;border:2px solid #c6daf7;border-radius:18px;border-collapse:separate">
+                                      <tr><td align="center" valign="middle" style="font-size:30px;font-weight:800;line-height:78px;color:#ffffff;text-shadow:0 1px 8px rgba(38,102,184,0.35)">AI</td></tr>
+                                    </table>
+                                  </td>
                                 </tr>
                               </table>
                             </td>
@@ -299,14 +302,10 @@ public class MailService {
                 </body>
                 </html>
                 """.formatted(
-                backgroundUrl,
-                backgroundUrl,
                 escapedHeadline,
                 escapedInstruction,
                 escapedVerificationCode,
-                clockUrl,
                 expiresInMinutes,
-                shieldUrl,
                 SERVICE_NAME,
                 REPRESENTATIVE,
                 COMPANY_ADDRESS,
@@ -380,16 +379,6 @@ public class MailService {
         alternative.addBodyPart(plainTextPart);
         alternative.addBodyPart(htmlTextPart);
         message.setContent(alternative);
-    }
-
-    private String mailAssetUrl(String fileName) {
-        String normalizedBaseUrl = assetBaseUrl == null
-                ? ""
-                : assetBaseUrl.trim().replaceAll("/+$", "");
-        if (!StringUtils.hasText(normalizedBaseUrl)) {
-            throw new IllegalStateException("app.mail.asset-base-url must not be blank");
-        }
-        return HtmlUtils.htmlEscape(normalizedBaseUrl + "/" + fileName);
     }
 
     private String resolveSubject(String subject) {
