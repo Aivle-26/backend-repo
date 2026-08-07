@@ -67,7 +67,7 @@ public class MailService {
     @Value("${app.mail.retry-delay-ms:500}")
     private long retryDelayMs;
 
-    @Value("${app.mail.background-image-url}")
+    @Value("${app.mail.background-image-url:https://cdn.jsdelivr.net/gh/Aivle-26/backend-repo@5e2b763/src/main/resources/mail/verification-background.png}")
     private String backgroundImageUrl;
 
     @PostConstruct
