@@ -10,6 +10,7 @@ import com.aivle26.aipm.Dto.project.RequirementReadjustmentResponse;
 import com.aivle26.aipm.Dto.project.ReviewRequirementChangeRequest;
 import com.aivle26.aipm.Entity.project.Project;
 import com.aivle26.aipm.Entity.project.ProjectDocument;
+import com.aivle26.aipm.Entity.project.ProjectDocumentStatus;
 import com.aivle26.aipm.Entity.project.ProjectRequirement;
 import com.aivle26.aipm.Entity.project.ProjectRequirementChangeCandidate;
 import com.aivle26.aipm.Entity.project.ProjectRequirementEvidence;
@@ -148,12 +149,20 @@ public class ProjectRequirementReadjustmentService {
         if (!Objects.equals(project.getUpdatedAt(), preparation.projectUpdatedAt())) {
             throw readjustmentInputChanged();
         }
-        List<ProjectDocument> selectedDocuments =
-                projectDocumentRepository.findForUpdate(
-                        projectId,
-                        preparation.documentIds()
-                );
-        if (!selectedDocuments.stream()
+        List<ProjectDocument> allDocuments =
+                projectDocumentRepository.findAllForUpdate(projectId);
+        Map<Long, ProjectDocument> documentById = new LinkedHashMap<>();
+        Map<String, ProjectDocument> documentByName = new LinkedHashMap<>();
+        allDocuments.forEach(document -> {
+            documentById.put(document.getId(), document);
+            documentByName.put(document.getOriginalFileName(), document);
+        });
+        List<ProjectDocument> selectedDocuments = preparation.documentIds().stream()
+                .map(documentById::get)
+                .filter(Objects::nonNull)
+                .toList();
+        if (selectedDocuments.size() != preparation.documentIds().size()
+                || !selectedDocuments.stream()
                 .map(ProjectDocumentService.StoredDocumentSnapshot::from)
                 .toList()
                 .equals(preparation.documents())) {
@@ -181,14 +190,6 @@ public class ProjectRequirementReadjustmentService {
         existingRequirements.forEach(requirement ->
                 existingById.put(requirement.getId(), requirement)
         );
-        List<ProjectDocument> allDocuments =
-                projectDocumentRepository.findByProjectIdOrderByCreatedAtAscIdAsc(projectId);
-        Map<Long, ProjectDocument> documentById = new LinkedHashMap<>();
-        Map<String, ProjectDocument> documentByName = new LinkedHashMap<>();
-        allDocuments.forEach(document -> {
-            documentById.put(document.getId(), document);
-            documentByName.put(document.getOriginalFileName(), document);
-        });
         Set<Long> selectedDocumentIds = new HashSet<>(preparation.documentIds());
 
         List<ProjectRequirementChangeCandidate> candidates = new ArrayList<>();
@@ -205,6 +206,11 @@ public class ProjectRequirementReadjustmentService {
         }
         List<ProjectRequirementChangeCandidate> saved =
                 candidateRepository.saveAll(candidates);
+        allDocuments.forEach(document -> document.setStatus(
+                selectedDocumentIds.contains(document.getId())
+                        ? ProjectDocumentStatus.ANALYZED
+                        : ProjectDocumentStatus.UPLOADED
+        ));
         return new RequirementReadjustmentResponse(
                 projectId,
                 saved.stream().map(this::toResponse).toList()

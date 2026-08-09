@@ -50,6 +50,15 @@ public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument
             select document
             from ProjectDocument document
             where document.project.id = :projectId
+            order by document.id asc
+            """)
+    List<ProjectDocument> findAllForUpdate(@Param("projectId") Long projectId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from ProjectDocument document
+            where document.project.id = :projectId
               and document.id in :documentIds
             order by document.id asc
             """)

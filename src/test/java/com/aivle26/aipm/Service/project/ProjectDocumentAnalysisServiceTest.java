@@ -669,6 +669,55 @@ class ProjectDocumentAnalysisServiceTest {
     }
 
     @Test
+    void analyzeRequirementsMarksOnlySelectedDocumentsAsAnalyzed() {
+        Long projectId = createProject("PM001");
+        projectDocumentService.uploadInitialDocuments(
+                projectId,
+                List.of(
+                        new MockMultipartFile(
+                                "files",
+                                "selected.txt",
+                                "text/plain",
+                                "selected".getBytes()
+                        ),
+                        new MockMultipartFile(
+                                "files",
+                                "not-selected.txt",
+                                "text/plain",
+                                "not selected".getBytes()
+                        )
+                )
+        );
+        List<ProjectDocument> documents =
+                projectDocumentRepository.findByProjectIdOrderByCreatedAtAscIdAsc(projectId);
+        ProjectDocument selectedDocument = documents.stream()
+                .filter(document -> "selected.txt".equals(document.getOriginalFileName()))
+                .findFirst()
+                .orElseThrow();
+        ProjectDocument notSelectedDocument = documents.stream()
+                .filter(document -> "not-selected.txt".equals(document.getOriginalFileName()))
+                .findFirst()
+                .orElseThrow();
+        notSelectedDocument.setStatus(ProjectDocumentStatus.ANALYZED);
+        projectDocumentRepository.saveAndFlush(notSelectedDocument);
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(successResponse(List.of(selectedDocument.getOriginalFileName())));
+
+        projectDocumentAnalysisService.analyzeRequirements(
+                projectId,
+                List.of(selectedDocument.getId())
+        );
+
+        assertThat(projectDocumentRepository.findById(selectedDocument.getId())
+                .orElseThrow()
+                .getStatus()).isEqualTo(ProjectDocumentStatus.ANALYZED);
+        assertThat(projectDocumentRepository.findById(notSelectedDocument.getId())
+                .orElseThrow()
+                .getStatus()).isEqualTo(ProjectDocumentStatus.UPLOADED);
+    }
+
+    @Test
     void analyzeRequirementsSortsAndDeduplicatesDocumentIds() {
         Long projectId = createProject("PM001");
         projectDocumentService.uploadInitialDocuments(
