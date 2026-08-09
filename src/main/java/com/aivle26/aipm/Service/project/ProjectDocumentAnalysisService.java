@@ -45,12 +45,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 @Service
@@ -157,12 +160,16 @@ public class ProjectDocumentAnalysisService {
             throw analysisInputChanged();
         }
 
-        List<ProjectDocument> documents =
-                projectDocumentRepository.findForUpdate(
-                        preparation.projectId(),
-                        preparation.documentIds()
-                );
-        if (!documents.stream()
+        List<ProjectDocument> allDocuments = projectDocumentRepository
+                .findAllForUpdate(preparation.projectId());
+        Map<Long, ProjectDocument> documentById = new LinkedHashMap<>();
+        allDocuments.forEach(document -> documentById.put(document.getId(), document));
+        List<ProjectDocument> documents = preparation.documentIds().stream()
+                .map(documentById::get)
+                .filter(Objects::nonNull)
+                .toList();
+        if (documents.size() != preparation.documentIds().size()
+                || !documents.stream()
                 .map(ProjectDocumentService.StoredDocumentSnapshot::from)
                 .toList()
                 .equals(preparation.documents())) {
@@ -179,11 +186,16 @@ public class ProjectDocumentAnalysisService {
                 );
 
         applyAnalysisResult(analysisResult, validatedResult.response().projectInfo());
+        Set<Long> selectedDocumentIds = new HashSet<>(preparation.documentIds());
+        allDocuments.forEach(document -> document.setStatus(
+                selectedDocumentIds.contains(document.getId())
+                        ? ProjectDocumentStatus.ANALYZED
+                        : ProjectDocumentStatus.UPLOADED
+        ));
         Map<String, ProjectDocument> documentByName = new LinkedHashMap<>();
         for (ProjectDocument document : documents) {
             PlanningDocumentExtractResponse.DocumentResult documentResult =
                     validatedResult.documentByName().get(document.getOriginalFileName());
-            document.setStatus(ProjectDocumentStatus.ANALYZED);
             document.setFileType(documentResult.fileType().trim());
             document.setCharacterCount(documentResult.characterCount());
             document.setProcessingMode(documentResult.processingMode().trim());

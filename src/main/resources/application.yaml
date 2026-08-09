@@ -72,6 +72,7 @@ app:
     subject-prefix: ${MAIL_SUBJECT_PREFIX:[PM Agent]}
     max-attempts: ${MAIL_MAX_ATTEMPTS:3}
     retry-delay-ms: ${MAIL_RETRY_DELAY_MS:500}
+    background-image-url: ${MAIL_BACKGROUND_IMAGE_URL:https://cdn.jsdelivr.net/gh/Aivle-26/backend-repo@5e2b763/src/main/resources/mail/verification-background.png}
   document:
     storage-type: ${DOCUMENT_STORAGE_TYPE:s3}
     storage-path: ${DOCUMENT_STORAGE_PATH:uploads/documents}

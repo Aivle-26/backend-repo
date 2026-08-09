@@ -385,12 +385,40 @@ class ProjectRequirementReadjustmentServiceTest {
         assertThat(storageObservedWithoutTransaction).isTrue();
         assertThat(aiObservedWithoutTransaction).isTrue();
         verify(projectRepository).findForUpdate(document.getProject().getId());
-        verify(documentRepository).findForUpdate(
-                document.getProject().getId(),
-                List.of(document.getId())
-        );
+        verify(documentRepository).findAllForUpdate(document.getProject().getId());
         verify(requirementRepository)
                 .findFinalForUpdate(document.getProject().getId());
+    }
+
+    @Test
+    void createCandidatesMarksOnlySelectedDocumentAsAnalyzed() {
+        ProjectDocument analyzedDocument = createProjectDocument();
+        createExistingRequirement(analyzedDocument);
+        ProjectDocument uploadedDocument = new ProjectDocument();
+        uploadedDocument.setProject(analyzedDocument.getProject());
+        uploadedDocument.setStatus(ProjectDocumentStatus.UPLOADED);
+        uploadedDocument.setOriginalFileName("new-change.txt");
+        uploadedDocument.setStoredFileName("new-stored.txt");
+        uploadedDocument.setStoragePath("projects/evidence/new-change.txt");
+        uploadedDocument.setExtension("txt");
+        uploadedDocument.setContentType("text/plain");
+        uploadedDocument.setFileSize(24);
+        uploadedDocument = documentRepository.saveAndFlush(uploadedDocument);
+        prepareStoredContent();
+        when(planningAgentClient.readjustRequirements(any(), any()))
+                .thenReturn(emptyReadjustmentResponse());
+
+        service.createCandidates(
+                analyzedDocument.getProject().getId(),
+                List.of(uploadedDocument.getId())
+        );
+
+        assertThat(documentRepository.findById(uploadedDocument.getId())
+                .orElseThrow()
+                .getStatus()).isEqualTo(ProjectDocumentStatus.ANALYZED);
+        assertThat(documentRepository.findById(analyzedDocument.getId())
+                .orElseThrow()
+                .getStatus()).isEqualTo(ProjectDocumentStatus.UPLOADED);
     }
 
     @Test

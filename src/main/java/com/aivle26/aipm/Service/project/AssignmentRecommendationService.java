@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -81,9 +82,30 @@ public class AssignmentRecommendationService {
                 aiResponse.totalEstimatedHours(),
                 aiResponse.totalEstimatedMm(),
                 aiResponse.unassignedWbsIds(),
-                aiResponse.warnings(),
+                withExcludedCandidateWarning(context, aiResponse.warnings()),
                 aiResponse.llmStatus()
         );
+    }
+
+    /**
+     * 역량(역할) 미등록으로 후보에서 제외된 팀원을 warnings에 덧붙인다.
+     * 이 사실을 알리지 않으면 PM 입장에선 "추천이 계속 같은 사람만 나온다"로만 보인다.
+     */
+    private List<String> withExcludedCandidateWarning(
+            PlanningResourceContextAssembler.PlanningResourceContext context,
+            List<String> aiWarnings
+    ) {
+        List<String> excluded = context.excludedCandidateNames();
+        if (excluded == null || excluded.isEmpty()) {
+            return aiWarnings;
+        }
+        List<String> warnings = new ArrayList<>(aiWarnings);
+        warnings.add(
+                "역량이 등록되지 않아 추천 후보에서 제외된 팀원: "
+                        + String.join(", ", excluded)
+                        + " (팀원 역량을 등록하면 추천 대상에 포함됩니다.)"
+        );
+        return List.copyOf(warnings);
     }
 
     private AssignmentRecommendationResponse.Assignment toFrontendAssignment(

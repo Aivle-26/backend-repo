@@ -81,10 +81,8 @@ class ProjectDocumentAnalysisConcurrencyTest {
                 projectId,
                 List.of(documentId)
         )).thenReturn(List.of(document));
-        when(projectDocumentRepository.findForUpdate(
-                projectId,
-                List.of(documentId)
-        )).thenReturn(List.of(document));
+        when(projectDocumentRepository.findAllForUpdate(projectId))
+                .thenReturn(List.of(document));
         when(projectDocumentService.getStoredDocumentFilesFromSnapshots(any()))
                 .thenReturn(List.of());
         when(planningAgentClient.extractDocuments(any(), anyBoolean()))
@@ -137,9 +135,6 @@ class ProjectDocumentAnalysisConcurrencyTest {
                         }
                 );
         verify(projectRepository).findForUpdate(projectId);
-        verify(projectDocumentRepository).findForUpdate(
-                projectId,
-                List.of(documentId)
-        );
+        verify(projectDocumentRepository).findAllForUpdate(projectId);
     }
 }
