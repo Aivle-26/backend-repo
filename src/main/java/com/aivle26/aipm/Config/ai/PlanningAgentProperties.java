@@ -39,6 +39,9 @@ public class PlanningAgentProperties {
     private String costPath = "/api/v1/planning/costs/estimate";
 
     @NotBlank
+    private String effortEstimatePath = "/api/v1/planning/costs/effort-estimate";
+
+    @NotBlank
     private String ragQueryPath = "/api/v1/reports/deliverables/rag/query";
 
     @NotBlank

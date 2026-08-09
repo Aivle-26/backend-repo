@@ -105,6 +105,10 @@ public class ProjectCostEstimate {
     @Column(nullable = false, length = 30)
     private String llmStatus;
 
+    // 새 견적 화면의 사용자 편집값과 서버 계산 결과를 한 번에 복원하는 스냅샷이다.
+    @Column(columnDefinition = "TEXT")
+    private String editedEstimateJson;
+
     @Column(nullable = false)
     private boolean confirmed;
 

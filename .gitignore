@@ -45,3 +45,6 @@ vite-dev.log
 .env.*
 !.env.example
 /uploads/
+
+# 프론트 전달용 로컬 API 명세서
+/docs/frontend-kosa-cost-api-integration.md

@@ -91,6 +91,7 @@ public class FinalCostEstimateService {
         entity.setIncludeVat(request.includeVat() == null
                 ? DEFAULT_INCLUDE_VAT
                 : request.includeVat());
+        entity.setEditedEstimateJson(null);
         entity.setConfirmed(true);
     }
 

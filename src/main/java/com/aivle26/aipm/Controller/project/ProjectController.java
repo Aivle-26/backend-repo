@@ -5,6 +5,8 @@ import com.aivle26.aipm.Dto.project.AssignmentRecommendationRequest;
 import com.aivle26.aipm.Dto.project.AssignmentRecommendationResponse;
 import com.aivle26.aipm.Dto.project.CostEstimateRequest;
 import com.aivle26.aipm.Dto.project.CostEstimateResponse;
+import com.aivle26.aipm.Dto.project.EditableCostEstimate;
+import com.aivle26.aipm.Dto.project.KosaEffortEstimate;
 import com.aivle26.aipm.Dto.project.FinalCostEstimateResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftFromDocumentsResponse;
 import com.aivle26.aipm.Dto.project.CreateProjectDraftRequest;
@@ -31,6 +33,8 @@ import com.aivle26.aipm.Service.project.ProjectCreationService;
 import com.aivle26.aipm.Service.project.AssignmentRecommendationService;
 import com.aivle26.aipm.Service.project.CostEstimateService;
 import com.aivle26.aipm.Service.project.FinalCostEstimateService;
+import com.aivle26.aipm.Service.project.EditableCostEstimateService;
+import com.aivle26.aipm.Service.project.KosaEffortEstimateService;
 import com.aivle26.aipm.Service.project.ProjectDocumentAnalysisService;
 import com.aivle26.aipm.Service.project.ProjectDocumentExtractService;
 import com.aivle26.aipm.Service.project.ProjectDocumentService;
@@ -81,6 +85,8 @@ public class ProjectController {
     private final AssignmentRecommendationService assignmentRecommendationService;
     private final CostEstimateService costEstimateService;
     private final FinalCostEstimateService finalCostEstimateService;
+    private final EditableCostEstimateService editableCostEstimateService;
+    private final KosaEffortEstimateService kosaEffortEstimateService;
 
     // 저장된 프로젝트를 조회해 화면용 요약 목록으로 반환한다.
     @GetMapping
@@ -302,6 +308,43 @@ public class ProjectController {
             @Valid @RequestBody CostEstimateRequest request
     ) {
         return ResponseEntity.ok(costEstimateService.estimate(projectId, request));
+    }
+
+    // 확정 WBS·일정·담당자를 자동 결합해 AI 공수와 KOSA 기준 담당자별 견적을 반환한다.
+    @PostMapping("/{projectId}/costs/effort-estimate")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<KosaEffortEstimate.Response> estimateProjectEffort(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(kosaEffortEstimateService.estimate(projectId));
+    }
+
+    // 사용자가 편집한 투입률·단가·경비를 검증하고 모든 금액을 서버에서 재계산한다.
+    @PostMapping("/{projectId}/costs/calculate")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<EditableCostEstimate.Response> calculateEditedCost(
+            @PathVariable Long projectId,
+            @Valid @RequestBody EditableCostEstimate.Request request
+    ) {
+        return ResponseEntity.ok(editableCostEstimateService.calculate(projectId, request));
+    }
+
+    // 새 견적 화면의 최종 편집값과 서버 계산 결과를 스냅샷으로 교체 저장한다.
+    @PutMapping("/{projectId}/costs/final/edited")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<EditableCostEstimate.Response> saveEditedFinalCost(
+            @PathVariable Long projectId,
+            @Valid @RequestBody EditableCostEstimate.Request request
+    ) {
+        return ResponseEntity.ok(editableCostEstimateService.saveFinal(projectId, request));
+    }
+
+    @GetMapping("/{projectId}/costs/final/edited")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<EditableCostEstimate.Response> getEditedFinalCost(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(editableCostEstimateService.getFinal(projectId));
     }
 
     @GetMapping("/{projectId}/costs/final")
