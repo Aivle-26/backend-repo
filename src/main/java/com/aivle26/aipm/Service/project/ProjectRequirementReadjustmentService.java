@@ -769,7 +769,7 @@ public class ProjectRequirementReadjustmentService {
     private ProjectRequirementsResponse buildRequirementsResponse(Long projectId) {
         List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> aiSuggestions =
                 projectRequirementRepository
-                        .findByProjectIdAndAiSuggestionJsonIsNotNullOrderByIdAsc(projectId)
+                        .findByProjectIdAndAiSuggestionJsonIsNotNullAndIncludedInFinalTrueOrderByIdAsc(projectId)
                         .stream()
                         .map(requirementMapper::toAiSuggestion)
                         .toList();

@@ -64,7 +64,9 @@ public class ProjectRequirementService {
     ) {
         requireAccessibleProject(projectId);
         List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> aiSuggestions =
-                projectRequirementRepository.findByProjectIdAndAiSuggestionJsonIsNotNullOrderByIdAsc(projectId).stream()
+                projectRequirementRepository
+                        .findByProjectIdAndAiSuggestionJsonIsNotNullAndIncludedInFinalTrueOrderByIdAsc(projectId)
+                        .stream()
                         .map(projectRequirementMapper::toAiSuggestion)
                         .toList();
         List<ProjectDocumentAnalysisResultsResponse.RequirementDetail> finalRequirements =

@@ -52,7 +52,8 @@ public class ProjectRequirementController {
         return ResponseEntity.ok(
                 projectDocumentAnalysisService.analyzeRequirements(
                         projectId,
-                        request.documentIds()
+                        request.documentIds(),
+                        request.forceRequested()
                 )
         );
     }
