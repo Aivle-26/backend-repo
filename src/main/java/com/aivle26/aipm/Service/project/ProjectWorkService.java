@@ -73,8 +73,7 @@ public class ProjectWorkService {
         ProjectWbsTask task = requireConfirmedTask(projectId, wbsId);
         ProjectSchedule schedule = requireSchedule(projectId, wbsId);
         String employeeNumber = request.employeeNumber().trim();
-        if (!projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
-                projectId, employeeNumber)) {
+        if (!isAssignableMember(project, employeeNumber)) {
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "PROJECT_TEAM_MEMBER_NOT_FOUND",
@@ -157,6 +156,7 @@ public class ProjectWorkService {
                 .stream()
                 .map(member -> member.getUser().getEmployeeNumber())
                 .collect(Collectors.toSet());
+        activeMembers.add(project.getPm().getEmployeeNumber());
         Map<Long, ProjectTaskAssignment> existingByWbsId = assignmentRepository
                 .findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(projectId)
                 .stream()
@@ -216,6 +216,12 @@ public class ProjectWorkService {
         List<ProjectTaskAssignment> saved = assignmentRepository.saveAll(finalAssignments);
         updateStoredProjectProgress(project, tasks);
         return mapAssignments(projectId, saved);
+    }
+
+    private boolean isAssignableMember(Project project, String employeeNumber) {
+        return project.getPm().getEmployeeNumber().equals(employeeNumber)
+                || projectMemberRepository.existsByProjectIdAndUser_EmployeeNumberAndActiveTrue(
+                project.getId(), employeeNumber);
     }
 
     @Transactional(readOnly = true)

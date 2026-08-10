@@ -46,6 +46,7 @@ class ProjectMemberServiceTest {
         User staff = staff("STAFF001");
         ProjectMember existing = member(project, staff, false);
         when(projectRepository.findForUpdate(PROJECT_ID)).thenReturn(Optional.of(project));
+        when(projectRepository.findWithPmById(PROJECT_ID)).thenReturn(Optional.of(project));
         when(userRepository.findAllByEmployeeNumberInAndRoleAndStatus(
                 Set.of("STAFF001"), "STAFF", UserStatus.ACTIVE)).thenReturn(List.of(staff));
         when(projectMemberRepository.findByProjectIdOrderByUser_NameAscUser_EmployeeNumberAsc(PROJECT_ID))
@@ -54,7 +55,7 @@ class ProjectMemberServiceTest {
         when(projectMemberRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(projectMemberRepository.findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(PROJECT_ID))
                 .thenReturn(List.of(existing));
-        when(capabilityProfileRepository.findAllByEmployeeNumberIn(List.of("STAFF001")))
+        when(capabilityProfileRepository.findAllByEmployeeNumberIn(List.of("STAFF001", "PM001")))
                 .thenReturn(List.of());
 
         var response = service.replaceMembers(
@@ -68,9 +69,32 @@ class ProjectMemberServiceTest {
         assertThat(existing.isActive()).isTrue();
         assertThat(existing.getAvailableHoursPerWeek()).isEqualTo(32.0);
         assertThat(existing.getSelectedBy()).isEqualTo("PM001");
-        assertThat(response).singleElement().satisfies(member -> {
+        assertThat(response).filteredOn(member -> member.employeeNumber().equals("STAFF001"))
+                .singleElement().satisfies(member -> {
             assertThat(member.employeeNumber()).isEqualTo("STAFF001");
             assertThat(member.availableHoursPerWeek()).isEqualTo(32.0);
+        });
+        assertThat(response).anySatisfy(member -> {
+            assertThat(member.employeeNumber()).isEqualTo("PM001");
+            assertThat(member.roles()).contains("PM");
+        });
+    }
+
+    @Test
+    void projectMemberCandidatesAlwaysIncludeProjectManager() {
+        Project project = project();
+        when(projectRepository.findWithPmById(PROJECT_ID)).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(PROJECT_ID))
+                .thenReturn(List.of());
+        when(capabilityProfileRepository.findAllByEmployeeNumberIn(List.of("PM001")))
+                .thenReturn(List.of());
+
+        var response = service.getMembers(PROJECT_ID);
+
+        assertThat(response).singleElement().satisfies(member -> {
+            assertThat(member.employeeNumber()).isEqualTo("PM001");
+            assertThat(member.name()).isEqualTo("Project PM");
+            assertThat(member.roles()).containsExactly("PM");
         });
     }
 
@@ -113,6 +137,13 @@ class ProjectMemberServiceTest {
         Project project = new Project();
         project.setId(PROJECT_ID);
         project.setName("Project");
+        User pm = new User();
+        pm.setEmployeeNumber("PM001");
+        pm.setName("Project PM");
+        pm.setEmail("pm@example.com");
+        pm.setRole("PM");
+        pm.setStatus(UserStatus.ACTIVE);
+        project.setPm(pm);
         return project;
     }
 

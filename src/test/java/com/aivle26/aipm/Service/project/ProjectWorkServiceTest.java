@@ -93,6 +93,29 @@ class ProjectWorkServiceTest {
     }
 
     @Test
+    void assignTaskAllowsProjectManagerWithoutProjectMemberRow() {
+        Project project = project();
+        ProjectWbsTask task = task(project, WBS_ID, 40);
+        ProjectSchedule schedule = schedule(project, task);
+        when(projectRepository.findById(PROJECT_ID)).thenReturn(Optional.of(project));
+        when(wbsTaskRepository.findById(WBS_ID)).thenReturn(Optional.of(task));
+        when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(PROJECT_ID))
+                .thenReturn(List.of(schedule));
+        when(assignmentRepository.findByProjectIdAndWbsTaskId(PROJECT_ID, WBS_ID))
+                .thenReturn(Optional.empty());
+        when(authorizationService.currentUser()).thenReturn(new AuthenticatedUser("PM001", "PM"));
+        when(assignmentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.assignTask(
+                PROJECT_ID,
+                WBS_ID,
+                new AssignProjectTaskRequest("PM001", null)
+        );
+
+        assertThat(response.employeeNumber()).isEqualTo("PM001");
+    }
+
+    @Test
     void replaceFinalAssignmentsValidatesAndStoresEveryLeafTask() {
         Project project = project();
         ProjectWbsTask first = task(project, 21L, 30);
@@ -266,6 +289,9 @@ class ProjectWorkServiceTest {
         Project project = new Project();
         project.setId(PROJECT_ID);
         project.setName("Project");
+        User pm = user("PM001");
+        pm.setRole("PM");
+        project.setPm(pm);
         return project;
     }
 
