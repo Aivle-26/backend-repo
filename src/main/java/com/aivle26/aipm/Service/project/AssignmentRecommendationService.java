@@ -51,8 +51,12 @@ public class AssignmentRecommendationService {
                 .map(PlanningResourceContextAssembler.TaskContext::task)
                 .collect(Collectors.toMap(ProjectWbsTask::getId, Function.identity()));
 
-        List<AssignmentRecommendationResponse.Assignment> assignments =
+        List<PlanningResourceRecommendResponse.Assignment> effectiveAiAssignments =
                 aiResponse.assignments().stream()
+                        .filter(assignment -> !assignment.recommendedMembers().isEmpty())
+                        .toList();
+        List<AssignmentRecommendationResponse.Assignment> assignments =
+                effectiveAiAssignments.stream()
                         .map(assignment -> toFrontendAssignment(
                                 assignment,
                                 tasksById.get(assignment.wbsId()),
@@ -71,6 +75,13 @@ public class AssignmentRecommendationService {
                             );
                         })
                         .toList();
+        Set<Long> assignedWbsIds = effectiveAiAssignments.stream()
+                .map(PlanningResourceRecommendResponse.Assignment::wbsId)
+                .collect(Collectors.toSet());
+        List<Long> normalizedUnassignedWbsIds = context.tasks().stream()
+                .map(task -> task.task().getId())
+                .filter(wbsId -> !assignedWbsIds.contains(wbsId))
+                .toList();
 
         return new AssignmentRecommendationResponse(
                 context.project().getId(),
@@ -81,7 +92,7 @@ public class AssignmentRecommendationService {
                 aiResponse.totalEstimatedPersonDays(),
                 aiResponse.totalEstimatedHours(),
                 aiResponse.totalEstimatedMm(),
-                aiResponse.unassignedWbsIds(),
+                normalizedUnassignedWbsIds,
                 withExcludedCandidateWarning(context, aiResponse.warnings()),
                 aiResponse.llmStatus()
         );
