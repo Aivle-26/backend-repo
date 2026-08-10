@@ -54,7 +54,7 @@ public class ProjectMemberService {
         authorizationService.requireProjectPm(project);
 
         Map<String, Double> requestedHours = normalizeMembers(request.members());
-        Map<String, User> usersByEmployeeNumber = loadActiveStaff(requestedHours.keySet());
+        Map<String, User> usersByEmployeeNumber = loadAssignableUsers(project, requestedHours.keySet());
         List<ProjectMember> existingMembers = projectMemberRepository
                 .findByProjectIdOrderByUser_NameAscUser_EmployeeNumberAsc(projectId);
         Map<String, ProjectMember> existingByEmployeeNumber = existingMembers.stream()
@@ -92,14 +92,38 @@ public class ProjectMemberService {
     @Transactional(readOnly = true)
     public List<ProjectMemberResponse> getMembers(Long projectId) {
         authorizationService.requireProjectAccess(projectId);
+        Project project = projectRepository.findWithPmById(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "Project was not found."
+                ));
         List<ProjectMember> members = projectMemberRepository
                 .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId);
-        Map<String, UserCapabilityProfile> profiles = loadProfiles(members);
-        return members.stream()
+        List<String> profileEmployeeNumbers = members.stream()
+                .map(member -> member.getUser().getEmployeeNumber())
+                .collect(Collectors.toCollection(ArrayList::new));
+        if (!profileEmployeeNumbers.contains(project.getPm().getEmployeeNumber())) {
+            profileEmployeeNumbers.add(project.getPm().getEmployeeNumber());
+        }
+        Map<String, UserCapabilityProfile> profiles = loadProfiles(profileEmployeeNumbers);
+        List<ProjectMemberResponse> responses = members.stream()
                 .map(member -> toResponse(
                         member,
                         profiles.get(member.getUser().getEmployeeNumber())
                 ))
+                .collect(Collectors.toCollection(ArrayList::new));
+        boolean pmAlreadyIncluded = members.stream().anyMatch(member ->
+                member.getUser().getEmployeeNumber().equals(project.getPm().getEmployeeNumber()));
+        if (!pmAlreadyIncluded) {
+            responses.add(toProjectManagerResponse(
+                    project,
+                    profiles.get(project.getPm().getEmployeeNumber())
+            ));
+        }
+        return responses.stream()
+                .sorted(java.util.Comparator.comparing(ProjectMemberResponse::name)
+                        .thenComparing(ProjectMemberResponse::employeeNumber))
                 .toList();
     }
 
@@ -121,16 +145,22 @@ public class ProjectMemberService {
         return normalized;
     }
 
-    private Map<String, User> loadActiveStaff(Set<String> employeeNumbers) {
+    private Map<String, User> loadAssignableUsers(Project project, Set<String> employeeNumbers) {
         if (employeeNumbers.isEmpty()) {
             return Map.of();
         }
+        Set<String> staffEmployeeNumbers = new LinkedHashSet<>(employeeNumbers);
+        staffEmployeeNumbers.remove(project.getPm().getEmployeeNumber());
         Map<String, User> users = userRepository.findAllByEmployeeNumberInAndRoleAndStatus(
-                        employeeNumbers,
+                        staffEmployeeNumbers,
                         STAFF_ROLE,
                         UserStatus.ACTIVE
                 ).stream()
                 .collect(Collectors.toMap(User::getEmployeeNumber, Function.identity()));
+        if (employeeNumbers.contains(project.getPm().getEmployeeNumber())
+                && project.getPm().getStatus() == UserStatus.ACTIVE) {
+            users.put(project.getPm().getEmployeeNumber(), project.getPm());
+        }
         LinkedHashSet<String> missing = new LinkedHashSet<>(employeeNumbers);
         missing.removeAll(users.keySet());
         if (!missing.isEmpty()) {
@@ -164,12 +194,12 @@ public class ProjectMemberService {
         }
     }
 
-    private Map<String, UserCapabilityProfile> loadProfiles(List<ProjectMember> members) {
-        if (members.isEmpty()) {
+    private Map<String, UserCapabilityProfile> loadProfiles(List<String> employeeNumbers) {
+        if (employeeNumbers.isEmpty()) {
             return Map.of();
         }
         return capabilityProfileRepository.findAllByEmployeeNumberIn(
-                        members.stream().map(member -> member.getUser().getEmployeeNumber()).toList()
+                        employeeNumbers
                 ).stream()
                 .collect(Collectors.toMap(
                         UserCapabilityProfile::getEmployeeNumber,
@@ -177,12 +207,43 @@ public class ProjectMemberService {
                 ));
     }
 
+    private ProjectMemberResponse toProjectManagerResponse(
+            Project project,
+            UserCapabilityProfile profile
+    ) {
+        User pm = project.getPm();
+        List<String> roles = profile == null || profile.getRoles().isEmpty()
+                ? List.of("PM")
+                : profile.getRoles().stream().sorted().toList();
+        List<ProjectMemberResponse.Skill> skills = profile == null
+                ? List.of()
+                : profile.getSkills().stream()
+                .map(skill -> new ProjectMemberResponse.Skill(
+                        skill.getSkillCode(),
+                        skill.getProficiencyLevel(),
+                        skill.getExperienceMonths()
+                ))
+                .toList();
+        return new ProjectMemberResponse(
+                null,
+                project.getId(),
+                pm.getEmployeeNumber(),
+                pm.getName(),
+                pm.getEmail(),
+                DEFAULT_AVAILABLE_HOURS_PER_WEEK,
+                pm.getEmployeeNumber(),
+                project.getCreatedAt(),
+                roles,
+                skills
+        );
+    }
+
     private ProjectMemberResponse toResponse(
             ProjectMember member,
             UserCapabilityProfile profile
     ) {
         List<String> roles = profile == null
-                ? List.of()
+                ? ("PM".equals(userRole(member)) ? List.of("PM") : List.of())
                 : profile.getRoles().stream().sorted().toList();
         List<ProjectMemberResponse.Skill> skills = profile == null
                 ? List.of()
@@ -206,5 +267,9 @@ public class ProjectMemberService {
                 roles,
                 skills
         );
+    }
+
+    private String userRole(ProjectMember member) {
+        return member.getUser().getRole();
     }
 }
