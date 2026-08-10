@@ -215,6 +215,8 @@ public class KosaEffortEstimateService {
         List<KosaEffortEstimate.Response.Personnel> personnel = grouped.entrySet().stream()
                 .map(entry -> toPersonnel(entry.getKey(), entry.getValue(), users, aiResponse.workdaysPerMonth()))
                 .toList();
+        List<KosaEffortEstimate.Response.UtilizationWarning> utilizationWarnings =
+                buildUtilizationWarnings(personnel);
         long totalPersonnelAmount = personnel.stream()
                 .mapToLong(KosaEffortEstimate.Response.Personnel::amount)
                 .sum();
@@ -230,8 +232,42 @@ public class KosaEffortEstimateService {
                 project.getId(), project.getName(), projectStart, projectEnd, KosaRates.RATE_YEAR,
                 aiResponse.workdaysPerMonth(), aiResponse.totalEstimatedPersonDays(),
                 aiResponse.totalEstimatedMm(), totalPersonnelAmount, CURRENCY,
-                aiResponse.llmStatus(), personnel, evidence
+                aiResponse.llmStatus(), !utilizationWarnings.isEmpty(), utilizationWarnings,
+                personnel, evidence
         );
+    }
+
+    private List<KosaEffortEstimate.Response.UtilizationWarning> buildUtilizationWarnings(
+            List<KosaEffortEstimate.Response.Personnel> personnel
+    ) {
+        return personnel.stream()
+                .collect(Collectors.groupingBy(
+                        KosaEffortEstimate.Response.Personnel::employeeNumber,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ))
+                .values().stream()
+                .map(items -> {
+                    BigDecimal totalRate = items.stream()
+                            .map(KosaEffortEstimate.Response.Personnel::utilizationRate)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    if (totalRate.compareTo(BigDecimal.valueOf(100)) <= 0) {
+                        return null;
+                    }
+                    KosaEffortEstimate.Response.Personnel first = items.get(0);
+                    List<String> jobs = items.stream()
+                            .map(KosaEffortEstimate.Response.Personnel::detailedJob)
+                            .distinct()
+                            .toList();
+                    return new KosaEffortEstimate.Response.UtilizationWarning(
+                            first.employeeNumber(), first.employeeName(), totalRate,
+                            totalRate.subtract(BigDecimal.valueOf(100)), jobs,
+                            first.employeeName() + "님의 합산 투입률이 " + totalRate.stripTrailingZeros().toPlainString()
+                                    + "%로 100%를 초과합니다."
+                    );
+                })
+                .filter(warning -> warning != null)
+                .toList();
     }
 
     private KosaEffortEstimate.Response.WbsEvidence toEvidence(
