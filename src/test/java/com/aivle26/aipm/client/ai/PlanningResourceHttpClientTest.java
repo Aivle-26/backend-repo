@@ -35,6 +35,7 @@ class PlanningResourceHttpClientTest {
                 "/api/v1/planning/resources/organization-chart/generate"
         );
         properties.setUiMockupPath("/api/v1/planning/ui-mockup/generate");
+        properties.setUiMockupAssessmentPath("/api/v1/planning/ui-mockup/assess");
         client = new PlanningResourceHttpClient(
                 RestClient.builder().baseUrl(server.url("/").toString()).build(),
                 properties
@@ -158,6 +159,52 @@ class PlanningResourceHttpClientTest {
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("INVALID_UI_MOCKUP_RESPONSE");
+    }
+
+    @Test
+    void assessesUiMockupNecessityUsingSnakeCaseAiContract() throws Exception {
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "project_id": 101,
+                          "decision": "REQUIRED",
+                          "reason": "핵심 사용자 흐름을 검증할 화면 설계가 필요합니다.",
+                          "evidence_requirement_ids": [1],
+                          "candidate_screens": ["대시보드", "로그인"]
+                        }
+                        """));
+
+        var response = client.assessUiMockup(uiMockupRequest());
+        var recorded = server.takeRequest();
+
+        assertThat(recorded.getPath()).isEqualTo("/api/v1/planning/ui-mockup/assess");
+        assertThat(recorded.getBody().readUtf8())
+                .contains("\"project_id\":101")
+                .contains("\"confirmed_requirements\"");
+        assertThat(response.decision().name()).isEqualTo("REQUIRED");
+        assertThat(response.evidenceRequirementIds()).containsExactly(1L);
+        assertThat(response.candidateScreens()).containsExactly("대시보드", "로그인");
+    }
+
+    @Test
+    void rejectsAssessmentEvidenceOutsideConfirmedRequirements() {
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "project_id": 101,
+                          "decision": "RECOMMENDED",
+                          "reason": "화면 검토를 권장합니다.",
+                          "evidence_requirement_ids": [999],
+                          "candidate_screens": ["대시보드"]
+                        }
+                        """));
+
+        assertThatThrownBy(() -> client.assessUiMockup(uiMockupRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_UI_MOCKUP_ASSESSMENT_RESPONSE");
     }
 
     private void enqueueOrganizationChart(String imageBase64) {

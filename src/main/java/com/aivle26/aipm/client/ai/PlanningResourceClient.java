@@ -4,6 +4,7 @@ import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendResponse;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
+import com.aivle26.aipm.Dto.project.UiMockupAssessmentResponse;
 
 public interface PlanningResourceClient {
     PlanningResourceRecommendResponse recommendAssignments(
@@ -15,4 +16,6 @@ public interface PlanningResourceClient {
     );
 
     GeneratedUiMockup generateUiMockup(UiMockupGenerateRequest request);
+
+    UiMockupAssessmentResponse assessUiMockup(UiMockupGenerateRequest request);
 }
