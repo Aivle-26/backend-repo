@@ -76,9 +76,21 @@ public final class KosaEffortEstimate {
             long totalPersonnelAmount,
             String currency,
             String llmStatus,
+            boolean hasUtilizationWarning,
+            List<UtilizationWarning> utilizationWarnings,
             List<Personnel> personnel,
             List<WbsEvidence> wbsEfforts
     ) {
+        public record UtilizationWarning(
+                String employeeNumber,
+                String employeeName,
+                BigDecimal totalUtilizationRate,
+                BigDecimal excessUtilizationRate,
+                List<String> detailedJobs,
+                String message
+        ) {
+        }
+
         public record Personnel(
                 String employeeNumber,
                 String employeeName,

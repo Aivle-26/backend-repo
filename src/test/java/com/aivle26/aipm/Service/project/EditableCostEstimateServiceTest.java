@@ -73,4 +73,47 @@ class EditableCostEstimateServiceTest {
         assertThat(result.vat()).isEqualTo(1_250_000L);
         assertThat(result.totalAmount()).isEqualTo(13_750_000L);
     }
+
+    @Test
+    void returnsWarningWhenOneEmployeesTotalUtilizationExceedsOneHundredPercent() {
+        Project project = new Project();
+        project.setId(1L);
+        ProjectTaskAssignment assignment = new ProjectTaskAssignment();
+        assignment.setEmployeeNumber("E1");
+        User user = new User();
+        user.setEmployeeNumber("E1");
+        user.setName("테스트 사용자");
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(assignmentRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(1L))
+                .thenReturn(List.of(assignment));
+        when(userRepository.findAllById(any())).thenReturn(List.of(user));
+
+        EditableCostEstimate.Request request = new EditableCostEstimate.Request(
+                List.of(
+                        personnel("E1", "업무 분석", new BigDecimal("60")),
+                        personnel("E1", "프로젝트 관리", new BigDecimal("50"))
+                ),
+                BigDecimal.ZERO, BigDecimal.ZERO, 0L, List.of(), 0L, false, ""
+        );
+
+        EditableCostEstimate.Response result = service.calculate(1L, request);
+
+        assertThat(result.hasUtilizationWarning()).isTrue();
+        assertThat(result.utilizationWarnings()).hasSize(1);
+        assertThat(result.utilizationWarnings().getFirst().totalUtilizationRate())
+                .isEqualByComparingTo("110");
+        assertThat(result.utilizationWarnings().getFirst().excessUtilizationRate())
+                .isEqualByComparingTo("10");
+    }
+
+    private EditableCostEstimate.Request.PersonnelInput personnel(
+            String employeeNumber,
+            String detailedJob,
+            BigDecimal utilizationRate
+    ) {
+        return new EditableCostEstimate.Request.PersonnelInput(
+                employeeNumber, "IT PM", detailedJob, 1,
+                BigDecimal.ONE, utilizationRate, 10_000_000L
+        );
+    }
 }

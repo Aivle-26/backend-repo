@@ -56,6 +56,8 @@ public final class EditableCostEstimate {
             boolean confirmed,
             int kosaRateYear,
             String currency,
+            boolean hasUtilizationWarning,
+            List<UtilizationWarning> utilizationWarnings,
             List<Personnel> personnel,
             List<ExpenseItem> expenseItems,
             BigDecimal totalMm,
@@ -75,6 +77,16 @@ public final class EditableCostEstimate {
             String note,
             LocalDateTime updatedAt
     ) {
+        public record UtilizationWarning(
+                String employeeNumber,
+                String employeeName,
+                BigDecimal totalUtilizationRate,
+                BigDecimal excessUtilizationRate,
+                List<String> detailedJobs,
+                String message
+        ) {
+        }
+
         public record Personnel(
                 String employeeNumber,
                 String employeeName,

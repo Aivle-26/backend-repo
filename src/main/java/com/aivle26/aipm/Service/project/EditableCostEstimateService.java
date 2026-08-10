@@ -103,6 +103,8 @@ public class EditableCostEstimateService {
         List<EditableCostEstimate.Response.Personnel> personnel = request.personnel().stream()
                 .map(input -> calculatePersonnel(input, assignedUsers.get(input.employeeNumber())))
                 .toList();
+        List<EditableCostEstimate.Response.UtilizationWarning> utilizationWarnings =
+                buildUtilizationWarnings(personnel);
         List<EditableCostEstimate.Response.ExpenseItem> expenses = request.expenseItems() == null
                 ? List.of()
                 : request.expenseItems().stream().map(this::calculateExpense).toList();
@@ -132,12 +134,46 @@ public class EditableCostEstimateService {
         long totalAmount = Math.addExact(supplyAmount, vat);
 
         return new EditableCostEstimate.Response(
-                null, projectId, false, KosaRates.RATE_YEAR, CURRENCY, personnel, expenses,
+                null, projectId, false, KosaRates.RATE_YEAR, CURRENCY,
+                !utilizationWarnings.isEmpty(), utilizationWarnings, personnel, expenses,
                 totalMm, directLabor, request.overheadRate(), overhead,
                 request.technicalFeeRate(), technicalFee, request.directExpense(), developmentCost,
                 expenseTotal, request.discountAmount(), supplyAmount, includeVat, vat, totalAmount,
                 normalizeNote(request.note()), null
         );
+    }
+
+    private List<EditableCostEstimate.Response.UtilizationWarning> buildUtilizationWarnings(
+            List<EditableCostEstimate.Response.Personnel> personnel
+    ) {
+        return personnel.stream()
+                .collect(Collectors.groupingBy(
+                        EditableCostEstimate.Response.Personnel::employeeNumber,
+                        java.util.LinkedHashMap::new,
+                        Collectors.toList()
+                ))
+                .values().stream()
+                .map(items -> {
+                    BigDecimal totalRate = items.stream()
+                            .map(EditableCostEstimate.Response.Personnel::utilizationRate)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    if (totalRate.compareTo(ONE_HUNDRED) <= 0) {
+                        return null;
+                    }
+                    EditableCostEstimate.Response.Personnel first = items.get(0);
+                    List<String> jobs = items.stream()
+                            .map(EditableCostEstimate.Response.Personnel::detailedJob)
+                            .distinct()
+                            .toList();
+                    return new EditableCostEstimate.Response.UtilizationWarning(
+                            first.employeeNumber(), first.employeeName(), totalRate,
+                            totalRate.subtract(ONE_HUNDRED), jobs,
+                            first.employeeName() + "님의 합산 투입률이 " + totalRate.stripTrailingZeros().toPlainString()
+                                    + "%로 100%를 초과합니다."
+                    );
+                })
+                .filter(warning -> warning != null)
+                .toList();
     }
 
     private Map<String, User> loadAssignedUsers(Long projectId) {
@@ -239,7 +275,9 @@ public class EditableCostEstimateService {
     ) {
         return new EditableCostEstimate.Response(
                 entity.getId(), response.projectId(), entity.isConfirmed(), response.kosaRateYear(),
-                response.currency(), response.personnel(), response.expenseItems(), response.totalMm(),
+                response.currency(), response.hasUtilizationWarning(),
+                response.utilizationWarnings() == null ? List.of() : response.utilizationWarnings(),
+                response.personnel(), response.expenseItems(), response.totalMm(),
                 response.directLaborCost(), response.overheadRate(), response.overheadAmount(),
                 response.technicalFeeRate(), response.technicalFeeAmount(), response.directExpense(),
                 response.developmentCost(), response.expenseItemTotal(), response.discountAmount(),
