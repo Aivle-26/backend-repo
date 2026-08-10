@@ -163,6 +163,60 @@ class AssignmentRecommendationServiceTest {
                 .isEqualTo(28.0);
     }
 
+    @Test
+    void removesAssignedWbsFromAiUnassignedList() {
+        when(projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(101L))
+                .thenReturn(List.of(member(registeredUser, 28.0)));
+        when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
+                .thenReturn(List.of(profile));
+        when(planningResourceClient.recommendAssignments(any()))
+                .thenReturn(new PlanningResourceRecommendResponse(
+                        101L,
+                        aiResponse().requiredStaffing(),
+                        aiResponse().assignments(),
+                        6.0, 48.0, 0.3,
+                        List.of(3L),
+                        List.of(),
+                        "SUCCEEDED"
+                ));
+
+        var response = service.recommend(101L, new AssignmentRecommendationRequest(List.of()));
+
+        assertThat(response.assignments()).extracting(AssignmentRecommendationResponse.Assignment::wbsId)
+                .containsExactly(3L);
+        assertThat(response.unassignedWbsIds()).isEmpty();
+    }
+
+    @Test
+    void treatsAssignmentWithoutRecommendedMemberAsUnassigned() {
+        when(projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(101L))
+                .thenReturn(List.of(member(registeredUser, 28.0)));
+        when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
+                .thenReturn(List.of(profile));
+        PlanningResourceRecommendResponse.Assignment emptyAssignment =
+                new PlanningResourceRecommendResponse.Assignment(
+                        3L, "BACKEND", List.of(), 6.0, 48.0, 0.3, 1,
+                        List.of(), "No suitable member"
+                );
+        when(planningResourceClient.recommendAssignments(any()))
+                .thenReturn(new PlanningResourceRecommendResponse(
+                        101L,
+                        aiResponse().requiredStaffing(),
+                        List.of(emptyAssignment),
+                        6.0, 48.0, 0.3,
+                        List.of(),
+                        List.of(),
+                        "SUCCEEDED"
+                ));
+
+        var response = service.recommend(101L, new AssignmentRecommendationRequest(List.of()));
+
+        assertThat(response.assignments()).isEmpty();
+        assertThat(response.unassignedWbsIds()).containsExactly(3L);
+    }
+
     private PlanningResourceRecommendResponse aiResponse() {
         return new PlanningResourceRecommendResponse(
                 101L,
