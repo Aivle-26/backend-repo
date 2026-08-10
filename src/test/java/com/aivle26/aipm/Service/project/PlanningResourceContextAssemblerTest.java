@@ -90,13 +90,21 @@ class PlanningResourceContextAssemblerTest {
     }
 
     @Test
-    void rejectsMissingActiveMembers() {
+    void recommendationCanUseProjectManagerWhenNoActiveMemberExists() {
         arrangeScheduledTask();
         when(projectMemberRepository
                 .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(1L))
                 .thenReturn(List.of());
+        when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
+                .thenReturn(List.of());
 
-        assertApiError("ACTIVE_PROJECT_MEMBER_NOT_FOUND");
+        var context = assembler.assembleForRecommendation(1L, null);
+
+        assertThat(context.aiRequest().projectMembers()).singleElement().satisfies(member -> {
+            assertThat(member.memberName()).isEqualTo("Project Manager");
+            assertThat(member.roles()).containsExactly("PM");
+            assertThat(member.allocations().getFirst().availableHoursPerWeek()).isEqualTo(32.0);
+        });
     }
 
     @Test

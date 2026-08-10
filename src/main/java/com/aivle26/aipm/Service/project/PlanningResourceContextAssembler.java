@@ -36,6 +36,7 @@ import java.util.stream.Collectors;
 public class PlanningResourceContextAssembler {
 
     private static final String ACTIVE_ALLOCATION_STATUS = "ACTIVE";
+    private static final double DEFAULT_PM_AVAILABLE_HOURS_PER_WEEK = 32.0;
 
     private final ProjectRepository projectRepository;
     private final ProjectWbsTaskRepository wbsTaskRepository;
@@ -50,7 +51,7 @@ public class PlanningResourceContextAssembler {
     ) {
         Project project = requireProject(projectId);
         List<TaskContext> tasks = loadLeafTasksWithSchedules(projectId);
-        CandidateSelection selection = selectCandidates(projectId, request);
+        CandidateSelection selection = selectCandidates(project, request);
         DateWindow allocationWindow = allocationWindow(tasks);
         Map<Long, CandidateContext> candidatesByAiId = assignTemporaryAiIds(
                 selection.candidates(),
@@ -196,7 +197,7 @@ public class PlanningResourceContextAssembler {
     }
 
     private CandidateSelection selectCandidates(
-            Long projectId,
+            Project project,
             AssignmentRecommendationRequest request
     ) {
         List<AssignmentRecommendationRequest.Candidate> requested =
@@ -204,18 +205,21 @@ public class PlanningResourceContextAssembler {
                         ? List.of()
                         : request.candidates();
         return requested.isEmpty()
-                ? selectAllCandidates(projectId)
-                : selectRequestedCandidates(projectId, requested);
+                ? selectAllCandidates(project)
+                : selectRequestedCandidates(project, requested);
     }
 
-    private CandidateSelection selectAllCandidates(Long projectId) {
-        List<ProjectMember> projectMembers = loadProjectMembers(projectId);
+    private CandidateSelection selectAllCandidates(Project project) {
+        List<ProjectMember> projectMembers = loadRecommendationMembers(project.getId());
         Map<String, UserCapabilityProfile> profiles = loadProfiles(
-                projectMembers.stream().map(ProjectMember::getUser).toList()
+                candidateUsers(project, projectMembers)
         );
         List<CandidateData> candidates = new ArrayList<>();
         List<String> excludedNames = new ArrayList<>();
         for (ProjectMember member : projectMembers) {
+            if (isProjectManager(project, member.getUser())) {
+                continue;
+            }
             UserCapabilityProfile profile = profiles.get(member.getUser().getEmployeeNumber());
             if (profile == null) {
                 // 역량(역할) 미등록 팀원은 AI가 필요 역할과 매칭할 수 없어 후보에서 제외한다.
@@ -229,6 +233,7 @@ public class PlanningResourceContextAssembler {
                     member.getAvailableHoursPerWeek()
             ));
         }
+        candidates.add(projectManagerCandidate(project, projectMembers, profiles, null));
         requireCandidates(candidates);
         return new CandidateSelection(
                 AssignmentRecommendationResponse.CandidateMode.ALL,
@@ -238,7 +243,7 @@ public class PlanningResourceContextAssembler {
     }
 
     private CandidateSelection selectRequestedCandidates(
-            Long projectId,
+            Project project,
             List<AssignmentRecommendationRequest.Candidate> requested
     ) {
         Map<String, AssignmentRecommendationRequest.Candidate> requestedByEmployeeNumber =
@@ -254,19 +259,22 @@ public class PlanningResourceContextAssembler {
             }
         }
 
-        List<ProjectMember> projectMembers = loadProjectMembers(projectId);
+        List<ProjectMember> projectMembers = loadRecommendationMembers(project.getId());
         Map<String, ProjectMember> membersByEmployeeNumber = projectMembers.stream()
                 .collect(Collectors.toMap(
                         member -> member.getUser().getEmployeeNumber(),
                         Function.identity()
                 ));
         Map<String, UserCapabilityProfile> profiles = loadProfiles(
-                projectMembers.stream().map(ProjectMember::getUser).toList()
+                candidateUsers(project, projectMembers)
         );
 
         List<CandidateData> candidates = new ArrayList<>();
         for (Map.Entry<String, AssignmentRecommendationRequest.Candidate> entry
                 : requestedByEmployeeNumber.entrySet()) {
+            if (entry.getKey().equals(project.getPm().getEmployeeNumber())) {
+                continue;
+            }
             ProjectMember projectMember = membersByEmployeeNumber.get(entry.getKey());
             if (projectMember == null) {
                 throw new ApiException(
@@ -292,12 +300,56 @@ public class PlanningResourceContextAssembler {
                             : requestedHours
             ));
         }
+        AssignmentRecommendationRequest.Candidate requestedPm = requestedByEmployeeNumber.get(
+                project.getPm().getEmployeeNumber()
+        );
+        candidates.add(projectManagerCandidate(
+                project,
+                projectMembers,
+                profiles,
+                requestedPm == null ? null : requestedPm.availableHoursPerWeek()
+        ));
         requireCandidates(candidates);
         return new CandidateSelection(
                 AssignmentRecommendationResponse.CandidateMode.SELECTED,
                 List.copyOf(candidates),
                 List.of()
         );
+    }
+
+    private List<User> candidateUsers(Project project, List<ProjectMember> projectMembers) {
+        Map<String, User> users = projectMembers.stream()
+                .map(ProjectMember::getUser)
+                .collect(Collectors.toMap(
+                        User::getEmployeeNumber,
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        users.putIfAbsent(project.getPm().getEmployeeNumber(), project.getPm());
+        return List.copyOf(users.values());
+    }
+
+    private CandidateData projectManagerCandidate(
+            Project project,
+            List<ProjectMember> projectMembers,
+            Map<String, UserCapabilityProfile> profiles,
+            Double requestedHours
+    ) {
+        double savedHours = projectMembers.stream()
+                .filter(member -> isProjectManager(project, member.getUser()))
+                .map(ProjectMember::getAvailableHoursPerWeek)
+                .findFirst()
+                .orElse(DEFAULT_PM_AVAILABLE_HOURS_PER_WEEK);
+        return new CandidateData(
+                project.getPm(),
+                profiles.get(project.getPm().getEmployeeNumber()),
+                requestedHours == null ? savedHours : requestedHours
+        );
+    }
+
+    private boolean isProjectManager(Project project, User user) {
+        return project.getPm().getEmployeeNumber().equals(user.getEmployeeNumber());
     }
 
     private List<ProjectMember> loadProjectMembers(Long projectId) {
@@ -311,6 +363,11 @@ public class PlanningResourceContextAssembler {
             );
         }
         return members;
+    }
+
+    private List<ProjectMember> loadRecommendationMembers(Long projectId) {
+        return projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(projectId);
     }
 
     private Map<String, UserCapabilityProfile> loadProfiles(List<User> users) {
