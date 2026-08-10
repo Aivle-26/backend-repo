@@ -43,30 +43,37 @@ public class KosaEffortEstimateService {
     private final ProjectTaskAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
     private final PlanningCostClient planningCostClient;
+    private final EffortEstimateUnitPlanner unitPlanner;
 
     @Transactional(readOnly = true)
     public KosaEffortEstimate.Response estimate(Long projectId) {
         authorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project not found"));
-        List<ProjectWbsTask> tasks = loadBillableTasks(projectId);
+        List<ProjectWbsTask> confirmedTasks = loadConfirmedTasks(projectId);
         Map<Long, ProjectSchedule> schedules = loadFinalSchedules(projectId);
-        Map<Long, ProjectTaskAssignment> assignments = loadAssignments(projectId, tasks);
+        List<ProjectWbsTask> leafTasks = findLeafTasks(confirmedTasks);
+        Map<Long, ProjectTaskAssignment> assignments = loadAssignments(projectId, leafTasks);
         Map<String, User> users = loadUsers(assignments.values());
+        EffortEstimateUnitPlanner.Plan plan = unitPlanner.plan(confirmedTasks, schedules, assignments);
 
         KosaEffortEstimate.AiResponse aiResponse = planningCostClient.estimateEffort(
-                toAiRequest(project, tasks, schedules),
+                toAiRequest(project, plan.units()),
                 "backend-project-" + projectId + "-cost-effort-" + UUID.randomUUID()
         );
-        validateAiResponse(projectId, tasks, aiResponse);
-        return toResponse(project, aiResponse, schedules, assignments, users);
+        validateAiResponse(projectId, plan.units(), aiResponse);
+        return toResponse(project, aiResponse, plan.units(), schedules, users);
     }
 
-    private List<ProjectWbsTask> loadBillableTasks(Long projectId) {
+    private List<ProjectWbsTask> loadConfirmedTasks(Long projectId) {
         List<ProjectWbsTask> confirmed = wbsTaskRepository.findByProjectIdAndConfirmedTrue(projectId);
         if (confirmed.isEmpty()) {
             throw new ApiException(HttpStatus.CONFLICT, "CONFIRMED_WBS_NOT_FOUND", "확정된 WBS가 없습니다.");
         }
+        return confirmed;
+    }
+
+    private List<ProjectWbsTask> findLeafTasks(List<ProjectWbsTask> confirmed) {
         Set<Long> parentIds = confirmed.stream()
                 .map(ProjectWbsTask::getParentTask)
                 .filter(parent -> parent != null)
@@ -131,20 +138,16 @@ public class KosaEffortEstimateService {
 
     private KosaEffortEstimate.AiRequest toAiRequest(
             Project project,
-            List<ProjectWbsTask> tasks,
-            Map<Long, ProjectSchedule> schedules
+            List<EffortEstimateUnitPlanner.Unit> units
     ) {
         return new KosaEffortEstimate.AiRequest(
                 project.getId(),
                 project.getName(),
-                tasks.stream().map(task -> {
-                    ProjectSchedule schedule = schedules.get(task.getId());
+                units.stream().map(unit -> {
                     return new KosaEffortEstimate.AiRequest.WbsTask(
-                            task.getId(),
-                            task.getTaskName(),
-                            task.getDescription(),
-                            schedule == null ? null : schedule.getStartDate(),
-                            schedule == null ? null : schedule.getEndDate()
+                            unit.anchorWbsId(), unit.parentWbsId(), unit.level(), unit.itemType(),
+                            unit.workPackageId(), unit.workPackageName(), unit.estimateUnitId(),
+                            unit.sourceWbsIds(), unit.name(), unit.description(), unit.startDate(), unit.endDate()
                     );
                 }).toList()
         );
@@ -152,10 +155,12 @@ public class KosaEffortEstimateService {
 
     private void validateAiResponse(
             Long projectId,
-            List<ProjectWbsTask> tasks,
+            List<EffortEstimateUnitPlanner.Unit> units,
             KosaEffortEstimate.AiResponse response
     ) {
-        Set<Long> expectedIds = tasks.stream().map(ProjectWbsTask::getId).collect(Collectors.toSet());
+        Set<Long> expectedIds = units.stream()
+                .map(EffortEstimateUnitPlanner.Unit::anchorWbsId)
+                .collect(Collectors.toSet());
         if (response == null
                 || !projectId.equals(response.projectId())
                 || response.workdaysPerMonth() == null
@@ -192,12 +197,14 @@ public class KosaEffortEstimateService {
     private KosaEffortEstimate.Response toResponse(
             Project project,
             KosaEffortEstimate.AiResponse aiResponse,
+            List<EffortEstimateUnitPlanner.Unit> units,
             Map<Long, ProjectSchedule> schedules,
-            Map<Long, ProjectTaskAssignment> assignments,
             Map<String, User> users
     ) {
+        Map<Long, EffortEstimateUnitPlanner.Unit> unitsById = units.stream()
+                .collect(Collectors.toMap(EffortEstimateUnitPlanner.Unit::anchorWbsId, Function.identity()));
         List<KosaEffortEstimate.Response.WbsEvidence> evidence = aiResponse.wbsEfforts().stream()
-                .map(effort -> toEvidence(effort, assignments.get(effort.wbsId()), users))
+                .map(effort -> toEvidence(effort, unitsById.get(effort.wbsId()), users))
                 .toList();
         Map<PersonnelKey, List<KosaEffortEstimate.Response.WbsEvidence>> grouped = evidence.stream()
                 .collect(Collectors.groupingBy(
@@ -229,12 +236,14 @@ public class KosaEffortEstimateService {
 
     private KosaEffortEstimate.Response.WbsEvidence toEvidence(
             KosaEffortEstimate.AiResponse.WbsEffort effort,
-            ProjectTaskAssignment assignment,
+            EffortEstimateUnitPlanner.Unit unit,
             Map<String, User> users
     ) {
-        User user = users.get(assignment.getEmployeeNumber());
+        User user = users.get(unit.employeeNumber());
         return new KosaEffortEstimate.Response.WbsEvidence(
-                effort.wbsId(), effort.wbsName(), user.getEmployeeNumber(), user.getName(),
+                effort.wbsId(), effort.wbsName(), unit.estimateUnitId(), unit.itemType(),
+                unit.workPackageId(), unit.workPackageName(), unit.sourceWbsIds(),
+                user.getEmployeeNumber(), user.getName(),
                 effort.kosaJobCategory(), effort.detailedJob(), effort.estimatedPersonDays(),
                 effort.estimatedMm(), effort.estimationReason(), effort.confidence()
         );

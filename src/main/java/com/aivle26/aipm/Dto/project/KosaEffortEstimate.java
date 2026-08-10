@@ -18,6 +18,13 @@ public final class KosaEffortEstimate {
     ) {
         public record WbsTask(
                 @JsonProperty("wbs_id") Long wbsId,
+                @JsonProperty("parent_wbs_id") Long parentWbsId,
+                int level,
+                @JsonProperty("item_type") String itemType,
+                @JsonProperty("work_package_id") Long workPackageId,
+                @JsonProperty("work_package_name") String workPackageName,
+                @JsonProperty("estimate_unit_id") String estimateUnitId,
+                @JsonProperty("source_wbs_ids") List<Long> sourceWbsIds,
                 @JsonProperty("wbs_name") String wbsName,
                 String description,
                 @JsonProperty("start_date") LocalDate startDate,
@@ -92,6 +99,11 @@ public final class KosaEffortEstimate {
         public record WbsEvidence(
                 Long wbsId,
                 String wbsName,
+                String estimateUnitId,
+                String itemType,
+                Long workPackageId,
+                String workPackageName,
+                List<Long> sourceWbsIds,
                 String employeeNumber,
                 String employeeName,
                 String kosaJobCategory,
