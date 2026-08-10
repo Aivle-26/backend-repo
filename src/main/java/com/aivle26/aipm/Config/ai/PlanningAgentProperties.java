@@ -36,6 +36,9 @@ public class PlanningAgentProperties {
             "/api/v1/planning/resources/organization-chart/generate";
 
     @NotBlank
+    private String uiMockupPath = "/api/v1/planning/ui-mockup/generate";
+
+    @NotBlank
     private String costPath = "/api/v1/planning/costs/estimate";
 
     @NotBlank

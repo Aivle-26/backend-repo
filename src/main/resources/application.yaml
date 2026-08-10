@@ -109,6 +109,7 @@ agent:
     schedule-path: ${PLANNING_AGENT_SCHEDULE_PATH:/api/v1/planning/schedules/recommend}
     resource-path: ${PLANNING_AGENT_RESOURCE_PATH:/api/v1/planning/resources/recommend}
     organization-chart-path: ${PLANNING_AGENT_ORGANIZATION_CHART_PATH:/api/v1/planning/resources/organization-chart/generate}
+    ui-mockup-path: ${PLANNING_AGENT_UI_MOCKUP_PATH:/api/v1/planning/ui-mockup/generate}
     cost-path: ${PLANNING_AGENT_COST_PATH:/api/v1/planning/costs/estimate}
     rag-query-path: ${PLANNING_AGENT_RAG_QUERY_PATH:/api/v1/reports/deliverables/rag/query}
     weekly-scrum-summarize-path: ${PLANNING_AGENT_WEEKLY_SCRUM_SUMMARIZE_PATH:/api/v1/reports/weekly-scrum/summarize}
