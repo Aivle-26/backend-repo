@@ -71,6 +71,7 @@ class AssignmentRecommendationServiceTest {
         project = new Project();
         project.setId(101L);
         project.setName("Test Project");
+        project.setPm(user("PM001", "Project Manager"));
 
         task = new ProjectWbsTask();
         task.setId(3L);
@@ -121,6 +122,13 @@ class AssignmentRecommendationServiceTest {
                 .isEqualTo(LocalDate.of(2026, 8, 10));
         assertThat(aiMember.allocations().getFirst().allocationEndDate())
                 .isEqualTo(LocalDate.of(2026, 8, 17));
+        assertThat(captor.getValue().projectMembers())
+                .extracting(PlanningResourceRecommendRequest.ProjectMember::memberName)
+                .containsExactly("Backend Developer", "Project Manager");
+        assertThat(captor.getValue().projectMembers().getLast().roles())
+                .containsExactly("PM");
+        assertThat(captor.getValue().projectMembers().getLast().allocations().getFirst()
+                .availableHoursPerWeek()).isEqualTo(32.0);
         assertThat(response.candidateMode())
                 .isEqualTo(AssignmentRecommendationResponse.CandidateMode.SELECTED);
         assertThat(response.assignments().getFirst().recommendedMembers().getFirst().employeeNumber())
@@ -150,7 +158,7 @@ class AssignmentRecommendationServiceTest {
                 .isEqualTo(AssignmentRecommendationResponse.CandidateMode.ALL);
         assertThat(response.candidates())
                 .extracting(AssignmentRecommendationResponse.Candidate::employeeNumber)
-                .containsExactly("STAFF001");
+                .containsExactly("STAFF001", "PM001");
         assertThat(response.candidates().getFirst().availableHoursPerWeek())
                 .isEqualTo(28.0);
     }
