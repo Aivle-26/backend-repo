@@ -3,6 +3,7 @@ package com.aivle26.aipm.Service.project;
 import com.aivle26.aipm.Config.storage.DocumentObjectStorage;
 import com.aivle26.aipm.Dto.project.UiMockupArtifactResponse;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
+import com.aivle26.aipm.Dto.project.UiMockupAssessmentResponse;
 import com.aivle26.aipm.Entity.ArtifactApprovalStatus;
 import com.aivle26.aipm.Entity.ProjectArtifact;
 import com.aivle26.aipm.Entity.project.Project;
@@ -98,6 +99,28 @@ public class UiMockupArtifactService {
             cleanupObject(objectKey);
             throw exception;
         }
+    }
+
+    public UiMockupAssessmentResponse assess(Long projectId) {
+        projectAuthorizationService.requireProjectPm(projectId);
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "PROJECT_NOT_FOUND",
+                        "Project was not found."
+                ));
+        List<ProjectRequirement> requirements = requirementRepository.findByProjectIdAndStatus(
+                projectId,
+                RequirementStatus.CONFIRMED
+        );
+        if (requirements.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "CONFIRMED_REQUIREMENT_NOT_FOUND",
+                    "UI mockup assessment requires at least one confirmed requirement."
+            );
+        }
+        return planningResourceClient.assessUiMockup(toAiRequest(project, requirements));
     }
 
     public UiMockupArtifactResponse getLatest(Long projectId) {

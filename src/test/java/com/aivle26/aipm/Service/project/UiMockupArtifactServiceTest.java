@@ -2,6 +2,7 @@ package com.aivle26.aipm.Service.project;
 
 import com.aivle26.aipm.Config.storage.DocumentObjectStorage;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateResponse;
+import com.aivle26.aipm.Dto.project.UiMockupAssessmentResponse;
 import com.aivle26.aipm.Entity.ArtifactApprovalStatus;
 import com.aivle26.aipm.Entity.ProjectArtifact;
 import com.aivle26.aipm.Entity.project.Project;
@@ -132,6 +133,58 @@ class UiMockupArtifactServiceTest {
                 .isInstanceOf(AccessDeniedException.class);
         verify(projectRepository, never()).findById(any());
         verify(planningResourceClient, never()).generateUiMockup(any());
+    }
+
+    @Test
+    void pmAssessesNecessityWithoutStoringArtifact() {
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(requirementRepository.findByProjectIdAndStatus(1L, RequirementStatus.CONFIRMED))
+                .thenReturn(List.of(requirement()));
+        UiMockupAssessmentResponse assessment = new UiMockupAssessmentResponse(
+                UiMockupAssessmentResponse.Decision.REQUIRED,
+                "핵심 사용자 흐름 검증이 필요합니다.",
+                List.of(7L),
+                List.of("대시보드")
+        );
+        when(planningResourceClient.assessUiMockup(any())).thenReturn(assessment);
+
+        var response = service.assess(1L);
+
+        ArgumentCaptor<com.aivle26.aipm.Dto.project.UiMockupGenerateRequest> request =
+                ArgumentCaptor.forClass(com.aivle26.aipm.Dto.project.UiMockupGenerateRequest.class);
+        verify(planningResourceClient).assessUiMockup(request.capture());
+        assertThat(request.getValue().projectId()).isEqualTo(1L);
+        assertThat(request.getValue().confirmedRequirements()).hasSize(1);
+        assertThat(response).isEqualTo(assessment);
+        verify(artifactPolicy, never()).ensureForProject(any());
+        verify(objectStorage, never()).put(any(), any(), any(Long.class), any());
+        verify(artifactRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectsAssessmentWhenConfirmedRequirementsAreMissing() {
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(requirementRepository.findByProjectIdAndStatus(1L, RequirementStatus.CONFIRMED))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.assess(1L))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus().value()).isEqualTo(409);
+                    assertThat(exception.getCode()).isEqualTo("CONFIRMED_REQUIREMENT_NOT_FOUND");
+                });
+        verify(planningResourceClient, never()).assessUiMockup(any());
+    }
+
+    @Test
+    void rejectsNonPmAssessmentBeforeReadingProjectData() {
+        org.mockito.Mockito.doThrow(new AccessDeniedException("denied"))
+                .when(authorizationService)
+                .requireProjectPm(1L);
+
+        assertThatThrownBy(() -> service.assess(1L))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(projectRepository, never()).findById(any());
+        verify(planningResourceClient, never()).assessUiMockup(any());
     }
 
     @Test

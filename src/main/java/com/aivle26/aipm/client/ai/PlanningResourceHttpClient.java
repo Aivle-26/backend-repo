@@ -7,6 +7,8 @@ import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendResponse;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateResponse;
+import com.aivle26.aipm.Dto.project.UiMockupAssessmentAiResponse;
+import com.aivle26.aipm.Dto.project.UiMockupAssessmentResponse;
 import com.aivle26.aipm.Exception.ApiException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,9 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -146,6 +151,86 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
         } catch (RuntimeException exception) {
             throw invalidUiMockupResponse(exception);
         }
+    }
+
+    @Override
+    public UiMockupAssessmentResponse assessUiMockup(UiMockupGenerateRequest request) {
+        try {
+            UiMockupAssessmentAiResponse response = planningAgentRestClient.post()
+                    .uri(properties.getUiMockupAssessmentPath())
+                    .body(request)
+                    .retrieve()
+                    .body(UiMockupAssessmentAiResponse.class);
+            return validateUiMockupAssessment(request, response);
+        } catch (HttpClientErrorException exception) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "UI_MOCKUP_ASSESSMENT_AI_CLIENT_ERROR",
+                    "The AI Server rejected the UI mockup assessment request.",
+                    exception
+            );
+        } catch (HttpServerErrorException exception) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "UI_MOCKUP_ASSESSMENT_AI_SERVER_ERROR",
+                    "The AI Server failed to assess UI mockup necessity.",
+                    exception
+            );
+        } catch (ResourceAccessException exception) {
+            throw new ApiException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "UI_MOCKUP_ASSESSMENT_AI_UNAVAILABLE",
+                    "The AI Server is unavailable.",
+                    exception
+            );
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw invalidUiMockupAssessmentResponse(exception);
+        }
+    }
+
+    private UiMockupAssessmentResponse validateUiMockupAssessment(
+            UiMockupGenerateRequest request,
+            UiMockupAssessmentAiResponse response
+    ) {
+        if (request == null
+                || request.projectId() == null
+                || request.confirmedRequirements() == null
+                || response == null
+                || !request.projectId().equals(response.projectId())
+                || response.decision() == null
+                || response.reason() == null
+                || response.reason().isBlank()
+                || response.evidenceRequirementIds() == null
+                || response.evidenceRequirementIds().size() > 5
+                || response.candidateScreens() == null
+                || response.candidateScreens().size() > 5
+                || response.evidenceRequirementIds().stream()
+                        .anyMatch(id -> id == null || id <= 0)
+                || response.candidateScreens().stream()
+                        .anyMatch(screen -> screen == null || screen.isBlank())) {
+            throw invalidUiMockupAssessmentResponse(null);
+        }
+
+        Set<Long> confirmedIds = request.confirmedRequirements().stream()
+                .map(UiMockupGenerateRequest.ConfirmedRequirement::requirementId)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<Long> evidenceIds = new HashSet<>(response.evidenceRequirementIds());
+        if (evidenceIds.size() != response.evidenceRequirementIds().size()
+                || !confirmedIds.containsAll(evidenceIds)
+                || ((response.decision() == UiMockupAssessmentResponse.Decision.REQUIRED
+                || response.decision() == UiMockupAssessmentResponse.Decision.RECOMMENDED)
+                && response.candidateScreens().isEmpty())) {
+            throw invalidUiMockupAssessmentResponse(null);
+        }
+
+        return new UiMockupAssessmentResponse(
+                response.decision(),
+                response.reason(),
+                List.copyOf(response.evidenceRequirementIds()),
+                List.copyOf(response.candidateScreens())
+        );
     }
 
     private GeneratedUiMockup validateUiMockup(
@@ -327,6 +412,15 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
                 HttpStatus.BAD_GATEWAY,
                 "INVALID_UI_MOCKUP_RESPONSE",
                 "The AI Server UI mockup response is invalid.",
+                cause
+        );
+    }
+
+    private ApiException invalidUiMockupAssessmentResponse(Throwable cause) {
+        return new ApiException(
+                HttpStatus.BAD_GATEWAY,
+                "INVALID_UI_MOCKUP_ASSESSMENT_RESPONSE",
+                "The AI Server UI mockup assessment response is invalid.",
                 cause
         );
     }

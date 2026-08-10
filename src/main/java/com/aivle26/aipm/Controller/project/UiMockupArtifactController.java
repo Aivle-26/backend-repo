@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.UiMockupArtifactResponse;
+import com.aivle26.aipm.Dto.project.UiMockupAssessmentResponse;
 import com.aivle26.aipm.Service.project.UiMockupArtifactService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -30,6 +31,12 @@ public class UiMockupArtifactController {
     public ResponseEntity<UiMockupArtifactResponse> generate(@PathVariable Long projectId) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(uiMockupArtifactService.generate(projectId));
+    }
+
+    @PostMapping("/assess")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<UiMockupAssessmentResponse> assess(@PathVariable Long projectId) {
+        return ResponseEntity.ok(uiMockupArtifactService.assess(projectId));
     }
 
     @GetMapping("/latest")
