@@ -3,6 +3,7 @@ package com.aivle26.aipm.client.ai;
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
+import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
 import com.aivle26.aipm.Exception.ApiException;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -33,6 +34,7 @@ class PlanningResourceHttpClientTest {
         properties.setOrganizationChartPath(
                 "/api/v1/planning/resources/organization-chart/generate"
         );
+        properties.setUiMockupPath("/api/v1/planning/ui-mockup/generate");
         client = new PlanningResourceHttpClient(
                 RestClient.builder().baseUrl(server.url("/").toString()).build(),
                 properties
@@ -133,6 +135,31 @@ class PlanningResourceHttpClientTest {
         assertApiError("ORGANIZATION_CHART_AI_UNAVAILABLE");
     }
 
+    @Test
+    void decodesValidUiMockupJpegAndUsesContractPath() throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg));
+
+        var response = client.generateUiMockup(uiMockupRequest());
+        var recorded = server.takeRequest();
+
+        assertThat(recorded.getPath()).isEqualTo("/api/v1/planning/ui-mockup/generate");
+        assertThat(recorded.getBody().readUtf8())
+                .contains("\"project_title\":\"Test Project\"")
+                .contains("\"confirmed_requirements\"");
+        assertThat(response.image()).containsExactly(jpeg);
+    }
+
+    @Test
+    void rejectsInvalidUiMockupJpeg() {
+        enqueueUiMockup(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3}));
+
+        assertThatThrownBy(() -> client.generateUiMockup(uiMockupRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_UI_MOCKUP_RESPONSE");
+    }
+
     private void enqueueOrganizationChart(String imageBase64) {
         server.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
@@ -155,6 +182,26 @@ class PlanningResourceHttpClientTest {
                         """.formatted(imageBase64)));
     }
 
+    private void enqueueUiMockup(String imageBase64) {
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "project_id": 101,
+                          "mockup": {
+                            "project_title": "Test Project",
+                            "design_summary": "Summary",
+                            "screens": [{"screen_name": "Dashboard"}]
+                          },
+                          "file_name": "project-101-ui-mockup.jpg",
+                          "content_type": "image/jpeg",
+                          "image_base64": "%s",
+                          "width": 1920,
+                          "height": 1080
+                        }
+                        """.formatted(imageBase64)));
+    }
+
     private void assertApiError(String code) {
         assertThatThrownBy(() -> client.generateOrganizationChart(organizationRequest()))
                 .isInstanceOf(ApiException.class)
@@ -172,6 +219,21 @@ class PlanningResourceHttpClientTest {
         return new OrganizationChartGenerateRequest(
                 planningRequest,
                 new OrganizationChartGenerateRequest.OrganizationMetadata(1L, List.of())
+        );
+    }
+
+    private UiMockupGenerateRequest uiMockupRequest() {
+        return new UiMockupGenerateRequest(
+                101L,
+                "Test Project",
+                "Project description",
+                List.of(new UiMockupGenerateRequest.ConfirmedRequirement(
+                        1L,
+                        "Dashboard",
+                        "Show project status",
+                        "FUNCTIONAL",
+                        "HIGH"
+                ))
         );
     }
 

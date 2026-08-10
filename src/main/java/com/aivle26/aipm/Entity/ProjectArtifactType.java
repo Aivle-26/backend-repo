@@ -12,5 +12,6 @@ public enum ProjectArtifactType {
     WEEKLY_REPORT,
     FINAL_REPORT,
     UI_DESIGN,
+    UI_MOCKUP,
     ORGANIZATION_CHART
 }
