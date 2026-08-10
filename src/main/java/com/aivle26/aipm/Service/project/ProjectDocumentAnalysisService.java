@@ -83,13 +83,22 @@ public class ProjectDocumentAnalysisService {
             Long projectId,
             List<Long> requestedDocumentIds
     ) {
+        return analyzeRequirements(projectId, requestedDocumentIds, false);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ProjectRequirementsResponse analyzeRequirements(
+            Long projectId,
+            List<Long> requestedDocumentIds,
+            boolean force
+    ) {
         List<Long> documentIds = requestedDocumentIds.stream()
                 .distinct()
                 .sorted()
                 .toList();
-        String fingerprint = createFingerprint(projectId, documentIds);
+        String fingerprint = createFingerprint(projectId, documentIds, force);
         AnalysisPreparation preparation = inTransaction(
-                () -> prepareAnalysis(projectId, documentIds, fingerprint)
+                () -> prepareAnalysis(projectId, documentIds, fingerprint, force)
         );
         List<StoredDocumentFile> files =
                 projectDocumentService.getStoredDocumentFilesFromSnapshots(
@@ -113,7 +122,8 @@ public class ProjectDocumentAnalysisService {
     private AnalysisPreparation prepareAnalysis(
             Long projectId,
             List<Long> documentIds,
-            String fingerprint
+            String fingerprint,
+            boolean force
     ) {
         projectAuthorizationService.requireProjectPm(projectId);
         Project project = projectRepository.findById(projectId)
@@ -127,7 +137,7 @@ public class ProjectDocumentAnalysisService {
                         projectId,
                         documentIds
                 );
-        if (analysisResultRepository.existsByAgentExecutionId(fingerprint)) {
+        if (!force && analysisResultRepository.existsByAgentExecutionId(fingerprint)) {
             throw duplicateAnalysis();
         }
         return new AnalysisPreparation(
@@ -136,6 +146,7 @@ public class ProjectDocumentAnalysisService {
                 project.getDescription(),
                 project.getUpdatedAt(),
                 fingerprint,
+                force,
                 documentIds,
                 documents.stream()
                         .map(ProjectDocumentService.StoredDocumentSnapshot::from)
@@ -175,7 +186,8 @@ public class ProjectDocumentAnalysisService {
                 .equals(preparation.documents())) {
             throw analysisInputChanged();
         }
-        if (analysisResultRepository.existsByAgentExecutionId(preparation.fingerprint())) {
+        if (!preparation.force()
+                && analysisResultRepository.existsByAgentExecutionId(preparation.fingerprint())) {
             throw duplicateAnalysis();
         }
         ProjectDocumentAnalysisResult analysisResult =
@@ -192,6 +204,16 @@ public class ProjectDocumentAnalysisService {
                         ? ProjectDocumentStatus.ANALYZED
                         : ProjectDocumentStatus.UPLOADED
         ));
+        List<ProjectRequirement> previousAiRequirements = projectRequirementRepository
+                .findByProjectIdAndAiSuggestionJsonIsNotNullAndIncludedInFinalTrueOrderByIdAsc(
+                        preparation.projectId()
+                );
+        previousAiRequirements.forEach(requirement -> {
+            requirement.setIncludedInFinal(false);
+            requirement.setStatus(RequirementStatus.REJECTED);
+            requirement.setConfirmed(false);
+        });
+        projectRequirementRepository.flush();
         Map<String, ProjectDocument> documentByName = new LinkedHashMap<>();
         for (ProjectDocument document : documents) {
             PlanningDocumentExtractResponse.DocumentResult documentResult =
@@ -427,12 +449,17 @@ public class ProjectDocumentAnalysisService {
         return values == null ? List.of() : values;
     }
 
-    private String createFingerprint(Long projectId, List<Long> documentIds) {
+    private String createFingerprint(
+            Long projectId,
+            List<Long> documentIds,
+            boolean force
+    ) {
         String input = projectId
                 + ":"
                 + String.join(",", documentIds.stream().map(String::valueOf).toList())
                 + ":"
-                + ANALYSIS_CONTRACT_VERSION;
+                + ANALYSIS_CONTRACT_VERSION
+                + (force ? ":" + UUID.randomUUID() : "");
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(
@@ -589,6 +616,7 @@ public class ProjectDocumentAnalysisService {
             String projectDescription,
             LocalDateTime projectUpdatedAt,
             String fingerprint,
+            boolean force,
             List<Long> documentIds,
             List<ProjectDocumentService.StoredDocumentSnapshot> documents
     ) {

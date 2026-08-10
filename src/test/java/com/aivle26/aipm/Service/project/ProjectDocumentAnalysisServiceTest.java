@@ -270,6 +270,81 @@ class ProjectDocumentAnalysisServiceTest {
     }
 
     @Test
+    void forcedReanalysisReplacesPreviousAiRequirementsAndResetsUnselectedDocuments() {
+        Long projectId = createProject("PM001");
+        projectDocumentService.uploadInitialDocuments(
+                projectId,
+                List.of(
+                        new MockMultipartFile(
+                                "files",
+                                "first-requirements.txt",
+                                "text/plain",
+                                "first".getBytes()
+                        ),
+                        new MockMultipartFile(
+                                "files",
+                                "second-requirements.txt",
+                                "text/plain",
+                                "second".getBytes()
+                        )
+                )
+        );
+        List<ProjectDocument> documents = projectDocumentRepository.findByProjectId(projectId);
+        ProjectDocument firstDocument = documents.stream()
+                .filter(document -> document.getOriginalFileName().startsWith("first-"))
+                .findFirst()
+                .orElseThrow();
+        ProjectDocument secondDocument = documents.stream()
+                .filter(document -> document.getOriginalFileName().startsWith("second-"))
+                .findFirst()
+                .orElseThrow();
+        prepareStoredContent();
+        when(planningAgentClient.extractDocuments(any(), anyBoolean()))
+                .thenReturn(
+                        successResponse(List.of(
+                                firstDocument.getOriginalFileName(),
+                                secondDocument.getOriginalFileName()
+                        )),
+                        successResponse(List.of(secondDocument.getOriginalFileName()))
+                );
+
+        projectDocumentAnalysisService.analyzeRequirements(
+                projectId,
+                List.of(firstDocument.getId(), secondDocument.getId())
+        );
+        ProjectRequirementsResponse replacement =
+                projectDocumentAnalysisService.analyzeRequirements(
+                        projectId,
+                        List.of(secondDocument.getId()),
+                        true
+                );
+        ProjectRequirementsResponse repeatedReplacement =
+                projectDocumentAnalysisService.analyzeRequirements(
+                        projectId,
+                        List.of(secondDocument.getId()),
+                        true
+                );
+
+        assertThat(replacement.aiSuggestions())
+                .extracting(requirement -> requirement.sourceDocumentId())
+                .containsExactly(secondDocument.getId());
+        assertThat(repeatedReplacement.aiSuggestions())
+                .extracting(requirement -> requirement.sourceDocumentId())
+                .containsExactly(secondDocument.getId());
+        assertThat(projectRequirementRepository
+                .findByProjectIdAndAiSuggestionJsonIsNotNullAndIncludedInFinalTrueOrderByIdAsc(projectId))
+                .extracting(requirement -> requirement.getSourceDocument().getId())
+                .containsExactly(secondDocument.getId());
+        assertThat(projectRequirementRepository.findAll())
+                .filteredOn(ProjectRequirement::isIncludedInFinal)
+                .hasSize(1);
+        assertThat(projectDocumentRepository.findById(firstDocument.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.UPLOADED);
+        assertThat(projectDocumentRepository.findById(secondDocument.getId()).orElseThrow().getStatus())
+                .isEqualTo(ProjectDocumentStatus.ANALYZED);
+    }
+
+    @Test
     void analyzeRequirementsPerformsStorageAndAiIoWithoutDbTransaction() {
         ProjectDocument document = uploadDocument();
         byte[] content = "transaction boundary".getBytes();

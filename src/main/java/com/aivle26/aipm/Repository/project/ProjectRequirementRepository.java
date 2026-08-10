@@ -48,7 +48,9 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     );
 
     @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
-    List<ProjectRequirement> findByProjectIdAndAiSuggestionJsonIsNotNullOrderByIdAsc(Long projectId);
+    List<ProjectRequirement> findByProjectIdAndAiSuggestionJsonIsNotNullAndIncludedInFinalTrueOrderByIdAsc(
+            Long projectId
+    );
 
     @EntityGraph(attributePaths = {"analysisResult", "sourceDocument", "evidences", "evidences.document"})
     List<ProjectRequirement> findByProjectIdAndAnalysisResultIdOrderByIdAsc(Long projectId, Long analysisResultId);

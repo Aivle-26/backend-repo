@@ -8,6 +8,10 @@ import java.util.List;
 
 public record AnalyzeProjectRequirementsRequest(
         @NotEmpty
-        List<@NotNull @Positive Long> documentIds
+        List<@NotNull @Positive Long> documentIds,
+        Boolean force
 ) {
+    public boolean forceRequested() {
+        return Boolean.TRUE.equals(force);
+    }
 }
