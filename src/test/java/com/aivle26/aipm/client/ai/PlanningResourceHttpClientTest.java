@@ -11,6 +11,8 @@ import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
@@ -136,10 +138,11 @@ class PlanningResourceHttpClientTest {
         assertApiError("ORGANIZATION_CHART_AI_UNAVAILABLE");
     }
 
-    @Test
-    void decodesValidUiMockupJpegAndUsesContractPath() throws Exception {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 3, 4, 11, 12})
+    void decodesValidUiMockupJpegAndUsesContractPath(int screenCount) throws Exception {
         byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
-        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg));
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg), screenCount);
 
         var response = client.generateUiMockup(uiMockupRequest());
         var recorded = server.takeRequest();
@@ -149,6 +152,28 @@ class PlanningResourceHttpClientTest {
                 .contains("\"project_title\":\"Test Project\"")
                 .contains("\"confirmed_requirements\"");
         assertThat(response.image()).containsExactly(jpeg);
+    }
+
+    @Test
+    void rejectsUiMockupWithEmptyScreens() {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg), 0);
+
+        assertThatThrownBy(() -> client.generateUiMockup(uiMockupRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_UI_MOCKUP_RESPONSE");
+    }
+
+    @Test
+    void rejectsUiMockupWithMoreThanTwelveScreens() {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg), 13);
+
+        assertThatThrownBy(() -> client.generateUiMockup(uiMockupRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_UI_MOCKUP_RESPONSE");
     }
 
     @Test
@@ -230,6 +255,14 @@ class PlanningResourceHttpClientTest {
     }
 
     private void enqueueUiMockup(String imageBase64) {
+        enqueueUiMockup(imageBase64, 1);
+    }
+
+    private void enqueueUiMockup(String imageBase64, int screenCount) {
+        String screens = String.join(",", java.util.Collections.nCopies(
+                screenCount,
+                "{\"screen_name\":\"Dashboard\"}"
+        ));
         server.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
                 .setBody("""
@@ -238,7 +271,7 @@ class PlanningResourceHttpClientTest {
                           "mockup": {
                             "project_title": "Test Project",
                             "design_summary": "Summary",
-                            "screens": [{"screen_name": "Dashboard"}]
+                            "screens": [%s]
                           },
                           "file_name": "project-101-ui-mockup.jpg",
                           "content_type": "image/jpeg",
@@ -246,7 +279,7 @@ class PlanningResourceHttpClientTest {
                           "width": 1920,
                           "height": 1080
                         }
-                        """.formatted(imageBase64)));
+                        """.formatted(screens, imageBase64)));
     }
 
     private void assertApiError(String code) {

@@ -29,6 +29,7 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
 
     static final int MAX_ORGANIZATION_CHART_BYTES = 10 * 1024 * 1024;
     static final int MAX_UI_MOCKUP_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_UI_MOCKUP_SCREENS = 12;
     private static final int MAX_BASE64_LENGTH =
             ((MAX_ORGANIZATION_CHART_BYTES + 2) / 3) * 4 + 4;
 
@@ -246,7 +247,7 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
                 || !response.mockup().path("design_summary").isTextual()
                 || !response.mockup().path("screens").isArray()
                 || response.mockup().path("screens").isEmpty()
-                || response.mockup().path("screens").size() > 3
+                || response.mockup().path("screens").size() > MAX_UI_MOCKUP_SCREENS
                 || response.fileName() == null
                 || response.fileName().isBlank()
                 || response.fileName().length() > 255
