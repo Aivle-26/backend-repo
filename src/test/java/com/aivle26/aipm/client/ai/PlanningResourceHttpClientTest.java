@@ -2,10 +2,12 @@ package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
+import com.aivle26.aipm.Dto.project.OrganizationChartGenerateResponse;
 import com.aivle26.aipm.Dto.project.OrganizationChartRenderRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
 import com.aivle26.aipm.Exception.ApiException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.SocketPolicy;
@@ -17,6 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.List;
 
@@ -127,6 +130,51 @@ class PlanningResourceHttpClientTest {
         assertThat(rendered.response().organization())
                 .isEqualTo(generated.response().organization());
         assertThat(rendered.image()).containsExactly(jpeg);
+    }
+
+    @Test
+    void acceptsRenderedOrganizationWhenOnlyTimestampPrecisionChanges() throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        var expected = organizationView("2026-08-11T13:47:06.123456789Z");
+        var actual = organizationView("2026-08-11T13:47:06.123456Z");
+        enqueueOrganizationChart(actual, Base64.getEncoder().encodeToString(jpeg));
+
+        var rendered = client.renderOrganizationChart(new OrganizationChartRenderRequest(
+                organizationRequest().planningRequest(),
+                expected
+        ));
+
+        assertThat(rendered.response().organization().generatedAt())
+                .isEqualTo(actual.generatedAt());
+        assertThat(rendered.image()).containsExactly(jpeg);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "reportsTo",
+            "memberId",
+            "assignedWbsIds",
+            "primaryRoles",
+            "projectManager"
+    })
+    void rejectsRenderedOrganizationWhenSemanticDataChanges(String changedField) throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        var expected = organizationView("2026-08-11T13:47:06.123456789Z");
+        var actual = changedOrganization(
+                organizationView("2026-08-11T13:47:06.123456Z"),
+                changedField
+        );
+        enqueueOrganizationChart(actual, Base64.getEncoder().encodeToString(jpeg));
+
+        assertThatThrownBy(() -> client.renderOrganizationChart(
+                new OrganizationChartRenderRequest(
+                        organizationRequest().planningRequest(),
+                        expected
+                )
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_ORGANIZATION_CHART_RESPONSE");
     }
 
     @Test
@@ -284,6 +332,101 @@ class PlanningResourceHttpClientTest {
                           "height": 900
                         }
                         """.formatted(imageBase64)));
+    }
+
+    private void enqueueOrganizationChart(
+            OrganizationChartGenerateResponse.OrganizationView organization,
+            String imageBase64
+    ) throws Exception {
+        var response = new OrganizationChartGenerateResponse(
+                organization,
+                "project-101-organization-chart.jpg",
+                "image/jpeg",
+                imageBase64,
+                1200,
+                900
+        );
+        String body = new ObjectMapper()
+                .findAndRegisterModules()
+                .writeValueAsString(response);
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(body));
+    }
+
+    private OrganizationChartGenerateResponse.OrganizationView organizationView(
+            String generatedAt
+    ) {
+        var team = new OrganizationChartGenerateResponse.OrganizationTeam(
+                "delivery",
+                "Delivery Team",
+                1L,
+                List.of(1L, 2L),
+                List.of("PROJECT_MANAGER", "BACKEND_DEVELOPER"),
+                List.of("DEVOPS_ENGINEER"),
+                List.of(3L, 4L),
+                "PM",
+                List.of("quality"),
+                List.of(1L)
+        );
+        var roleGap = new OrganizationChartGenerateResponse.OrganizationRoleGap(
+                "QA_ENGINEER",
+                1,
+                List.of(9L)
+        );
+        return new OrganizationChartGenerateResponse.OrganizationView(
+                101L,
+                1L,
+                List.of(team),
+                List.of(roleGap),
+                List.of(9L),
+                List.of("QA 역할 추가 인력 권장"),
+                OffsetDateTime.parse(generatedAt)
+        );
+    }
+
+    private OrganizationChartGenerateResponse.OrganizationView changedOrganization(
+            OrganizationChartGenerateResponse.OrganizationView organization,
+            String changedField
+    ) {
+        if ("projectManager".equals(changedField)) {
+            return new OrganizationChartGenerateResponse.OrganizationView(
+                    organization.projectId(),
+                    999L,
+                    organization.teams(),
+                    organization.roleGaps(),
+                    organization.unassignedWbsIds(),
+                    organization.warnings(),
+                    organization.generatedAt()
+            );
+        }
+
+        var team = organization.teams().get(0);
+        var changedTeam = new OrganizationChartGenerateResponse.OrganizationTeam(
+                team.teamId(),
+                team.teamName(),
+                team.leaderMemberId(),
+                "memberId".equals(changedField) ? List.of(1L, 999L) : team.memberIds(),
+                "primaryRoles".equals(changedField)
+                        ? List.of("PROJECT_MANAGER", "QA_ENGINEER")
+                        : team.primaryRoles(),
+                team.secondaryRoles(),
+                "assignedWbsIds".equals(changedField)
+                        ? List.of(3L, 999L)
+                        : team.assignedWbsIds(),
+                "reportsTo".equals(changedField) ? "changed-parent" : team.reportsTo(),
+                team.collaboratesWith(),
+                team.multiRoleMembers()
+        );
+        return new OrganizationChartGenerateResponse.OrganizationView(
+                organization.projectId(),
+                organization.projectManager(),
+                List.of(changedTeam),
+                organization.roleGaps(),
+                organization.unassignedWbsIds(),
+                organization.warnings(),
+                organization.generatedAt()
+        );
     }
 
     private void enqueueUiMockup(String imageBase64) {

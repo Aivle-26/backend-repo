@@ -22,6 +22,7 @@ import org.springframework.web.client.RestClient;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Component
@@ -141,7 +142,10 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
             );
             if (request == null
                     || request.organization() == null
-                    || !request.organization().equals(rendered.response().organization())) {
+                    || !sameOrganizationForRender(
+                            request.organization(),
+                            rendered.response().organization()
+                    )) {
                 throw invalidOrganizationChartResponse(null);
             }
             return rendered;
@@ -208,6 +212,19 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
         } catch (RuntimeException exception) {
             throw invalidUiMockupResponse(exception);
         }
+    }
+
+    private boolean sameOrganizationForRender(
+            OrganizationChartGenerateResponse.OrganizationView expected,
+            OrganizationChartGenerateResponse.OrganizationView actual
+    ) {
+        return actual != null
+                && Objects.equals(expected.projectId(), actual.projectId())
+                && Objects.equals(expected.projectManager(), actual.projectManager())
+                && Objects.equals(expected.teams(), actual.teams())
+                && Objects.equals(expected.roleGaps(), actual.roleGaps())
+                && Objects.equals(expected.unassignedWbsIds(), actual.unassignedWbsIds())
+                && Objects.equals(expected.warnings(), actual.warnings());
     }
 
     @Override
