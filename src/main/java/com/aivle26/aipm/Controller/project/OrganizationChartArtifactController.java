@@ -1,7 +1,10 @@
 package com.aivle26.aipm.Controller.project;
 
 import com.aivle26.aipm.Dto.project.OrganizationChartArtifactResponse;
+import com.aivle26.aipm.Dto.project.OrganizationChartHierarchyResponse;
+import com.aivle26.aipm.Dto.project.OrganizationChartHierarchyUpdateRequest;
 import com.aivle26.aipm.Service.project.OrganizationChartArtifactService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -13,6 +16,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -40,6 +45,26 @@ public class OrganizationChartArtifactController {
             @PathVariable Long projectId
     ) {
         return ResponseEntity.ok(organizationChartArtifactService.getLatest(projectId));
+    }
+
+    @GetMapping("/latest/structure")
+    @PreAuthorize("hasAnyRole('PM', 'STAFF')")
+    public ResponseEntity<OrganizationChartHierarchyResponse> getLatestStructure(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(
+                organizationChartArtifactService.getLatestStructure(projectId)
+        );
+    }
+
+    @PutMapping("/hierarchy")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<OrganizationChartArtifactResponse> updateHierarchy(
+            @PathVariable Long projectId,
+            @Valid @RequestBody OrganizationChartHierarchyUpdateRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(organizationChartArtifactService.updateHierarchy(projectId, request));
     }
 
     @GetMapping("/latest/download")

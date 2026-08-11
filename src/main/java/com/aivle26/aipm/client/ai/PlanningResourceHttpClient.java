@@ -3,6 +3,7 @@ package com.aivle26.aipm.client.ai;
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
 import com.aivle26.aipm.Dto.project.OrganizationChartGenerateResponse;
+import com.aivle26.aipm.Dto.project.OrganizationChartRenderRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendResponse;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
@@ -88,7 +89,12 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
                     .body(request)
                     .retrieve()
                     .body(OrganizationChartGenerateResponse.class);
-            return validateOrganizationChart(request, response);
+            return validateOrganizationChart(
+                    request == null || request.planningRequest() == null
+                            ? null
+                            : request.planningRequest().projectId(),
+                    response
+            );
         } catch (HttpClientErrorException exception) {
             throw new ApiException(
                     HttpStatus.BAD_GATEWAY,
@@ -108,6 +114,56 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "ORGANIZATION_CHART_AI_UNAVAILABLE",
                     "The AI Server is unavailable.",
+                    exception
+            );
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw invalidOrganizationChartResponse(exception);
+        }
+    }
+
+    @Override
+    public GeneratedOrganizationChart renderOrganizationChart(
+            OrganizationChartRenderRequest request
+    ) {
+        try {
+            OrganizationChartGenerateResponse response = planningAgentRestClient.post()
+                    .uri(properties.getOrganizationChartRenderPath())
+                    .body(request)
+                    .retrieve()
+                    .body(OrganizationChartGenerateResponse.class);
+            GeneratedOrganizationChart rendered = validateOrganizationChart(
+                    request == null || request.planningRequest() == null
+                            ? null
+                            : request.planningRequest().projectId(),
+                    response
+            );
+            if (request == null
+                    || request.organization() == null
+                    || !request.organization().equals(rendered.response().organization())) {
+                throw invalidOrganizationChartResponse(null);
+            }
+            return rendered;
+        } catch (HttpClientErrorException exception) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "ORGANIZATION_CHART_RENDER_CLIENT_ERROR",
+                    "The AI Server rejected the organization chart render request.",
+                    exception
+            );
+        } catch (HttpServerErrorException exception) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "ORGANIZATION_CHART_RENDER_SERVER_ERROR",
+                    "The AI Server failed to render the organization chart.",
+                    exception
+            );
+        } catch (ResourceAccessException exception) {
+            throw new ApiException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "ORGANIZATION_CHART_RENDER_UNAVAILABLE",
+                    "The AI Server renderer is unavailable.",
                     exception
             );
         } catch (ApiException exception) {
@@ -312,19 +368,18 @@ public class PlanningResourceHttpClient implements PlanningResourceClient {
     }
 
     private GeneratedOrganizationChart validateOrganizationChart(
-            OrganizationChartGenerateRequest request,
+            Long expectedProjectId,
             OrganizationChartGenerateResponse response
     ) {
         if (response == null
                 || response.organization() == null
-                || request == null
-                || request.planningRequest() == null
-                || !request.planningRequest().projectId()
-                .equals(response.organization().projectId())
+                || expectedProjectId == null
+                || !expectedProjectId.equals(response.organization().projectId())
                 || response.organization().generatedAt() == null
                 || response.organization().teams() == null
                 || response.organization().roleGaps() == null
                 || response.organization().unassignedWbsIds() == null
+                || response.organization().warnings() == null
                 || response.fileName() == null
                 || response.fileName().isBlank()
                 || response.fileName().length() > 255

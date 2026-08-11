@@ -2,6 +2,7 @@ package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
+import com.aivle26.aipm.Dto.project.OrganizationChartRenderRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
 import com.aivle26.aipm.Exception.ApiException;
@@ -35,6 +36,9 @@ class PlanningResourceHttpClientTest {
         properties.setResourcePath("/api/v1/planning/resources/recommend");
         properties.setOrganizationChartPath(
                 "/api/v1/planning/resources/organization-chart/generate"
+        );
+        properties.setOrganizationChartRenderPath(
+                "/api/v1/planning/resources/organization-chart/render"
         );
         properties.setUiMockupPath("/api/v1/planning/ui-mockup/generate");
         properties.setUiMockupAssessmentPath("/api/v1/planning/ui-mockup/assess");
@@ -96,6 +100,33 @@ class PlanningResourceHttpClientTest {
                 .contains("\"project_name\":\"Test Project\"");
         assertThat(response.image()).containsExactly(jpeg);
         assertThat(response.response().contentType()).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void rendersExistingOrganizationWithoutChangingStructuredData() throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueOrganizationChart(Base64.getEncoder().encodeToString(jpeg));
+        var generated = client.generateOrganizationChart(organizationRequest());
+        server.takeRequest();
+        enqueueOrganizationChart(Base64.getEncoder().encodeToString(jpeg));
+
+        var rendered = client.renderOrganizationChart(
+                new OrganizationChartRenderRequest(
+                        organizationRequest().planningRequest(),
+                        generated.response().organization()
+                )
+        );
+        var recorded = server.takeRequest();
+
+        assertThat(recorded.getPath()).isEqualTo(
+                "/api/v1/planning/resources/organization-chart/render"
+        );
+        assertThat(recorded.getBody().readUtf8())
+                .contains("\"organization\"")
+                .contains("\"planning_request\"");
+        assertThat(rendered.response().organization())
+                .isEqualTo(generated.response().organization());
+        assertThat(rendered.image()).containsExactly(jpeg);
     }
 
     @Test
