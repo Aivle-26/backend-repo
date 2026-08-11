@@ -76,19 +76,6 @@ public class PlanningResourceContextAssembler {
         Map<String, UserCapabilityProfile> profiles = loadProfiles(
                 projectMembers.stream().map(ProjectMember::getUser).toList()
         );
-        for (ProjectMember projectMember : projectMembers) {
-            UserCapabilityProfile profile = profiles.get(
-                    projectMember.getUser().getEmployeeNumber()
-            );
-            if (profile == null || profile.getRoles().isEmpty()) {
-                throw new ApiException(
-                        HttpStatus.CONFLICT,
-                        "MEMBER_CAPABILITY_NOT_FOUND",
-                        "An active project member has no capability profile."
-                );
-            }
-        }
-
         List<CandidateData> candidates = projectMembers.stream()
                 .map(member -> new CandidateData(
                         member.getUser(),
@@ -441,7 +428,10 @@ public class PlanningResourceContextAssembler {
                 .toList();
         List<PlanningResourceRecommendRequest.ProjectMember> aiMembers =
                 candidatesByAiId.values().stream()
-                        .map(this::toAiMember)
+                        .map(context -> toAiMember(
+                                context,
+                                isProjectManager(project, context.user())
+                        ))
                         .toList();
         return new PlanningResourceRecommendRequest(
                 project.getId(),
@@ -452,10 +442,11 @@ public class PlanningResourceContextAssembler {
     }
 
     private PlanningResourceRecommendRequest.ProjectMember toAiMember(
-            CandidateContext context
+            CandidateContext context,
+            boolean projectManager
     ) {
         List<String> roles = context.profile() == null
-                ? List.of("PM")
+                ? (projectManager ? List.of("PM") : List.of())
                 : context.profile().getRoles().stream().sorted().toList();
         List<PlanningResourceRecommendRequest.Skill> skills = context.profile() == null
                 ? List.of()

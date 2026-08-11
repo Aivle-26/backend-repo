@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +42,7 @@ class PlanningResourceContextAssemblerTest {
     private Project project;
     private ProjectWbsTask task;
     private ProjectSchedule schedule;
+    private User pm;
     private User staff;
 
     @BeforeEach
@@ -52,7 +54,7 @@ class PlanningResourceContextAssemblerTest {
                 projectMemberRepository,
                 capabilityProfileRepository
         );
-        User pm = user("PM001", "Project Manager");
+        pm = user("PM001", "Project Manager");
         staff = user("STAFF001", "Backend Developer");
         project = new Project();
         project.setId(1L);
@@ -108,7 +110,7 @@ class PlanningResourceContextAssemblerTest {
     }
 
     @Test
-    void rejectsMemberWithoutCapabilities() {
+    void keepsMemberWithoutCapabilitiesAsUnknownForOrganizationChart() {
         arrangeScheduledTask();
         when(projectMemberRepository
                 .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(1L))
@@ -116,7 +118,54 @@ class PlanningResourceContextAssemblerTest {
         when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
                 .thenReturn(List.of());
 
-        assertApiError("MEMBER_CAPABILITY_NOT_FOUND");
+        var context = assembler.assembleForOrganizationChart(1L);
+
+        assertThat(context.aiRequest().projectMembers()).hasSize(2);
+        assertThat(context.aiRequest().projectMembers())
+                .filteredOn(member -> member.memberName().equals("Backend Developer"))
+                .singleElement()
+                .satisfies(member -> {
+                    assertThat(member.roles()).isEmpty();
+                    assertThat(member.skills()).isEmpty();
+                });
+        assertThat(context.aiRequest().projectMembers())
+                .filteredOn(member -> member.memberName().equals("Project Manager"))
+                .singleElement()
+                .extracting(member -> member.roles())
+                .isEqualTo(List.of("PM"));
+    }
+
+    @Test
+    void rejectsOrganizationChartWithoutActiveMembers() {
+        arrangeScheduledTask();
+        when(projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(1L))
+                .thenReturn(List.of());
+
+        assertApiError("ACTIVE_PROJECT_MEMBER_NOT_FOUND");
+    }
+
+    @Test
+    void keepsAllEightMembersWhenEveryCapabilityIsRegistered() {
+        var context = assembleEightMembersWithKnownCapabilityCount(8);
+
+        assertThat(context.aiRequest().projectMembers()).hasSize(8);
+        assertThat(context.aiRequest().projectMembers())
+                .allSatisfy(member -> assertThat(member.roles()).isNotEmpty());
+    }
+
+    @Test
+    void keepsOneUnknownMemberWithoutInventingCapabilities() {
+        var context = assembleEightMembersWithKnownCapabilityCount(7);
+
+        assertUnknownCapabilityCount(context, 1);
+    }
+
+    @Test
+    void keepsFourUnknownMembersWithoutInventingCapabilities() {
+        var context = assembleEightMembersWithKnownCapabilityCount(4);
+
+        assertUnknownCapabilityCount(context, 4);
     }
 
     @Test
@@ -143,6 +192,41 @@ class PlanningResourceContextAssemblerTest {
         when(wbsTaskRepository.findByProjectIdAndConfirmedTrue(1L)).thenReturn(List.of(task));
         when(scheduleRepository.findByProjectIdOrderByWbsTask_OrderIndexAscIdAsc(1L))
                 .thenReturn(List.of(schedule));
+    }
+
+    private PlanningResourceContextAssembler.PlanningResourceContext
+            assembleEightMembersWithKnownCapabilityCount(int knownCapabilityCount) {
+        arrangeScheduledTask();
+        List<User> users = new java.util.ArrayList<>();
+        users.add(pm);
+        IntStream.rangeClosed(1, 7)
+                .mapToObj(index -> user("STAFF%03d".formatted(index), "Staff " + index))
+                .forEach(users::add);
+        List<ProjectMember> members = users.stream().map(this::member).toList();
+        List<UserCapabilityProfile> profiles = users.stream()
+                .limit(knownCapabilityCount)
+                .map(this::profile)
+                .toList();
+        when(projectMemberRepository
+                .findByProjectIdAndActiveTrueOrderByUser_NameAscUser_EmployeeNumberAsc(1L))
+                .thenReturn(members);
+        when(capabilityProfileRepository.findAllByEmployeeNumberIn(any()))
+                .thenReturn(profiles);
+
+        return assembler.assembleForOrganizationChart(1L);
+    }
+
+    private void assertUnknownCapabilityCount(
+            PlanningResourceContextAssembler.PlanningResourceContext context,
+            long expectedCount
+    ) {
+        assertThat(context.aiRequest().projectMembers()).hasSize(8);
+        assertThat(context.aiRequest().projectMembers().stream()
+                .filter(member -> member.roles().isEmpty())
+                .count()).isEqualTo(expectedCount);
+        assertThat(context.aiRequest().projectMembers())
+                .filteredOn(member -> member.roles().isEmpty())
+                .allSatisfy(member -> assertThat(member.skills()).isEmpty());
     }
 
     private void assertApiError(String code) {

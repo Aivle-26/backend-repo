@@ -243,6 +243,7 @@ class PlanningResourceHttpClientTest {
                             "teams": [],
                             "role_gaps": [],
                             "unassigned_wbs_ids": [],
+                            "warnings": ["역량 정보가 없어 자동 배정에서 제외된 팀원이 1명 있습니다."],
                             "generated_at": "2026-08-05T10:00:00Z"
                           },
                           "file_name": "project-101-organization-chart.jpg",
