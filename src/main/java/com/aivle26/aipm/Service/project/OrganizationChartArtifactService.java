@@ -71,6 +71,7 @@ public class OrganizationChartArtifactService {
     private final DocumentObjectStorage documentObjectStorage;
     private final ArtifactVersionComparator versionComparator;
     private final TransactionTemplate transactionTemplate;
+    private final OrganizationChartRequiresNewTransactionExecutor requiresNewTransactionExecutor;
     private final ObjectMapper objectMapper;
 
     public OrganizationChartArtifactResponse generate(Long projectId) {
@@ -86,7 +87,13 @@ public class OrganizationChartArtifactService {
             Long projectId,
             boolean initialOnly
     ) {
-        artifactPolicy.ensureForProject(projectId);
+        if (initialOnly) {
+            requiresNewTransactionExecutor.execute(
+                    () -> artifactPolicy.ensureForProject(projectId)
+            );
+        } else {
+            artifactPolicy.ensureForProject(projectId);
+        }
 
         PlanningResourceContextAssembler.PlanningResourceContext context =
                 contextAssembler.assembleForOrganizationChart(projectId);
@@ -209,15 +216,25 @@ public class OrganizationChartArtifactService {
         }
 
         try {
-            PersistResult result = transactionTemplate.execute(status ->
-                    persistGeneratedArtifact(
-                            projectId,
-                            imageKey,
-                            image.length,
-                            expectedBaseVersion,
-                            initialOnly
+            PersistResult result = initialOnly
+                    ? requiresNewTransactionExecutor.execute(() ->
+                            persistGeneratedArtifact(
+                                    projectId,
+                                    imageKey,
+                                    image.length,
+                                    expectedBaseVersion,
+                                    true
+                            )
                     )
-            );
+                    : transactionTemplate.execute(status ->
+                            persistGeneratedArtifact(
+                                    projectId,
+                                    imageKey,
+                                    image.length,
+                                    expectedBaseVersion,
+                                    false
+                            )
+                    );
             if (result == null) {
                 throw new ApiException(
                         HttpStatus.INTERNAL_SERVER_ERROR,

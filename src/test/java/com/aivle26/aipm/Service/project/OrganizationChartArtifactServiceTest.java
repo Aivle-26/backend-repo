@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -71,6 +72,7 @@ class OrganizationChartArtifactServiceTest {
     @Mock private ProjectArtifactRepository artifactRepository;
     @Mock private DocumentObjectStorage documentObjectStorage;
     @Mock private TransactionTemplate transactionTemplate;
+    @Mock private OrganizationChartRequiresNewTransactionExecutor requiresNewTransactionExecutor;
     @Mock private TransactionStatus transactionStatus;
 
     private final Map<String, byte[]> storedObjects = new HashMap<>();
@@ -94,6 +96,7 @@ class OrganizationChartArtifactServiceTest {
                 documentObjectStorage,
                 new ArtifactVersionComparator(),
                 transactionTemplate,
+                requiresNewTransactionExecutor,
                 objectMapper
         );
         project = new Project();
@@ -124,6 +127,10 @@ class OrganizationChartArtifactServiceTest {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);
             return callback.doInTransaction(transactionStatus);
+        });
+        when(requiresNewTransactionExecutor.execute(any())).thenAnswer(invocation -> {
+            Supplier<?> action = invocation.getArgument(0);
+            return action.get();
         });
         doAnswer(invocation -> {
             String key = invocation.getArgument(0);
@@ -156,6 +163,18 @@ class OrganizationChartArtifactServiceTest {
         assertThat(storedObjects.keySet()).anyMatch(key -> key.endsWith(".json"));
         assertThat(storedObjects.keySet()).anyMatch(key -> key.endsWith(".jpg"));
         assertThat(storedObjects.values()).anyMatch(value -> value[0] == (byte) 0xff);
+        verify(requiresNewTransactionExecutor, never()).execute(any());
+    }
+
+    @Test
+    void automaticGenerationUsesSeparateTransactionsForPolicyAndFinalPersistence() {
+        arrangeGeneration();
+
+        service.generateInitialAutomatically(1L);
+
+        verify(requiresNewTransactionExecutor, org.mockito.Mockito.times(2)).execute(any());
+        verify(transactionTemplate, never()).execute(any());
+        verify(planningResourceClient).generateOrganizationChart(any());
     }
 
     @Test
