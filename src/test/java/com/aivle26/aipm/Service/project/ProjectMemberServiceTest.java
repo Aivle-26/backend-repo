@@ -38,6 +38,7 @@ class ProjectMemberServiceTest {
     @Mock ProjectTaskAssignmentRepository assignmentRepository;
     @Mock UserRepository userRepository;
     @Mock UserCapabilityProfileRepository capabilityProfileRepository;
+    @Mock OrganizationChartAutoGenerationService organizationChartAutoGenerationService;
     @InjectMocks ProjectMemberService service;
 
     @Test
