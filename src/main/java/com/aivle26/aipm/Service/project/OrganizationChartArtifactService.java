@@ -75,6 +75,17 @@ public class OrganizationChartArtifactService {
 
     public OrganizationChartArtifactResponse generate(Long projectId) {
         projectAuthorizationService.requireProjectPm(projectId);
+        return generateInternal(projectId, false);
+    }
+
+    OrganizationChartArtifactResponse generateInitialAutomatically(Long projectId) {
+        return generateInternal(projectId, true);
+    }
+
+    private OrganizationChartArtifactResponse generateInternal(
+            Long projectId,
+            boolean initialOnly
+    ) {
         artifactPolicy.ensureForProject(projectId);
 
         PlanningResourceContextAssembler.PlanningResourceContext context =
@@ -98,7 +109,7 @@ public class OrganizationChartArtifactService {
                 planningRequest,
                 generated.response().organization()
         );
-        return persistNewVersion(projectId, state, generated.image(), null);
+        return persistNewVersion(projectId, state, generated.image(), null, initialOnly);
     }
 
     public OrganizationChartArtifactResponse getLatest(Long projectId) {
@@ -146,7 +157,8 @@ public class OrganizationChartArtifactService {
                 projectId,
                 renderedState,
                 rendered.image(),
-                request.baseVersion()
+                request.baseVersion(),
+                false
         );
     }
 
@@ -177,7 +189,8 @@ public class OrganizationChartArtifactService {
             Long projectId,
             StoredOrganizationChart state,
             byte[] image,
-            String expectedBaseVersion
+            String expectedBaseVersion,
+            boolean initialOnly
     ) {
         byte[] stateBytes = serializeState(state);
         String objectBase = "projects/%d/artifacts/organization-chart/%s".formatted(
@@ -196,33 +209,38 @@ public class OrganizationChartArtifactService {
         }
 
         try {
-            OrganizationChartArtifactResponse saved = transactionTemplate.execute(status ->
+            PersistResult result = transactionTemplate.execute(status ->
                     persistGeneratedArtifact(
                             projectId,
                             imageKey,
                             image.length,
-                            expectedBaseVersion
+                            expectedBaseVersion,
+                            initialOnly
                     )
             );
-            if (saved == null) {
+            if (result == null) {
                 throw new ApiException(
                         HttpStatus.INTERNAL_SERVER_ERROR,
                         "ORGANIZATION_CHART_SAVE_FAILED",
                         "The organization chart could not be saved."
                 );
             }
-            return saved;
+            if (!result.created()) {
+                cleanupObjects(List.of(stateKey, imageKey));
+            }
+            return result.response();
         } catch (RuntimeException exception) {
             cleanupObjects(List.of(stateKey, imageKey));
             throw exception;
         }
     }
 
-    private OrganizationChartArtifactResponse persistGeneratedArtifact(
+    private PersistResult persistGeneratedArtifact(
             Long projectId,
             String objectKey,
             long fileSize,
-            String expectedBaseVersion
+            String expectedBaseVersion,
+            boolean initialOnly
     ) {
         Project project = projectRepository.findForUpdate(projectId)
                 .orElseThrow(() -> new ApiException(
@@ -236,6 +254,12 @@ public class OrganizationChartArtifactService {
                         projectId,
                         OrganizationChartArtifactPolicy.TYPE
                 );
+        if (initialOnly && !existing.isEmpty()) {
+            ProjectArtifact latest = existing.stream()
+                    .max(Comparator.comparing(ProjectArtifact::getVersion, versionComparator))
+                    .orElseThrow();
+            return new PersistResult(toResponse(latest), false);
+        }
         if (expectedBaseVersion != null) {
             String latest = existing.stream()
                     .map(ProjectArtifact::getVersion)
@@ -272,7 +296,13 @@ public class OrganizationChartArtifactService {
         artifact.setVersion(version);
         artifact.setApprovalStatus(ArtifactApprovalStatus.PENDING);
         ProjectArtifact savedArtifact = artifactRepository.saveAndFlush(artifact);
-        return toResponse(savedArtifact);
+        return new PersistResult(toResponse(savedArtifact), true);
+    }
+
+    private record PersistResult(
+            OrganizationChartArtifactResponse response,
+            boolean created
+    ) {
     }
 
     private PlanningResourceRecommendRequest withOrganizationMemberLabels(

@@ -8,6 +8,8 @@ import com.aivle26.aipm.Entity.user.UserSkill;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Repository.user.UserCapabilityProfileRepository;
 import com.aivle26.aipm.Repository.user.UserRepository;
+import com.aivle26.aipm.Repository.project.ProjectMemberRepository;
+import com.aivle26.aipm.Service.project.OrganizationChartAutoGenerationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,8 @@ public class UserCapabilityService {
 
     private final UserRepository userRepository;
     private final UserCapabilityProfileRepository capabilityProfileRepository;
+    private final ProjectMemberRepository projectMemberRepository;
+    private final OrganizationChartAutoGenerationService organizationChartAutoGenerationService;
 
     @Transactional
     public UserCapabilitiesResponse save(String employeeNumber, SaveUserCapabilitiesRequest request) {
@@ -51,7 +55,10 @@ public class UserCapabilityService {
         profile.setUser(user);
         profile.setRoles(new LinkedHashSet<>(roles));
         profile.setSkills(skills);
-        return toResponse(capabilityProfileRepository.save(profile));
+        UserCapabilitiesResponse response = toResponse(capabilityProfileRepository.save(profile));
+        projectMemberRepository.findActiveProjectIds(employeeNumber)
+                .forEach(organizationChartAutoGenerationService::scheduleAfterCommit);
+        return response;
     }
 
     private List<String> normalizeUnique(List<String> values, String duplicateMessage) {

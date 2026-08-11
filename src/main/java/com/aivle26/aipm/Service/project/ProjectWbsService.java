@@ -66,6 +66,7 @@ public class ProjectWbsService {
     private final ProjectScheduleRepository projectScheduleRepository;
     private final PlanningWbsClient planningWbsClient;
     private final ProjectAuthorizationService projectAuthorizationService;
+    private final OrganizationChartAutoGenerationService organizationChartAutoGenerationService;
     private final ObjectMapper objectMapper;
 
     // 확정 요구사항으로 WBS를 생성한다. 재생성 시 AI 제안만 교체하고 사용자의 최종 WBS는 유지한다.
@@ -131,6 +132,7 @@ public class ProjectWbsService {
         deleteFinalTasks(projectId);
         saveTasks(project, result, preparedTasks, true);
         projectWbsTaskRepository.flush();
+        organizationChartAutoGenerationService.scheduleAfterCommit(projectId);
         return toResponse(result);
     }
 

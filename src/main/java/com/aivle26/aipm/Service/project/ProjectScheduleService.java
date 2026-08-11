@@ -55,6 +55,7 @@ public class ProjectScheduleService {
     private final PlanningScheduleClient planningScheduleClient;
     private final PlanningAgentProperties planningAgentProperties;
     private final ProjectAuthorizationService projectAuthorizationService;
+    private final OrganizationChartAutoGenerationService organizationChartAutoGenerationService;
     private final ObjectMapper objectMapper;
 
     // 확정 WBS로 Planning AI를 호출하고 세 일정 시나리오를 원자적으로 저장한다.
@@ -228,6 +229,7 @@ public class ProjectScheduleService {
         )));
         ProjectScheduleResult savedResult = projectScheduleResultRepository.save(result);
         persistScheduleItems(savedResult, preparedSchedules, true);
+        organizationChartAutoGenerationService.scheduleAfterCommit(projectId);
         return getSchedules(projectId);
     }
 

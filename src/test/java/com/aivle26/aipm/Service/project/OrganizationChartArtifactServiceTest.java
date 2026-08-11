@@ -159,6 +159,19 @@ class OrganizationChartArtifactServiceTest {
     }
 
     @Test
+    void automaticGenerationDoesNotCreateAnotherArtifactAfterConcurrentInitialCreation() {
+        arrangeGeneration();
+        service.generate(1L);
+        int storedObjectCount = storedObjects.size();
+
+        var response = service.generateInitialAutomatically(1L);
+
+        assertThat(response.version()).isEqualTo("1.0");
+        assertThat(artifacts).hasSize(1);
+        assertThat(storedObjects).hasSize(storedObjectCount);
+    }
+
+    @Test
     void latestStructureUsesStableMemberIdentifiersAndKeepsMissingCapability() {
         arrangeGeneration();
         service.generate(1L);
