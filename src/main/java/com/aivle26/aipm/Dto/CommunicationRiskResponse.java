@@ -53,9 +53,21 @@ public record CommunicationRiskResponse(
 
     /** 아직 분석한 적 없음. 프론트는 이 상태에서 '분석 시작' 버튼을 띄운다. */
     public static CommunicationRiskResponse neverAnalyzed(Long projectId, String projectName) {
+        return empty(projectId, projectName, CommunicationAnalysisStatus.NEVER_ANALYZED);
+    }
+
+    /**
+     * 분석은 돌았지만 최근 14일 안에 메시지가 없어 판정할 게 없었음.
+     * 프론트는 '분석 시작'이 아니라 "최근 대화 없음"을 안내해야 한다.
+     */
+    public static CommunicationRiskResponse noRecentMessages(Long projectId, String projectName) {
+        return empty(projectId, projectName, CommunicationAnalysisStatus.NO_RECENT_MESSAGES);
+    }
+
+    private static CommunicationRiskResponse empty(
+            Long projectId, String projectName, CommunicationAnalysisStatus status) {
         return new CommunicationRiskResponse(
-                projectId, projectName,
-                CommunicationAnalysisStatus.NEVER_ANALYZED,
+                projectId, projectName, status,
                 null, List.of(), List.of(), null,
                 new Metrics(0, 0, null, 0),
                 null, null, null);

@@ -44,6 +44,16 @@ public class CommunicationRiskService {
     /** AI 서버가 최근 7일과 이전 7일을 비교하므로 14일치를 넘긴다. */
     private static final int ANALYSIS_WINDOW_DAYS = 14;
 
+    /**
+     * CommunicationRiskResult.recommendedAction 컬럼 길이와 반드시 같아야 한다.
+     *
+     * <p>AI 서버는 recommended_action에 길이 상한이 없다(schemas.py / llm_service.py 모두
+     * 그냥 str). LLM이 이 값을 넘기면 운영 MySQL은 STRICT 모드라 저장 시점에 예외가 나고,
+     * 잡히지 않은 채 500으로 나간다. 로컬·테스트는 H2(MODE=MySQL)라 조용히 잘려서
+     * 이 장애가 재현되지 않으므로, 코드에서 직접 막는다.
+     */
+    private static final int MAX_RECOMMENDED_ACTION_LENGTH = 1000;
+
     private final ProjectRepository projectRepository;
     private final ProjectSlackChannelRepository projectSlackChannelRepository;
     private final SlackMessageThreadRepository slackMessageThreadRepository;
@@ -89,7 +99,7 @@ public class CommunicationRiskService {
         if (messages.isEmpty()) {
             // AI 서버는 messages를 1건 이상 요구한다. 빈 채로 부르면 422가 난다.
             log.info("프로젝트 {}: 분석 창({}일) 내 메시지가 없어 분석을 건너뜀", projectId, ANALYSIS_WINDOW_DAYS);
-            return CommunicationRiskResponse.neverAnalyzed(projectId, project.getName());
+            return CommunicationRiskResponse.noRecentMessages(projectId, project.getName());
         }
 
         AiCommunicationRiskResponse aiResponse =
@@ -143,7 +153,8 @@ public class CommunicationRiskService {
         // 타입으로 변환해 camelCase로 박아야, 조회 시 EvidenceMessage로 그대로 읽힌다.
         // (변환을 안 하면 필드명이 안 맞아 조회 결과가 전부 null이 된다)
         result.setEvidenceMessagesJson(writeJson(toEvidenceMessages(ai.evidenceMessages())));
-        result.setRecommendedAction(ai.recommendedAction() == null ? "" : ai.recommendedAction());
+        result.setRecommendedAction(
+                truncate(ai.recommendedAction(), MAX_RECOMMENDED_ACTION_LENGTH, "recommendedAction"));
 
         var metrics = ai.metrics();
         result.setRecent7dMessageCount(metrics == null ? 0 : metrics.recent7dMessageCount());
@@ -206,6 +217,24 @@ public class CommunicationRiskService {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND",
                         "프로젝트를 찾을 수 없습니다."));
+    }
+
+    /**
+     * 컬럼 길이를 넘는 문자열을 잘라 저장 실패를 막는다.
+     *
+     * <p>parseEnum과 같은 방침이다. AI 서버가 예상 밖 값을 줬다고 분석 결과 전체를
+     * 버리는 것보다, 조금 잘리더라도 저장해서 화면에 띄우는 편이 낫다.
+     */
+    private String truncate(String value, int maxLength, String field) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        log.warn("AI 서버가 {} 컬럼 한도({}자)를 넘는 값을 반환해 잘라 저장한다: {}자",
+                field, maxLength, value.length());
+        return value.substring(0, maxLength);
     }
 
     /** AI 서버가 예상 밖 문자열을 주더라도 500으로 죽지 않도록 기본값으로 흡수한다. */
