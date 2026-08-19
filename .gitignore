@@ -48,3 +48,17 @@ vite-dev.log
 
 # 프론트 전달용 로컬 API 명세서
 /docs/frontend-kosa-cost-api-integration.md
+
+# Codex 임시 산출물
+/.codex-tmp/
+
+# 로컬 설계 문서 및 이미지
+/docs/ERD.md
+/docs/PMate_ERD_Names_Only.png
+/docs/PMate_ERD_Overview.svg
+
+# 로컬 발표 자료 및 렌더링 결과
+/docs/PMate_10min_Presentation_Script.md
+/docs/PMate_Final_10min_Presentation.pptx
+/docs/PMate_Final_10min_Script.md
+/tmp/

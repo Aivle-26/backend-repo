@@ -70,7 +70,10 @@ public record PlanningWbsGenerationResponse(
             List<RelatedArtifact> relatedArtifacts,
 
             @JsonProperty("completion_criteria")
-            List<String> completionCriteria
+            List<String> completionCriteria,
+
+            @JsonProperty("required_skills")
+            List<String> requiredSkills
     ) {
         public WbsItem(
                 Long wbsId,
@@ -84,7 +87,24 @@ public record PlanningWbsGenerationResponse(
                 List<Long> mappedRequirementIds
         ) {
             this(wbsId, wbsCode, parentWbsId, level, sortOrder, itemType, wbsName,
-                    description, mappedRequirementIds, List.of(), List.of());
+                    description, mappedRequirementIds, List.of(), List.of(), List.of());
+        }
+
+        public WbsItem(
+                Long wbsId,
+                String wbsCode,
+                Long parentWbsId,
+                Integer level,
+                Integer sortOrder,
+                String itemType,
+                String wbsName,
+                String description,
+                List<Long> mappedRequirementIds,
+                List<RelatedArtifact> relatedArtifacts,
+                List<String> completionCriteria
+        ) {
+            this(wbsId, wbsCode, parentWbsId, level, sortOrder, itemType, wbsName,
+                    description, mappedRequirementIds, relatedArtifacts, completionCriteria, List.of());
         }
     }
 
