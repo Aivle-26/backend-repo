@@ -458,7 +458,7 @@ public class ProjectWbsService {
                     requireNativeText(item.wbsName(), "wbs_name", 200),
                     requireNativeText(item.description(), "description", 2000),
                     phase.name(),
-                    requiredSkills(phase).stream().map(Enum::name).toList(),
+                    resolveRequiredSkills(item, phase),
                     difficulty.name(),
                     estimatedHours,
                     index,
@@ -681,6 +681,31 @@ public class ProjectWbsService {
             case TEST -> Set.of(WbsSkill.TESTING);
             case DEPLOYMENT, OPERATION -> Set.of(WbsSkill.DEVOPS);
         };
+    }
+
+    private List<String> resolveRequiredSkills(
+            PlanningWbsGenerationResponse.WbsItem item,
+            WbsPhase phase
+    ) {
+        List<String> aiSkills = item.requiredSkills();
+        if (aiSkills != null && !aiSkills.isEmpty()) {
+            LinkedHashSet<String> normalized = new LinkedHashSet<>();
+            boolean valid = true;
+            for (String value : aiSkills) {
+                try {
+                    normalized.add(WbsSkill.valueOf(value == null
+                            ? ""
+                            : value.trim().toUpperCase(Locale.ROOT)).name());
+                } catch (IllegalArgumentException exception) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid && !normalized.isEmpty()) {
+                return List.copyOf(normalized);
+            }
+        }
+        return requiredSkills(phase).stream().map(Enum::name).toList();
     }
 
     private String externalTaskId(Long wbsId) {

@@ -14,6 +14,7 @@ import com.aivle26.aipm.Entity.project.ProjectRequirement;
 import com.aivle26.aipm.Entity.project.ProjectRequiredArtifact;
 import com.aivle26.aipm.Entity.project.ProjectWbsResult;
 import com.aivle26.aipm.Entity.project.RequirementStatus;
+import com.aivle26.aipm.Entity.project.WbsSkill;
 import com.aivle26.aipm.Entity.user.User;
 import com.aivle26.aipm.Entity.user.UserStatus;
 import com.aivle26.aipm.Exception.ApiException;
@@ -198,7 +199,10 @@ class ProjectWbsServiceTest {
                                         "TASK",
                                         "문서 업로드 분석",
                                         "프로젝트 문서를 분석한다.",
-                                        List.of(requirement.getId())
+                                        List.of(requirement.getId()),
+                                        List.of(),
+                                        List.of(),
+                                        List.of("BACKEND_DEVELOPMENT")
                                 )
                         ),
                         List.of(),
@@ -218,6 +222,8 @@ class ProjectWbsServiceTest {
                 .isEqualTo("WBS-2");
         assertThat(response.aiSuggestionTasks().get(2).phase().name())
                 .isEqualTo("ANALYSIS");
+        assertThat(response.aiSuggestionTasks().get(2).requiredSkills())
+                .containsExactly(WbsSkill.BACKEND_DEVELOPMENT);
         assertThat(response.aiSuggestionTasks().get(2).estimatedHours())
                 .isEqualTo(24);
         assertThat(response.finalTasks()).hasSize(3);
