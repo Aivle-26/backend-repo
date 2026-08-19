@@ -25,6 +25,8 @@ import com.aivle26.aipm.Dto.project.SaveScheduleResultRequest;
 import com.aivle26.aipm.Dto.project.SaveScheduleResultResponse;
 import com.aivle26.aipm.Dto.project.SaveWbsResultRequest;
 import com.aivle26.aipm.Dto.project.SaveWbsResultResponse;
+import com.aivle26.aipm.Dto.project.WbsGenerationStartResponse;
+import com.aivle26.aipm.Dto.project.WbsGenerationStatusResponse;
 import com.aivle26.aipm.Exception.ApiException;
 import com.aivle26.aipm.Dto.ProjectArtifactStatusResponse;
 import com.aivle26.aipm.Service.ProjectArtifactStatusService;
@@ -42,6 +44,7 @@ import com.aivle26.aipm.Service.project.ProjectLifecycleService;
 import com.aivle26.aipm.Service.project.ProjectScheduleService;
 import com.aivle26.aipm.Service.project.ProjectService;
 import com.aivle26.aipm.Service.project.ProjectWbsService;
+import com.aivle26.aipm.Service.project.ProjectWbsGenerationService;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
@@ -81,6 +84,7 @@ public class ProjectController {
     private final ProjectDocumentExtractService projectDocumentExtractService;
     private final ProjectDocumentAnalysisService projectDocumentAnalysisService;
     private final ProjectWbsService projectWbsService;
+    private final ProjectWbsGenerationService projectWbsGenerationService;
     private final ProjectScheduleService projectScheduleService;
     private final AssignmentRecommendationService assignmentRecommendationService;
     private final CostEstimateService costEstimateService;
@@ -217,12 +221,33 @@ public class ProjectController {
                 .body(projectDocumentAnalysisService.saveAnalysisResult(projectId, request));
     }
 
-    // 프로젝트의 확정 요구사항을 AI Server에 전달하고 생성된 WBS를 즉시 저장한다.
+    // WBS 생성 작업을 등록하고 AI 응답을 기다리지 않은 채 작업 식별자를 반환한다.
     @PostMapping("/{projectId}/wbs/generate")
     @PreAuthorize("hasRole('PM')")
-    public ResponseEntity<ProjectWbsResponse> generateWbs(@PathVariable Long projectId) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(projectWbsService.generateWbs(projectId));
+    public ResponseEntity<WbsGenerationStartResponse> generateWbs(@PathVariable Long projectId) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(projectWbsGenerationService.startGeneration(projectId));
+    }
+
+    // 프론트가 폴링할 수 있도록 지정한 WBS 생성 작업의 현재 상태를 반환한다.
+    @GetMapping("/{projectId}/wbs/generations/{generationId}")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<WbsGenerationStatusResponse> getWbsGeneration(
+            @PathVariable Long projectId,
+            @PathVariable String generationId
+    ) {
+        return ResponseEntity.ok(
+                projectWbsGenerationService.getGeneration(projectId, generationId)
+        );
+    }
+
+    // 페이지 재진입 시 상태를 복원할 수 있도록 프로젝트의 최신 생성 작업을 반환한다.
+    @GetMapping("/{projectId}/wbs/generations/latest")
+    @PreAuthorize("hasRole('PM')")
+    public ResponseEntity<WbsGenerationStatusResponse> getLatestWbsGeneration(
+            @PathVariable Long projectId
+    ) {
+        return ResponseEntity.ok(projectWbsGenerationService.getLatestGeneration(projectId));
     }
 
     // AI Server가 전달한 WBS 결과를 프로젝트에 저장하고 저장 결과를 반환한다.

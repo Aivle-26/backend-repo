@@ -82,6 +82,26 @@ public class ProjectWbsService {
         return toResponse(savedResult);
     }
 
+    // 백그라운드 AI 호출 전에 필요한 프로젝트·확정 요구사항을 짧은 조회 트랜잭션에서 조립한다.
+    @Transactional(readOnly = true)
+    public PlanningWbsGenerationRequest prepareGenerationRequest(Long projectId) {
+        Project project = getDraftProject(projectId);
+        return toGenerationRequest(project, getConfirmedRequirements(projectId));
+    }
+
+    // 백그라운드 AI 응답을 현재 프로젝트 요구사항 기준으로 검증하고 원자적으로 저장한다.
+    @Transactional
+    public Long saveGeneratedWbs(
+            Long projectId,
+            PlanningWbsGenerationResponse nativeResult
+    ) {
+        Project project = getDraftProject(projectId);
+        List<ProjectRequirement> requirements = getConfirmedRequirements(projectId);
+        Map<Long, ProjectRequirement> requirementById = toRequirementMap(requirements);
+        SaveWbsResultRequest aiResult = toSaveWbsResult(nativeResult, requirementById);
+        return saveWbsSuggestion(project, aiResult, requirementById, nativeResult).getId();
+    }
+
     // AI Server가 전달한 WBS만 저장한다. 기존 결과가 있으면 AI 제안만 교체하고 최종 WBS는 보존한다.
     @Transactional
     public SaveWbsResultResponse saveWbsResult(Long projectId, SaveWbsResultRequest request) {
