@@ -2,18 +2,24 @@ package com.aivle26.aipm.client.ai;
 
 import com.aivle26.aipm.Config.ai.PlanningAgentProperties;
 import com.aivle26.aipm.Dto.project.OrganizationChartGenerateRequest;
+import com.aivle26.aipm.Dto.project.OrganizationChartGenerateResponse;
+import com.aivle26.aipm.Dto.project.OrganizationChartRenderRequest;
 import com.aivle26.aipm.Dto.project.PlanningResourceRecommendRequest;
 import com.aivle26.aipm.Dto.project.UiMockupGenerateRequest;
 import com.aivle26.aipm.Exception.ApiException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.List;
 
@@ -33,6 +39,9 @@ class PlanningResourceHttpClientTest {
         properties.setResourcePath("/api/v1/planning/resources/recommend");
         properties.setOrganizationChartPath(
                 "/api/v1/planning/resources/organization-chart/generate"
+        );
+        properties.setOrganizationChartRenderPath(
+                "/api/v1/planning/resources/organization-chart/render"
         );
         properties.setUiMockupPath("/api/v1/planning/ui-mockup/generate");
         properties.setUiMockupAssessmentPath("/api/v1/planning/ui-mockup/assess");
@@ -97,6 +106,78 @@ class PlanningResourceHttpClientTest {
     }
 
     @Test
+    void rendersExistingOrganizationWithoutChangingStructuredData() throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueOrganizationChart(Base64.getEncoder().encodeToString(jpeg));
+        var generated = client.generateOrganizationChart(organizationRequest());
+        server.takeRequest();
+        enqueueOrganizationChart(Base64.getEncoder().encodeToString(jpeg));
+
+        var rendered = client.renderOrganizationChart(
+                new OrganizationChartRenderRequest(
+                        organizationRequest().planningRequest(),
+                        generated.response().organization()
+                )
+        );
+        var recorded = server.takeRequest();
+
+        assertThat(recorded.getPath()).isEqualTo(
+                "/api/v1/planning/resources/organization-chart/render"
+        );
+        assertThat(recorded.getBody().readUtf8())
+                .contains("\"organization\"")
+                .contains("\"planning_request\"");
+        assertThat(rendered.response().organization())
+                .isEqualTo(generated.response().organization());
+        assertThat(rendered.image()).containsExactly(jpeg);
+    }
+
+    @Test
+    void acceptsRenderedOrganizationWhenOnlyTimestampPrecisionChanges() throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        var expected = organizationView("2026-08-11T13:47:06.123456789Z");
+        var actual = organizationView("2026-08-11T13:47:06.123456Z");
+        enqueueOrganizationChart(actual, Base64.getEncoder().encodeToString(jpeg));
+
+        var rendered = client.renderOrganizationChart(new OrganizationChartRenderRequest(
+                organizationRequest().planningRequest(),
+                expected
+        ));
+
+        assertThat(rendered.response().organization().generatedAt())
+                .isEqualTo(actual.generatedAt());
+        assertThat(rendered.image()).containsExactly(jpeg);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "reportsTo",
+            "memberId",
+            "assignedWbsIds",
+            "primaryRoles",
+            "projectManager"
+    })
+    void rejectsRenderedOrganizationWhenSemanticDataChanges(String changedField) throws Exception {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        var expected = organizationView("2026-08-11T13:47:06.123456789Z");
+        var actual = changedOrganization(
+                organizationView("2026-08-11T13:47:06.123456Z"),
+                changedField
+        );
+        enqueueOrganizationChart(actual, Base64.getEncoder().encodeToString(jpeg));
+
+        assertThatThrownBy(() -> client.renderOrganizationChart(
+                new OrganizationChartRenderRequest(
+                        organizationRequest().planningRequest(),
+                        expected
+                )
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_ORGANIZATION_CHART_RESPONSE");
+    }
+
+    @Test
     void rejectsInvalidOrganizationChartBase64() {
         enqueueOrganizationChart("%%%not-base64%%%");
 
@@ -136,10 +217,11 @@ class PlanningResourceHttpClientTest {
         assertApiError("ORGANIZATION_CHART_AI_UNAVAILABLE");
     }
 
-    @Test
-    void decodesValidUiMockupJpegAndUsesContractPath() throws Exception {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 3, 4, 11, 12})
+    void decodesValidUiMockupJpegAndUsesContractPath(int screenCount) throws Exception {
         byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
-        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg));
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg), screenCount);
 
         var response = client.generateUiMockup(uiMockupRequest());
         var recorded = server.takeRequest();
@@ -149,6 +231,28 @@ class PlanningResourceHttpClientTest {
                 .contains("\"project_title\":\"Test Project\"")
                 .contains("\"confirmed_requirements\"");
         assertThat(response.image()).containsExactly(jpeg);
+    }
+
+    @Test
+    void rejectsUiMockupWithEmptyScreens() {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg), 0);
+
+        assertThatThrownBy(() -> client.generateUiMockup(uiMockupRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_UI_MOCKUP_RESPONSE");
+    }
+
+    @Test
+    void rejectsUiMockupWithMoreThanTwelveScreens() {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00};
+        enqueueUiMockup(Base64.getEncoder().encodeToString(jpeg), 13);
+
+        assertThatThrownBy(() -> client.generateUiMockup(uiMockupRequest()))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_UI_MOCKUP_RESPONSE");
     }
 
     @Test
@@ -218,6 +322,7 @@ class PlanningResourceHttpClientTest {
                             "teams": [],
                             "role_gaps": [],
                             "unassigned_wbs_ids": [],
+                            "warnings": ["역량 정보가 없어 자동 배정에서 제외된 팀원이 1명 있습니다."],
                             "generated_at": "2026-08-05T10:00:00Z"
                           },
                           "file_name": "project-101-organization-chart.jpg",
@@ -229,7 +334,110 @@ class PlanningResourceHttpClientTest {
                         """.formatted(imageBase64)));
     }
 
+    private void enqueueOrganizationChart(
+            OrganizationChartGenerateResponse.OrganizationView organization,
+            String imageBase64
+    ) throws Exception {
+        var response = new OrganizationChartGenerateResponse(
+                organization,
+                "project-101-organization-chart.jpg",
+                "image/jpeg",
+                imageBase64,
+                1200,
+                900
+        );
+        String body = new ObjectMapper()
+                .findAndRegisterModules()
+                .writeValueAsString(response);
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(body));
+    }
+
+    private OrganizationChartGenerateResponse.OrganizationView organizationView(
+            String generatedAt
+    ) {
+        var team = new OrganizationChartGenerateResponse.OrganizationTeam(
+                "delivery",
+                "Delivery Team",
+                1L,
+                List.of(1L, 2L),
+                List.of("PROJECT_MANAGER", "BACKEND_DEVELOPER"),
+                List.of("DEVOPS_ENGINEER"),
+                List.of(3L, 4L),
+                "PM",
+                List.of("quality"),
+                List.of(1L)
+        );
+        var roleGap = new OrganizationChartGenerateResponse.OrganizationRoleGap(
+                "QA_ENGINEER",
+                1,
+                List.of(9L)
+        );
+        return new OrganizationChartGenerateResponse.OrganizationView(
+                101L,
+                1L,
+                List.of(team),
+                List.of(roleGap),
+                List.of(9L),
+                List.of("QA 역할 추가 인력 권장"),
+                OffsetDateTime.parse(generatedAt)
+        );
+    }
+
+    private OrganizationChartGenerateResponse.OrganizationView changedOrganization(
+            OrganizationChartGenerateResponse.OrganizationView organization,
+            String changedField
+    ) {
+        if ("projectManager".equals(changedField)) {
+            return new OrganizationChartGenerateResponse.OrganizationView(
+                    organization.projectId(),
+                    999L,
+                    organization.teams(),
+                    organization.roleGaps(),
+                    organization.unassignedWbsIds(),
+                    organization.warnings(),
+                    organization.generatedAt()
+            );
+        }
+
+        var team = organization.teams().get(0);
+        var changedTeam = new OrganizationChartGenerateResponse.OrganizationTeam(
+                team.teamId(),
+                team.teamName(),
+                team.leaderMemberId(),
+                "memberId".equals(changedField) ? List.of(1L, 999L) : team.memberIds(),
+                "primaryRoles".equals(changedField)
+                        ? List.of("PROJECT_MANAGER", "QA_ENGINEER")
+                        : team.primaryRoles(),
+                team.secondaryRoles(),
+                "assignedWbsIds".equals(changedField)
+                        ? List.of(3L, 999L)
+                        : team.assignedWbsIds(),
+                "reportsTo".equals(changedField) ? "changed-parent" : team.reportsTo(),
+                team.collaboratesWith(),
+                team.multiRoleMembers()
+        );
+        return new OrganizationChartGenerateResponse.OrganizationView(
+                organization.projectId(),
+                organization.projectManager(),
+                List.of(changedTeam),
+                organization.roleGaps(),
+                organization.unassignedWbsIds(),
+                organization.warnings(),
+                organization.generatedAt()
+        );
+    }
+
     private void enqueueUiMockup(String imageBase64) {
+        enqueueUiMockup(imageBase64, 1);
+    }
+
+    private void enqueueUiMockup(String imageBase64, int screenCount) {
+        String screens = String.join(",", java.util.Collections.nCopies(
+                screenCount,
+                "{\"screen_name\":\"Dashboard\"}"
+        ));
         server.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
                 .setBody("""
@@ -238,7 +446,7 @@ class PlanningResourceHttpClientTest {
                           "mockup": {
                             "project_title": "Test Project",
                             "design_summary": "Summary",
-                            "screens": [{"screen_name": "Dashboard"}]
+                            "screens": [%s]
                           },
                           "file_name": "project-101-ui-mockup.jpg",
                           "content_type": "image/jpeg",
@@ -246,7 +454,7 @@ class PlanningResourceHttpClientTest {
                           "width": 1920,
                           "height": 1080
                         }
-                        """.formatted(imageBase64)));
+                        """.formatted(screens, imageBase64)));
     }
 
     private void assertApiError(String code) {

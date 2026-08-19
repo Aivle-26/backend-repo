@@ -19,6 +19,7 @@ import com.aivle26.aipm.Repository.project.ProjectScheduleScenarioRepository;
 import com.aivle26.aipm.Repository.project.ProjectTaskAssignmentRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsResultRepository;
 import com.aivle26.aipm.Repository.project.ProjectWbsTaskRepository;
+import com.aivle26.aipm.Repository.project.ProjectWbsGenerationRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumSubmissionRepository;
 import com.aivle26.aipm.Repository.project.WeeklyScrumReportRepository;
 import com.aivle26.aipm.Repository.CommunicationRiskResultRepository;
@@ -47,6 +48,7 @@ public class ProjectService {
     private final ProjectPlanningExtractionRepository projectPlanningExtractionRepository;
     private final ProjectWbsTaskRepository projectWbsTaskRepository;
     private final ProjectWbsResultRepository projectWbsResultRepository;
+    private final ProjectWbsGenerationRepository projectWbsGenerationRepository;
     private final ProjectScheduleRepository projectScheduleRepository;
     private final ProjectScheduleResultRepository projectScheduleResultRepository;
     private final ProjectScheduleScenarioRepository projectScheduleScenarioRepository;
@@ -128,6 +130,7 @@ public class ProjectService {
         projectWbsTaskRepository.clearParentTasksByProjectId(projectId);
         projectWbsTaskRepository.deleteAllByProjectId(projectId);
         projectWbsResultRepository.deleteAllByProjectId(projectId);
+        projectWbsGenerationRepository.deleteAllByProjectId(projectId);
 
         projectPlanningExtractionRepository.deleteAllByProjectId(projectId);
         projectKeyFeatureRepository.deleteAllByProjectId(projectId);

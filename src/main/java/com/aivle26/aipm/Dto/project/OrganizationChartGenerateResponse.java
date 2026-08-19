@@ -19,6 +19,7 @@ public record OrganizationChartGenerateResponse(
             List<OrganizationTeam> teams,
             @JsonProperty("role_gaps") List<OrganizationRoleGap> roleGaps,
             @JsonProperty("unassigned_wbs_ids") List<Long> unassignedWbsIds,
+            List<String> warnings,
             @JsonProperty("generated_at") OffsetDateTime generatedAt
     ) {
     }

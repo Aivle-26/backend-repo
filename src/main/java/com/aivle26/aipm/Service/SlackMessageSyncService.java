@@ -36,6 +36,17 @@ public class SlackMessageSyncService {
     /** <@U12345> 형태의 멘션 */
     private static final Pattern MENTION_PATTERN = Pattern.compile("<@[UW][A-Z0-9]+>");
 
+    /**
+     * SlackMessageThread의 가변 길이 컬럼 한도. 엔티티의 @Column(length=...)와 같아야 한다.
+     *
+     * <p>운영 MySQL은 STRICT 모드라 초과분이 예외로 터지지만, 로컬·테스트는
+     * H2(MODE=MySQL)라 조용히 잘려서 재현되지 않는다. 그래서 코드에서 막는다.
+     * channelId·slackTs·userId·threadTs는 Slack이 형식을 보장하는 짧은 식별자라
+     * 자르지 않는다. 자르면 오히려 중복 방지 UK가 깨진다.
+     */
+    private static final int MAX_CHANNEL_NAME_LENGTH = 200;
+    private static final int MAX_REACTION_SUMMARY_LENGTH = 500;
+
     private final SlackClient slackClient;
     private final ProjectSlackChannelRepository projectSlackChannelRepository;
     private final SlackMessageThreadRepository slackMessageThreadRepository;
@@ -101,7 +112,7 @@ public class SlackMessageSyncService {
     private SlackMessageThread toEntity(ProjectSlackChannel channel, Message message) {
         SlackMessageThread entity = new SlackMessageThread();
         entity.setChannelId(channel.getChannelId());
-        entity.setChannelName(channel.getChannelName());
+        entity.setChannelName(truncate(channel.getChannelName(), MAX_CHANNEL_NAME_LENGTH, "channelName"));
         entity.setSlackTs(message.getTs());
         entity.setMessageTs(toDateTime(message.getTs()));
         entity.setThreadTs(message.getThreadTs());
@@ -109,9 +120,19 @@ public class SlackMessageSyncService {
         entity.setMessageText(message.getText());
         entity.setReplyCount(message.getReplyCount() == null ? 0 : message.getReplyCount());
         entity.setMentionCount(countMentions(message.getText()));
-        entity.setReactionSummary(summarizeReactions(message));
+        entity.setReactionSummary(
+                truncate(summarizeReactions(message), MAX_REACTION_SUMMARY_LENGTH, "reactionSummary"));
         entity.setFileCount(message.getFiles() == null ? 0 : message.getFiles().size());
         return entity;
+    }
+
+    /** 컬럼 길이를 넘는 값을 잘라 수집 전체가 실패하는 것을 막는다. */
+    private String truncate(String value, int maxLength, String field) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        log.warn("Slack {} 값이 컬럼 한도({}자)를 넘어 잘라 저장한다: {}자", field, maxLength, value.length());
+        return value.substring(0, maxLength);
     }
 
     /** Slack ts는 "1720000000.123456" 형태의 epoch 초 문자열이다. */

@@ -39,6 +39,7 @@ public class ProjectMemberService {
     private final ProjectTaskAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
     private final UserCapabilityProfileRepository capabilityProfileRepository;
+    private final OrganizationChartAutoGenerationService organizationChartAutoGenerationService;
 
     @Transactional
     public List<ProjectMemberResponse> replaceMembers(
@@ -86,6 +87,7 @@ public class ProjectMemberService {
             changed.add(member);
         }
         projectMemberRepository.saveAll(changed);
+        organizationChartAutoGenerationService.scheduleAfterCommit(projectId);
         return getMembers(projectId);
     }
 

@@ -1,6 +1,7 @@
 package com.aivle26.aipm.Exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -16,6 +17,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -76,10 +78,19 @@ public class GlobalExceptionHandler {
         ));
     }
 
-    // 처리되지 않은 예외의 내부 정보를 숨기고 공통 500 응답을 반환한다.
+    /**
+     * 처리되지 않은 예외의 내부 정보를 숨기고 공통 500 응답을 반환한다.
+     *
+     * <p>응답 본문은 "internal server error"로 고정이라 클라이언트만 봐서는 원인을 알 수 없다.
+     * 그래서 스택트레이스를 반드시 여기서 남긴다. 로깅이 없으면 운영 500을 코드 정독으로
+     * 추측해야 하고, 로컬(H2 + ddl-auto=create-drop)에서 재현되지 않는 종류의 장애는
+     * 사실상 진단이 불가능해진다.
+     */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnexpectedException(Exception exception) {
+    public ResponseEntity<ErrorResponse> handleUnexpectedException(
+            Exception exception, HttpServletRequest request) {
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+        log.error("처리되지 않은 예외: {} {}", request.getMethod(), request.getRequestURI(), exception);
         return ResponseEntity.status(status).body(new ErrorResponse(
                 LocalDateTime.now(),
                 status.value(),
