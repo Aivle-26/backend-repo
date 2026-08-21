@@ -1,0 +1,204 @@
+package com.aivle26.aipm.client.ai;
+
+import com.aivle26.aipm.Config.ai.AiServerProperties;
+import com.aivle26.aipm.Exception.ApiException;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.RestClient;
+
+import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class AiServerDocumentExtractClientTest {
+    private MockWebServer mockWebServer;
+    private Path tempDirectory;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        mockWebServer = new MockWebServer();
+        mockWebServer.start();
+        tempDirectory = Files.createTempDirectory("ai-server-client-test");
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        mockWebServer.shutdown();
+        if (tempDirectory != null) {
+            try (var paths = Files.walk(tempDirectory)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        }
+    }
+
+    @Test
+    void relaysStoredFilesToAiServer() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"llm_status":"FALLBACK","documents":[{"file_name":"project-rfp.pdf"}]}
+                        """));
+
+        AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 5, 5);
+        StoredDocumentFile first = createStoredFile("project-rfp.pdf", "application/pdf", "one");
+        StoredDocumentFile second = createStoredFile(
+                "project-proposal.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "two"
+        );
+
+        AiServerJsonResponse response = client.extractDocuments(List.of(first, second));
+        RecordedRequest recordedRequest = mockWebServer.takeRequest(5, TimeUnit.SECONDS);
+
+        assertThat(response.status().value()).isEqualTo(200);
+        assertThat(response.body().get("llm_status").asText()).isEqualTo("FALLBACK");
+        assertThat(recordedRequest).isNotNull();
+        assertThat(recordedRequest.getMethod()).isEqualTo("POST");
+        assertThat(recordedRequest.getPath()).isEqualTo("/api/v1/planning/documents/extract");
+        assertThat(recordedRequest.getHeader("Content-Type")).startsWith("multipart/form-data;");
+
+        String body = recordedRequest.getBody().readUtf8();
+        assertThat(body).contains("name=\"files\"; filename=\"project-rfp.pdf\"");
+        assertThat(body).contains("name=\"files\"; filename=\"project-proposal.docx\"");
+        assertThat(body.indexOf("project-rfp.pdf")).isLessThan(body.indexOf("project-proposal.docx"));
+        assertThat(countOccurrences(body, "name=\"files\"")).isEqualTo(2);
+    }
+
+    @Test
+    void translatesAiServerPayloadTooLarge() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(413)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"detail":"File is too large."}
+                        """));
+
+        AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 5, 5);
+        StoredDocumentFile file = createStoredFile("large.txt", "text/plain", "content");
+
+        assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(exception -> {
+                    ApiException apiException = (ApiException) exception;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+                    assertThat(apiException.getCode()).isEqualTo("AI_SERVER_PAYLOAD_TOO_LARGE");
+                    assertThat(apiException.getMessage()).contains("File is too large.");
+                });
+    }
+
+    @Test
+    void translatesAiServerValidationFailure() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(422)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"detail":"Unsupported file extension."}
+                        """));
+
+        AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 5, 5);
+        StoredDocumentFile file = createStoredFile("bad.exe", "application/octet-stream", "content");
+
+        assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(exception -> {
+                    ApiException apiException = (ApiException) exception;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(apiException.getCode()).isEqualTo("AI_SERVER_VALIDATION_FAILED");
+                    assertThat(apiException.getMessage()).contains("Unsupported file extension.");
+                });
+    }
+
+    @Test
+    void returnsUnavailableWhenConnectionFails() throws Exception {
+        int unusedPort;
+        try (ServerSocket socket = new ServerSocket(0)) {
+            unusedPort = socket.getLocalPort();
+        }
+
+        AiServerDocumentExtractClient client = createClient("http://127.0.0.1:" + unusedPort, 1, 1);
+        StoredDocumentFile file = createStoredFile("sample.txt", "text/plain", "content");
+
+        assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(exception -> {
+                    ApiException apiException = (ApiException) exception;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("AI_SERVER_UNAVAILABLE");
+                });
+    }
+
+    @Test
+    void returnsTimeoutWhenAiServerDoesNotRespond() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setHeadersDelay(2, TimeUnit.SECONDS)
+                .setBody("{}"));
+
+        AiServerDocumentExtractClient client = createClient(mockWebServer.url("/").toString(), 1, 1);
+        StoredDocumentFile file = createStoredFile("sample.txt", "text/plain", "content");
+
+        assertThatThrownBy(() -> client.extractDocuments(List.of(file)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(exception -> {
+                    ApiException apiException = (ApiException) exception;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+                    assertThat(apiException.getCode()).isEqualTo("AI_SERVER_TIMEOUT");
+                });
+    }
+
+    private AiServerDocumentExtractClient createClient(String baseUrl, int connectTimeoutSeconds, int readTimeoutSeconds) {
+        AiServerProperties properties = new AiServerProperties();
+        properties.setBaseUrl(baseUrl);
+        properties.setDocumentExtractPath("/api/v1/planning/documents/extract");
+        properties.setConnectTimeoutSeconds(connectTimeoutSeconds);
+        properties.setResponseTimeoutSeconds(readTimeoutSeconds);
+
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeoutSeconds * 1000);
+        requestFactory.setReadTimeout(readTimeoutSeconds * 1000);
+
+        RestClient restClient = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
+                .build();
+
+        return new AiServerDocumentExtractClient(restClient, properties, new ObjectMapper());
+    }
+
+    private StoredDocumentFile createStoredFile(String fileName, String contentType, String content) throws Exception {
+        Path path = tempDirectory.resolve(fileName);
+        Files.writeString(path, content);
+        return new StoredDocumentFile(fileName, contentType, Files.size(path), Files.readAllBytes(path));
+    }
+
+    private long countOccurrences(String body, String token) {
+        Pattern pattern = Pattern.compile(Pattern.quote(token));
+        Matcher matcher = pattern.matcher(body);
+        long count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+}

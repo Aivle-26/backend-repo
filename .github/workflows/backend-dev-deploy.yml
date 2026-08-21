@@ -1,0 +1,228 @@
+name: Backend Dev Deploy
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-dev-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and Deploy to EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/dev'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x gradlew
+
+      - name: Test and build backend
+        run: |
+          GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx512m" \
+            ./gradlew clean test bootJar --no-daemon --max-workers=1
+
+      - name: Select executable Spring Boot jar
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t jars < <(
+            find build/libs -maxdepth 1 -type f \
+              -name "*.jar" \
+              ! -name "*plain.jar" \
+              ! -name "*sources.jar" \
+              ! -name "*javadoc.jar" \
+              ! -name "*test*.jar" \
+              ! -name "*tests*.jar" \
+              | sort
+          )
+
+          if [[ "${#jars[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one executable jar, found %s\n' "${#jars[@]}" >&2
+            printf '%s\n' "${jars[@]}" >&2
+            exit 1
+          fi
+
+          jar_listing="$RUNNER_TEMP/aipm-backend-jar-contents.txt"
+          jar tf "${jars[0]}" > "$jar_listing"
+          grep -Fxq "BOOT-INF/classes/" "$jar_listing"
+          grep -Fxq "BOOT-INF/lib/" "$jar_listing"
+          rm -f "$jar_listing"
+
+          echo "path=${jars[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH files
+        id: ssh
+        shell: bash
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${EC2_SSH_KEY}" || -z "${EC2_KNOWN_HOSTS}" ]]; then
+            echo "EC2_SSH_KEY and EC2_KNOWN_HOSTS secrets are required" >&2
+            exit 1
+          fi
+
+          key_file="$RUNNER_TEMP/aipm-ec2-key"
+          known_hosts_file="$RUNNER_TEMP/aipm-known-hosts"
+
+          umask 077
+          printf '%s\n' "${EC2_SSH_KEY}" > "$key_file"
+          printf '%s\n' "${EC2_KNOWN_HOSTS}" > "$known_hosts_file"
+          chmod 600 "$key_file"
+
+          echo "key_file=$key_file" >> "$GITHUB_OUTPUT"
+          echo "known_hosts_file=$known_hosts_file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload deployment files to EC2
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY_FILE: ${{ steps.ssh.outputs.key_file }}
+          KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
+          LOCAL_ARTIFACT: ${{ steps.artifact.outputs.path }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${EC2_HOST}" || -z "${EC2_USER}" ]]; then
+            echo "EC2_HOST and EC2_USER secrets are required" >&2
+            exit 1
+          fi
+
+          remote_artifact="/tmp/aipm-backend-${GITHUB_SHA}.jar"
+          remote_deploy_script="/tmp/deploy-backend-${GITHUB_SHA}.sh"
+          remote_health_script="/tmp/aipm-backend-health-${GITHUB_SHA}.sh"
+          remote_systemd_unit="/tmp/aipm-backend-service-${GITHUB_SHA}.service"
+
+          echo "REMOTE_ARTIFACT=${remote_artifact}" >> "$GITHUB_ENV"
+          echo "REMOTE_DEPLOY_SCRIPT=${remote_deploy_script}" >> "$GITHUB_ENV"
+          echo "REMOTE_HEALTH_SCRIPT=${remote_health_script}" >> "$GITHUB_ENV"
+          echo "REMOTE_SYSTEMD_UNIT=${remote_systemd_unit}" >> "$GITHUB_ENV"
+
+          scp \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            "$LOCAL_ARTIFACT" \
+            "${EC2_USER}@${EC2_HOST}:${remote_artifact}"
+
+          scp \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            scripts/deploy-backend.sh \
+            "${EC2_USER}@${EC2_HOST}:${remote_deploy_script}"
+
+          scp \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            scripts/health-check.sh \
+            "${EC2_USER}@${EC2_HOST}:${remote_health_script}"
+
+          scp \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            deploy/systemd/aipm-backend.service \
+            "${EC2_USER}@${EC2_HOST}:${remote_systemd_unit}"
+
+      - name: Deploy on EC2
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY_FILE: ${{ steps.ssh.outputs.key_file }}
+          KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            "${EC2_USER}@${EC2_HOST}" \
+            "REMOTE_ARTIFACT='${REMOTE_ARTIFACT}' REMOTE_DEPLOY_SCRIPT='${REMOTE_DEPLOY_SCRIPT}' REMOTE_HEALTH_SCRIPT='${REMOTE_HEALTH_SCRIPT}' REMOTE_SYSTEMD_UNIT='${REMOTE_SYSTEMD_UNIT}' REVISION='${GITHUB_SHA}' bash -s" <<'REMOTE_DEPLOY'
+          set -euo pipefail
+
+          cleanup() {
+            rm -f \
+              "$REMOTE_ARTIFACT" \
+              "$REMOTE_DEPLOY_SCRIPT" \
+              "$REMOTE_HEALTH_SCRIPT" \
+              "$REMOTE_SYSTEMD_UNIT"
+          }
+          trap cleanup EXIT
+
+          test -f "$REMOTE_ARTIFACT"
+          test -f "$REMOTE_DEPLOY_SCRIPT"
+          test -f "$REMOTE_HEALTH_SCRIPT"
+          test -f "$REMOTE_SYSTEMD_UNIT"
+          chmod 700 "$REMOTE_DEPLOY_SCRIPT" "$REMOTE_HEALTH_SCRIPT"
+          chmod 600 "$REMOTE_SYSTEMD_UNIT"
+
+          sudo -n true
+
+          "$REMOTE_DEPLOY_SCRIPT" \
+            --artifact "$REMOTE_ARTIFACT" \
+            --revision "$REVISION" \
+            --health-script "$REMOTE_HEALTH_SCRIPT" \
+            --systemd-unit "$REMOTE_SYSTEMD_UNIT"
+          REMOTE_DEPLOY
+
+      - name: Cleanup remote deployment files
+        if: always()
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY_FILE: ${{ steps.ssh.outputs.key_file }}
+          KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${EC2_HOST:-}" || -z "${EC2_USER:-}" || -z "${SSH_KEY_FILE:-}" || -z "${KNOWN_HOSTS_FILE:-}" ]]; then
+            exit 0
+          fi
+
+          remote_artifact="${REMOTE_ARTIFACT:-/tmp/aipm-backend-${GITHUB_SHA}.jar}"
+          remote_deploy_script="${REMOTE_DEPLOY_SCRIPT:-/tmp/deploy-backend-${GITHUB_SHA}.sh}"
+          remote_health_script="${REMOTE_HEALTH_SCRIPT:-/tmp/aipm-backend-health-${GITHUB_SHA}.sh}"
+          remote_systemd_unit="${REMOTE_SYSTEMD_UNIT:-/tmp/aipm-backend-service-${GITHUB_SHA}.service}"
+
+          ssh \
+            -i "$SSH_KEY_FILE" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            "${EC2_USER}@${EC2_HOST}" \
+            "rm -f '${remote_artifact}' '${remote_deploy_script}' '${remote_health_script}' '${remote_systemd_unit}'" || true
+
+      - name: Remove SSH files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${{ steps.ssh.outputs.key_file }}" "${{ steps.ssh.outputs.known_hosts_file }}"

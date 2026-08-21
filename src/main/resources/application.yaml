@@ -1,22 +1,129 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   application:
     name: aipm
 
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/aipm}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:password}
+    username: ${DB_USERNAME:aipm_user}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_STARTTLS_ENABLE:false}
+            required: ${MAIL_STARTTLS_REQUIRED:false}
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_TIMEOUT:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:5000}
 
   jpa:
     hibernate:
-      ddl-auto: update
-
-    show-sql: true
-
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_FORMAT_SQL:false}
+
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_MULTIPART_MAX_FILE_SIZE:10MB}
+      max-request-size: ${SPRING_MULTIPART_MAX_REQUEST_SIZE:50MB}
 
 server:
   port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,https://frontend-repo-coral.vercel.app}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+  s3:
+    region: ${AWS_REGION:ap-northeast-2}
+    bucket: ${AWS_S3_BUCKET}
+  auth:
+    access-token-expiration-minutes: ${AUTH_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
+    absolute-login-expiration-hours: ${AUTH_ABSOLUTE_LOGIN_EXPIRATION_HOURS:8}
+    jwt-secret: ${AUTH_JWT_SECRET}
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from-address: ${MAIL_FROM_ADDRESS:}
+    from-name: ${MAIL_FROM_NAME:PM Agent}
+    reply-to: ${MAIL_REPLY_TO:}
+    subject-prefix: ${MAIL_SUBJECT_PREFIX:[PM Agent]}
+    max-attempts: ${MAIL_MAX_ATTEMPTS:3}
+    retry-delay-ms: ${MAIL_RETRY_DELAY_MS:500}
+    background-image-url: ${MAIL_BACKGROUND_IMAGE_URL:https://cdn.jsdelivr.net/gh/Aivle-26/backend-repo@5e2b763/src/main/resources/mail/verification-background.png}
+  document:
+    storage-type: ${DOCUMENT_STORAGE_TYPE:s3}
+    storage-path: ${DOCUMENT_STORAGE_PATH:uploads/documents}
+    max-file-size: ${DOCUMENT_MAX_FILE_SIZE:10485760}
+    allowed-extensions:
+      - pdf
+      - docx
+      - xlsx
+      - pptx
+      - txt
+    allowed-mime-types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - application/vnd.openxmlformats-officedocument.presentationml.presentation
+      - text/plain
+
+  slack:
+    # Slack 앱 Bot 토큰(xoxb-). 비어 있으면 Slack 기능이 409를 반환하고, 앱은 정상 부팅된다.
+    bot-token: ${SLACK_BOT_TOKEN:}
+    # conversations.history 1회 호출당 최대 메시지 수 (Slack 상한 1000)
+    fetch-limit: ${SLACK_FETCH_LIMIT:200}
+  ai:
+    base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+    # LLM 호출이 포함돼 있어 넉넉히 잡는다
+    timeout-seconds: ${AI_SERVER_TIMEOUT_SECONDS:60}
+    enable-llm: ${AI_SERVER_ENABLE_LLM:true}
+
+agent:
+  planning:
+    base-url: ${PLANNING_AGENT_BASE_URL:http://localhost:8000}
+    extract-path: ${PLANNING_AGENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+    readjust-path: ${PLANNING_AGENT_READJUST_PATH:/api/v1/planning/documents/readjust}
+    wbs-path: ${PLANNING_AGENT_WBS_PATH:/api/v1/planning/wbs/generate}
+    schedule-path: ${PLANNING_AGENT_SCHEDULE_PATH:/api/v1/planning/schedules/recommend}
+    resource-path: ${PLANNING_AGENT_RESOURCE_PATH:/api/v1/planning/resources/recommend}
+    organization-chart-path: ${PLANNING_AGENT_ORGANIZATION_CHART_PATH:/api/v1/planning/resources/organization-chart/generate}
+    organization-chart-render-path: ${PLANNING_AGENT_ORGANIZATION_CHART_RENDER_PATH:/api/v1/planning/resources/organization-chart/render}
+    ui-mockup-path: ${PLANNING_AGENT_UI_MOCKUP_PATH:/api/v1/planning/ui-mockup/generate}
+    cost-path: ${PLANNING_AGENT_COST_PATH:/api/v1/planning/costs/estimate}
+    rag-query-path: ${PLANNING_AGENT_RAG_QUERY_PATH:/api/v1/reports/deliverables/rag/query}
+    weekly-scrum-summarize-path: ${PLANNING_AGENT_WEEKLY_SCRUM_SUMMARIZE_PATH:/api/v1/reports/weekly-scrum/summarize}
+    weekly-scrum-review-path: ${PLANNING_AGENT_WEEKLY_SCRUM_REVIEW_PATH:/api/v1/reports/weekly-scrum/review}
+    weekly-scrum-recommend-path: ${PLANNING_AGENT_WEEKLY_SCRUM_RECOMMEND_PATH:/api/v1/reports/weekly-scrum/recommend-next-actions}
+    weekly-scrum-finalize-path: ${PLANNING_AGENT_WEEKLY_SCRUM_FINALIZE_PATH:/api/v1/reports/weekly-scrum/finalize}
+    schedule-agent-version: ${PLANNING_AGENT_SCHEDULE_VERSION:schedule-recommend-v1}
+    connect-timeout: ${PLANNING_AGENT_CONNECT_TIMEOUT:5s}
+    read-timeout: ${PLANNING_AGENT_READ_TIMEOUT:120s}
+
+ai-server:
+  base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+  document-extract-path: ${AI_SERVER_DOCUMENT_EXTRACT_PATH:/api/v1/planning/documents/extract}
+  connect-timeout-seconds: ${AI_SERVER_CONNECT_TIMEOUT_SECONDS:5}
+  response-timeout-seconds: ${AI_SERVER_RESPONSE_TIMEOUT_SECONDS:120}

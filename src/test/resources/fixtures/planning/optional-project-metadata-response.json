@@ -1,0 +1,38 @@
+{
+  "project_info": {
+    "project_name": null,
+    "project_goal": null,
+    "client_organization": null,
+    "period_start": null,
+    "period_end": null,
+    "key_features": [],
+    "required_artifacts": [],
+    "acceptance_conditions": [],
+    "budget_contract_conditions": [],
+    "security_privacy_conditions": []
+  },
+  "requirement_candidates": [
+    {
+      "requirement_id": 1,
+      "function_name": "Document review",
+      "requirement_text": "A PM can review an uploaded document.",
+      "category": "FUNCTIONAL",
+      "priority": "UNSPECIFIED",
+      "acceptance_criteria": null,
+      "due_date": null,
+      "deliverable_name": null,
+      "security_condition": null,
+      "source_document": "requirements.txt",
+      "source_excerpt": null
+    }
+  ],
+  "documents": [
+    {
+      "file_name": "requirements.txt",
+      "file_type": "TXT",
+      "character_count": 18,
+      "processing_mode": "TEXT"
+    }
+  ],
+  "llm_status": "SUCCEEDED"
+}

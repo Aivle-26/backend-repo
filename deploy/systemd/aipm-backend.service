@@ -1,0 +1,21 @@
+[Unit]
+Description=AIPM Spring Boot Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/aipm/backend
+EnvironmentFile=/etc/aipm/backend.env
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -jar /opt/aipm/backend/app/aipm-backend.jar
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aipm-backend
+
+[Install]
+WantedBy=multi-user.target
