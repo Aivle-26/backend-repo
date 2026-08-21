@@ -92,6 +92,18 @@ PM 문서 업로드
 
 ---
 
+## Demo
+
+### 문서 분석 요청과 요구사항 반영
+
+선택한 프로젝트 문서를 기준으로 Backend가 AI 분석을 조율하고, 저장된 요구사항 검토 데이터를 Frontend에 반환하는 사용자 관점의 흐름입니다.
+
+<p align="center">
+  <img src="docs/demo/document-analysis-flow.gif" width="840" alt="프로젝트 문서 분석 요청과 요구사항 결과 반환 흐름" />
+</p>
+
+---
+
 ## API Domains
 
 모든 Endpoint를 나열하기보다 Controller가 제공하는 책임 단위로 정리했습니다.
@@ -320,18 +332,6 @@ backend-repo/
 ├─ docs/                   # API, Domain, 운영 문서
 └─ .github/workflows/      # CI와 dev EC2 배포
 ```
-
----
-
-## Demo
-
-### 문서 분석 요청과 요구사항 반영
-
-선택한 프로젝트 문서를 기준으로 Backend가 AI 분석을 조율하고, 저장된 요구사항 검토 데이터를 Frontend에 반환하는 사용자 관점의 흐름입니다.
-
-<p align="center">
-  <img src="docs/demo/document-analysis-flow.gif" width="840" alt="프로젝트 문서 분석 요청과 요구사항 결과 반환 흐름" />
-</p>
 
 ---
 
